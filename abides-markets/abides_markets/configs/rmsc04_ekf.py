@@ -189,9 +189,17 @@ def build_config(
     agent_types.extend(["ValueAgent"])
 
     # ── 4. EKF Fundamentalist Agents (OUR custom agents) ─────────────────
+    #    Each agent gets randomized hyperparameters for heterogeneity.
+    #    This creates agents with genuinely different "personalities":
+    #      - different memory lengths (er_window)
+    #      - different noise sensitivity (delta)
+    #      - different trust in the market (lambda_er)
+    #      - different oracle noise (sigma_n)
+    #      - different emotional memory (gamma)
+    #      - different safety margins (mu)
     ekf_start_id = agent_count
-    agents.extend(
-        [
+    for j in range(agent_count, agent_count + num_ekf_agents):
+        agents.append(
             FundamentalistAgent(
                 id=j,
                 name="EKF_Fund_{}".format(j),
@@ -200,14 +208,23 @@ def build_config(
                 starting_cash=starting_cash,
                 log_orders=True,  # Always log our agents
                 wake_up_freq=str_to_ns("10S"),
-                sigma_n=SIGMA_N,
+                # ── Randomized EKF Hyperparameters ──────────────────
+                er_window=int(np.random.uniform(5, 25)),
+                delta=np.random.uniform(0.002, 0.015),
+                lambda_er=np.random.uniform(1.0, 6.0),
+                sigma_n=np.random.uniform(300, 3000),
+                initial_uncertainty=np.random.uniform(50_000, 500_000),
+                # ── Randomized Caution Parameters ───────────────────
+                gamma=np.random.uniform(0.4, 0.95),
+                k=np.random.uniform(0.3, 2.5),
+                # ── Randomized Limit Price Parameters ───────────────
+                mu=np.random.uniform(0.02, 0.2),
+                news_sensitivity=np.random.uniform(0.005, 0.04),
                 random_state=np.random.RandomState(
                     seed=np.random.randint(low=0, high=2**31, dtype="uint32")
                 ),
             )
-            for j in range(agent_count, agent_count + num_ekf_agents)
-        ]
-    )
+        )
     agent_count += num_ekf_agents
     agent_types.extend(["EKF_Fundamentalist"])
 

@@ -197,6 +197,7 @@ def extract_agent_logs(end_state, ekf_agent_ids):
         ekf_updates = []
         caution_updates = []
         news_events = []
+        holdings_timeline = []
 
         for event_time, event_type, event in agent.log:
             if event_type == "EKF_UPDATE" and isinstance(event, dict):
@@ -205,18 +206,37 @@ def extract_agent_logs(end_state, ekf_agent_ids):
                 caution_updates.append({"time_ns": event_time, **event})
             elif event_type == "NEWS_RECEIVED" and isinstance(event, dict):
                 news_events.append({"time_ns": event_time, **event})
+            elif event_type == "HOLDINGS_UPDATED" and isinstance(event, dict):
+                holdings_timeline.append({
+                    "time_ns": event_time,
+                    "cash_cents": event.get("CASH", 0),
+                    "shares": event.get(agent.symbol if hasattr(agent, 'symbol') else "ABM", 0),
+                })
 
         agents_data[agent_id] = {
             "name": agent.name,
             "ekf_updates": pd.DataFrame(ekf_updates) if ekf_updates else pd.DataFrame(),
             "caution_updates": pd.DataFrame(caution_updates) if caution_updates else pd.DataFrame(),
             "news_events": pd.DataFrame(news_events) if news_events else pd.DataFrame(),
+            "holdings_timeline": pd.DataFrame(holdings_timeline) if holdings_timeline else pd.DataFrame(),
             "holdings": dict(agent.holdings) if hasattr(agent, "holdings") else {},
             "price_log": list(agent.price_log) if hasattr(agent, "price_log") else [],
             "time_log": list(agent.time_log) if hasattr(agent, "time_log") else [],
             "x_hat_final": agent.x_hat if hasattr(agent, "x_hat") else None,
             "P_final": agent.P if hasattr(agent, "P") else None,
             "C_t_final": agent.C_t if hasattr(agent, "C_t") else None,
+            # Agent hyperparameters (for dashboard display)
+            "hyperparams": {
+                "beta": round(agent.beta, 2) if hasattr(agent, "beta") else None,
+                "er_window": agent.er_window if hasattr(agent, "er_window") else None,
+                "delta": round(agent.delta, 4) if hasattr(agent, "delta") else None,
+                "lambda_er": round(agent.lambda_er, 2) if hasattr(agent, "lambda_er") else None,
+                "sigma_n": round(agent.sigma_n, 1) if hasattr(agent, "sigma_n") else None,
+                "gamma": round(agent.gamma, 3) if hasattr(agent, "gamma") else None,
+                "k": round(agent.k, 3) if hasattr(agent, "k") else None,
+                "mu": round(agent.mu, 4) if hasattr(agent, "mu") else None,
+                "news_sensitivity": round(agent.news_sensitivity, 4) if hasattr(agent, "news_sensitivity") else None,
+            },
         }
 
     return agents_data

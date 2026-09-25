@@ -66,14 +66,14 @@ class FundamentalistAgent(TradingAgent):
         er_window: int = 10,              # Lookback window for Kaufman's ER
         delta: float = 0.005,             # Fraction of price for R_base  (R_base = (delta * P)^2)
         lambda_er: float = 3.0,           # Exponential penalty strength on (1 - ER)
-        initial_uncertainty: float = 1e8, # P_0: initial prediction variance (large = unsure)
+        initial_uncertainty: float = 250_000, # P_0: initial prediction variance  ((delta*r_bar)^2)
         # --- Oracle observation noise (for getting a private fundamental signal) ---
         sigma_n: float = 10_000.0,        # Observation noise passed to oracle.observe_price()
         # --- Caution Modulator Hyperparameters ---
         gamma: float = 0.8,               # Memory weight for EWMA
         k: float = 1.0,                   # Sigmoid sensitivity
         # --- Limit Price Hyperparameters ---
-        mu: float = 0.5,                  # Safety margin multiplier
+        mu: float = 0.1,                  # Safety margin multiplier (smaller = tighter limits)
         # --- News Sentiment ---
         news_sensitivity: float = 0.02,   # Max % shift per news event (2%)
     ) -> None:
@@ -299,38 +299,62 @@ class FundamentalistAgent(TradingAgent):
 
     def decision_limit_price(self, bid: float, ask: float, confidence: float) -> Optional[int]:
         """
-        Computes the final limit price bounding the emotional urgency price 
-        by the epistemic safety margin derived from the EKF uncertainty.
+        Computes the final limit price using emotional urgency within the spread,
+        constrained by an epistemic safety margin.
+        
+        The key insight: the order must land WITHIN or NEAR the bid-ask spread
+        to have any chance of filling. The safety margin acts as a percentage-based
+        constraint, not a raw variance offset.
         """
         if self.x_hat is None:
             return None
         
-        # 1. Epistemic Limits (Safety Margin)
-        # m = mu * sqrt(S_t) where S_t is self.P
-        m = self.mu * (max(0.0, self.P) ** 0.5)
-        P_max_buy = self.x_hat - m
-        P_min_sell = self.x_hat + m
-        
-        # 2. Emotional Urgency Price
+        mid = (bid + ask) / 2.0
         spread = ask - bid
-        P_urgency_buy = bid + confidence * spread
-        P_urgency_sell = ask - confidence * spread
+        diff = self.x_hat - mid
         
-        # 3. Final Limit Price (The Intersection)
-        diff = self.x_hat - ((bid + ask) / 2.0)
+        # Minimum gap to act on (avoid trading on pure noise)
+        min_gap = spread * 0.1  # Must see at least 10% of spread as mispricing
         
-        if diff > 0:
-            P_L = min(P_urgency_buy, P_max_buy)
-            return int(round(P_L))
-        elif diff < 0:
-            P_L = max(P_urgency_sell, P_min_sell)
-            return int(round(P_L))
-        else:
+        if abs(diff) < min_gap:
             return None
+        
+        # 1. Urgency price: confidence slides the order within the spread
+        #    High confidence → aggressive (closer to opposite side)
+        #    Low confidence → passive (closer to own side)
+        if diff > 0:
+            # We think price is too low → BUY
+            # Place bid between current bid and ask, scaled by confidence
+            P_urgency = bid + confidence * spread
+            
+            # Safety ceiling: don't pay more than x_hat + mu% of x_hat
+            P_ceiling = self.x_hat * (1.0 + self.mu)
+            P_L = min(P_urgency, P_ceiling)
+            
+            # Floor: at least at the current bid (otherwise order is useless)
+            P_L = max(P_L, bid)
+            return int(round(P_L))
+            
+        else:
+            # We think price is too high → SELL  
+            # Place ask between current ask and bid, scaled by confidence
+            P_urgency = ask - confidence * spread
+            
+            # Safety floor: don't sell for less than x_hat - mu% of x_hat
+            P_floor = self.x_hat * (1.0 - self.mu)
+            P_L = max(P_urgency, P_floor)
+            
+            # Ceiling: at most at the current ask
+            P_L = min(P_L, ask)
+            return int(round(P_L))
 
     def decision_volume(self, confidence: float, current_price: float) -> int:
         """
         Decides trade volume using the Wealth-Bounded Allocation method.
+        
+        Guards:
+          - Won't buy if cash is insufficient for even 1 share
+          - Won't sell more shares than currently held
         """
         if self.x_hat is None:
             return 0
@@ -342,13 +366,25 @@ class FundamentalistAgent(TradingAgent):
         if diff > 0:
             # BUYING: allocate fraction of available cash
             cash = self.holdings.get("CASH", 0)
-            size = int((A_t * cash) / current_price)
+            if cash < current_price:
+                return 0  # Can't afford even 1 share
+            size = int((A_t * cash) / current_price) if current_price > 0 else 0
         elif diff < 0:
             # SELLING: liquidate fraction of current holdings
             shares_owned = self.holdings.get(self.symbol, 0)
+            if shares_owned <= 0:
+                return 0  # Can't sell what we don't own
             size = int(A_t * shares_owned)
         else:
             size = 0
+        
+        # Minimum order size: always trade at least 1 share if we have a signal
+        if size == 0 and abs(diff) > 0:
+            # Final check: can we actually afford/hold this minimum?
+            if diff > 0 and self.holdings.get("CASH", 0) >= current_price:
+                size = 1
+            elif diff < 0 and self.holdings.get(self.symbol, 0) > 0:
+                size = 1
             
         return max(0, size)
 
