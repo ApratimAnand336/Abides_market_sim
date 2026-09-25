@@ -1,9 +1,16 @@
-# RMSC-4 (Reference Market Simulation Configuration):
-# - 1     Exchange Agent
-# - 2     Adaptive Market Maker Agents
-# - 102   Value Agents
-# - 12    Momentum Agents
-# - 1000  Noise Agents
+# RMSC-04 + EKF Fundamentalist Agents Configuration
+#
+# Based on rmsc04.py but replaces 5 of the 102 ValueAgents with our
+# custom EKF FundamentalistAgent, and adds 1 NewsOracleAgent.
+#
+# Agent lineup:
+#   - 1     Exchange Agent
+#   - 1000  Noise Agents
+#   - 97    Value Agents (stock ABIDES agents)
+#   - 5     FundamentalistAgent (our EKF agents)
+#   - 2     Adaptive Market Maker Agents
+#   - 12    Momentum Agents
+#   - 1     NewsOracleAgent
 
 import os
 from datetime import datetime
@@ -19,13 +26,11 @@ from abides_markets.agents import (
     AdaptiveMarketMakerAgent,
     MomentumAgent,
 )
+from abides_markets.agents.fundamental import FundamentalistAgent
+from abides_markets.agents.news_oracle_agent import NewsOracleAgent
 from abides_markets.models import OrderSizeModel
 from abides_markets.oracles import SparseMeanRevertingOracle
 from abides_markets.utils import generate_latency_model
-
-
-########################################################################################################################
-############################################### GENERAL CONFIG #########################################################
 
 
 def build_config(
@@ -35,7 +40,7 @@ def build_config(
     stdout_log_level="INFO",
     ticker="ABM",
     starting_cash=10_000_000,  # Cash in this simulator is always in CENTS.
-    log_orders=True,  # if True log everything
+    log_orders=True,
     # 1) Exchange Agent
     book_logging=True,
     book_log_depth=10,
@@ -43,20 +48,19 @@ def build_config(
     exchange_log_orders=None,
     # 2) Noise Agent
     num_noise_agents=1000,
-    # 3) Value Agents
-    num_value_agents=102,
+    # 3) Value Agents (reduced from 102 to make room for EKF agents)
+    num_value_agents=97,
     r_bar=100_000,  # true mean fundamental value
-    kappa=1.67e-15,  # Value Agents appraisal of mean-reversion
-    lambda_a=5.7e-12,  # ValueAgent arrival rate
+    kappa=1.67e-15,
+    lambda_a=5.7e-12,
     # oracle
-    kappa_oracle=1.67e-16,  # Mean-reversion of fundamental time series.
+    kappa_oracle=1.67e-16,
     sigma_s=0,
-    fund_vol=5e-5,  # Volatility of fundamental time series (std).
+    fund_vol=5e-5,
     megashock_lambda_a=2.77778e-18,
     megashock_mean=1000,
     megashock_var=50_000,
     # 4) Market Maker Agents
-    # each elem of mm_params is tuple (window_size, pov, num_ticks, wake_up_freq, min_order_size)
     mm_window_size="adaptive",
     mm_pov=0.025,
     mm_num_ticks=10,
@@ -67,59 +71,32 @@ def build_config(
     mm_level_spacing=5,
     mm_spread_alpha=0.75,
     mm_backstop_quantity=0,
-    mm_cancel_limit_delay=50,  # 50 nanoseconds
+    mm_cancel_limit_delay=50,
     # 5) Momentum Agents
     num_momentum_agents=12,
+    # 6) EKF Fundamentalist Agents
+    num_ekf_agents=5,
+    # 7) News events: list of (time_offset_str, symbol, sentiment, headline)
+    news_events=None,
 ):
-    """
-    create the background configuration for rmsc04
-    These are all the non-learning agent that will run in the simulation
-    :param seed: seed of the experiment
-    :type seed: int
-    :param log_orders: debug mode to print more
-    :return: all agents of the config
-    :rtype: list
-    """
-
-    # fix seed
     np.random.seed(seed)
-
-    def path_wrapper(pomegranate_model_json):
-        """
-        temporary solution to manage calls from abides-gym or from the rest of the code base
-        TODO:find more general solution
-        :return:
-        :rtype:
-        """
-        # get the  path of the file
-        path = os.getcwd()
-        if path.split("/")[-1] == "abides_gym":
-            return "../" + pomegranate_model_json
-        else:
-            return pomegranate_model_json
 
     mm_wake_up_freq = str_to_ns(mm_wake_up_freq)
 
-    # order size model
-    ORDER_SIZE_MODEL = OrderSizeModel()  # Order size model
-    # market marker derived parameters
+    ORDER_SIZE_MODEL = OrderSizeModel()
     MM_PARAMS = [
         (mm_window_size, mm_pov, mm_num_ticks, mm_wake_up_freq, mm_min_order_size),
         (mm_window_size, mm_pov, mm_num_ticks, mm_wake_up_freq, mm_min_order_size),
     ]
     NUM_MM = len(MM_PARAMS)
-    # noise derived parameters
-    SIGMA_N = r_bar / 100  # observation noise variance
+    SIGMA_N = r_bar / 100
 
-    # date&time
     DATE = int(pd.to_datetime(date).value)
     MKT_OPEN = DATE + str_to_ns("09:30:00")
     MKT_CLOSE = DATE + str_to_ns(end_time)
-    # These times needed for distribution of arrival times of Noise Agents
     NOISE_MKT_OPEN = MKT_OPEN - str_to_ns("00:30:00")
     NOISE_MKT_CLOSE = DATE + str_to_ns("16:00:00")
 
-    # oracle
     symbols = {
         ticker: {
             "r_bar": r_bar,
@@ -137,9 +114,9 @@ def build_config(
 
     oracle = SparseMeanRevertingOracle(MKT_OPEN, NOISE_MKT_CLOSE, symbols)
 
-    # Agent configuration
     agent_count, agents, agent_types = 0, [], []
 
+    # ── 1. Exchange Agent ────────────────────────────────────────────────
     agents.extend(
         [
             ExchangeAgent(
@@ -164,6 +141,7 @@ def build_config(
     agent_types.extend("ExchangeAgent")
     agent_count += 1
 
+    # ── 2. Noise Agents ──────────────────────────────────────────────────
     agents.extend(
         [
             NoiseAgent(
@@ -185,6 +163,7 @@ def build_config(
     agent_count += num_noise_agents
     agent_types.extend(["NoiseAgent"])
 
+    # ── 3. Value Agents (stock ABIDES fundamentalists) ───────────────────
     agents.extend(
         [
             ValueAgent(
@@ -209,6 +188,30 @@ def build_config(
     agent_count += num_value_agents
     agent_types.extend(["ValueAgent"])
 
+    # ── 4. EKF Fundamentalist Agents (OUR custom agents) ─────────────────
+    ekf_start_id = agent_count
+    agents.extend(
+        [
+            FundamentalistAgent(
+                id=j,
+                name="EKF_Fund_{}".format(j),
+                type="EKF_Fundamentalist",
+                symbol=ticker,
+                starting_cash=starting_cash,
+                log_orders=True,  # Always log our agents
+                wake_up_freq=str_to_ns("10S"),
+                sigma_n=SIGMA_N,
+                random_state=np.random.RandomState(
+                    seed=np.random.randint(low=0, high=2**31, dtype="uint32")
+                ),
+            )
+            for j in range(agent_count, agent_count + num_ekf_agents)
+        ]
+    )
+    agent_count += num_ekf_agents
+    agent_types.extend(["EKF_Fundamentalist"])
+
+    # ── 5. Market Maker Agents ───────────────────────────────────────────
     agents.extend(
         [
             AdaptiveMarketMakerAgent(
@@ -240,6 +243,7 @@ def build_config(
     agent_count += NUM_MM
     agent_types.extend("POVMarketMakerAgent")
 
+    # ── 6. Momentum Agents ───────────────────────────────────────────────
     agents.extend(
         [
             MomentumAgent(
@@ -264,16 +268,34 @@ def build_config(
     agent_count += num_momentum_agents
     agent_types.extend("MomentumAgent")
 
-    # extract kernel seed here to reproduce the state of random generator in old version
+    # ── 7. News Oracle Agent ─────────────────────────────────────────────
+    news_oracle_id = agent_count
+    news_oracle = NewsOracleAgent(
+        id=news_oracle_id,
+        name="NewsOracle",
+        type="NewsOracleAgent",
+        random_state=np.random.RandomState(
+            seed=np.random.randint(low=0, high=2**31, dtype="uint32")
+        ),
+    )
+
+    # Enqueue any pre-defined news events
+    if news_events:
+        for time_offset, symbol, sentiment, headline in news_events:
+            delivery_time = MKT_OPEN + str_to_ns(time_offset)
+            news_oracle.enqueue_news(symbol, sentiment, headline, delivery_time)
+
+    agents.append(news_oracle)
+    agent_count += 1
+    agent_types.extend(["NewsOracleAgent"])
+
+    # ── Kernel configuration ─────────────────────────────────────────────
     random_state_kernel = np.random.RandomState(
         seed=np.random.randint(low=0, high=2**31, dtype="uint32")
     )
-    # LATENCY
     latency_model = generate_latency_model(agent_count)
+    default_computation_delay = 50
 
-    default_computation_delay = 50  # 50 nanoseconds
-
-    ##kernel args
     kernelStartTime = DATE
     kernelStopTime = MKT_CLOSE + str_to_ns("1s")
 
@@ -287,4 +309,7 @@ def build_config(
         "custom_properties": {"oracle": oracle},
         "random_state_kernel": random_state_kernel,
         "stdout_log_level": stdout_log_level,
+        # Extra metadata for dashboard extraction
+        "_ekf_agent_ids": list(range(ekf_start_id, ekf_start_id + num_ekf_agents)),
+        "_news_oracle_id": news_oracle_id,
     }
