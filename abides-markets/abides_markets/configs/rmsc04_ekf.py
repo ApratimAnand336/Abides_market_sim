@@ -1,7 +1,8 @@
 # RMSC-04 + EKF Fundamentalist Agents Configuration
 #
 # Based on rmsc04.py but replaces 5 of the 102 ValueAgents with our
-# custom EKF FundamentalistAgent, and adds 1 NewsOracleAgent.
+# custom EKF FundamentalistAgent, replaces 5 of the 12 stock MomentumAgents
+# with our MomentumEKFAgent, and adds 1 NewsOracleAgent.
 #
 # Agent lineup:
 #   - 1     Exchange Agent
@@ -9,7 +10,8 @@
 #   - 97    Value Agents (stock ABIDES agents)
 #   - 5     FundamentalistAgent (our EKF agents)
 #   - 2     Adaptive Market Maker Agents
-#   - 12    Momentum Agents
+#   - 7     Momentum Agents (stock ABIDES 20/50 MA crossover)
+#   - 5     MomentumEKFAgent (our damped-trend Kalman momentum agents)
 #   - 1     NewsOracleAgent
 
 import os
@@ -27,6 +29,7 @@ from abides_markets.agents import (
     MomentumAgent,
 )
 from abides_markets.agents.fundamental import FundamentalistAgent
+from abides_markets.agents.momentum_ekf import MomentumEKFAgent
 from abides_markets.agents.news_oracle_agent import NewsOracleAgent
 from abides_markets.models import OrderSizeModel
 from abides_markets.oracles import SparseMeanRevertingOracle
@@ -73,9 +76,13 @@ def build_config(
     mm_backstop_quantity=0,
     mm_cancel_limit_delay=50,
     # 5) Momentum Agents
-    num_momentum_agents=12,
+    num_momentum_agents=12,  # total momentum slots (stock + EKF momentum)
     # 6) EKF Fundamentalist Agents
     num_ekf_agents=5,
+    ekf_initial_exposure=0.5,
+    # 6b) EKF Momentum Agents (take num_mom_ekf_agents of the momentum slots)
+    num_mom_ekf_agents=5,
+    mom_ekf_initial_exposure=0.5,
     # 7) News events: list of (time_offset_str, symbol, sentiment, headline)
     news_events=None,
 ):
@@ -220,6 +227,9 @@ def build_config(
                 # ── Randomized Limit Price Parameters ───────────────
                 mu=np.random.uniform(0.02, 0.2),
                 news_sensitivity=np.random.uniform(0.005, 0.04),
+                # ── Initial share endowment ─────────────────────────
+                initial_exposure=ekf_initial_exposure,
+                reference_price=r_bar,
                 random_state=np.random.RandomState(
                     seed=np.random.randint(low=0, high=2**31, dtype="uint32")
                 ),
@@ -261,6 +271,10 @@ def build_config(
     agent_types.extend("POVMarketMakerAgent")
 
     # ── 6. Momentum Agents ───────────────────────────────────────────────
+    #    num_mom_ekf_agents of the momentum slots go to MomentumEKFAgents
+    #    (6b), so the total agent count is unchanged.
+    num_stock_momentum = num_momentum_agents - num_mom_ekf_agents
+    assert num_stock_momentum >= 0, "num_mom_ekf_agents > num_momentum_agents"
     agents.extend(
         [
             MomentumAgent(
@@ -279,11 +293,69 @@ def build_config(
                     seed=np.random.randint(low=0, high=2**31, dtype="uint32")
                 ),
             )
-            for j in range(agent_count, agent_count + num_momentum_agents)
+            for j in range(agent_count, agent_count + num_stock_momentum)
         ]
     )
-    agent_count += num_momentum_agents
+    agent_count += num_stock_momentum
     agent_types.extend("MomentumAgent")
+
+    # ── 6b. EKF Momentum Agents (OUR custom agents) ──────────────────────
+    #    Hyperparameters drawn per agent from the spec's Part G ranges
+    #    (herding guard: thresholds, tau and wake times all differ).
+    mom_ekf_start_id = agent_count
+    for j in range(agent_count, agent_count + num_mom_ekf_agents):
+        n_er = int(np.random.randint(10, 26))
+        agents.append(
+            MomentumEKFAgent(
+                id=j,
+                name="EKF_Mom_{}".format(j),
+                type="EKF_Momentum",
+                symbol=ticker,
+                starting_cash=starting_cash,
+                log_orders=True,  # Always log our agents
+                initial_exposure=mom_ekf_initial_exposure,
+                reference_price=r_bar,
+                # ── Layer 1 ─────────────────────────────────────────
+                n_er=n_er,
+                N_w=int(np.random.randint(max(n_er + 1, 15), 31)),
+                lambda_er=np.random.uniform(1.0, 6.0),
+                kappa_R=np.random.uniform(0.5, 2.0),
+                c_P=np.random.uniform(1.0, 5.0),
+                tau=float(np.exp(np.random.uniform(np.log(120), np.log(1800)))),
+                kappa_l=np.random.uniform(0.05, 0.5),
+                kappa_v=np.random.uniform(0.5, 2.0),
+                a_eps=np.random.uniform(0.1, 0.3),
+                eps_thr=np.random.uniform(2.0, 4.0),
+                g_max=10.0,
+                # ── Layer 2 ─────────────────────────────────────────
+                gamma=np.random.uniform(0.4, 0.95),
+                k_c=np.random.uniform(0.3, 2.5),
+                # ── State machine ───────────────────────────────────
+                theta_in=np.random.uniform(1.5, 2.5),
+                theta_out=np.random.uniform(0.5, 1.0),
+                ER_min=np.random.uniform(0.2, 0.4),
+                k_stop=np.random.uniform(2.0, 4.0),
+                k_re=np.random.uniform(0.25, 0.5),
+                # ── Layer 3 ─────────────────────────────────────────
+                T_0=np.random.uniform(1.0, 3.0),
+                lambda_v=np.random.uniform(0.5, 2.0),
+                e_max=np.random.uniform(0.7, 0.95),
+                e_min=0.0,
+                b=0.1,
+                n_min=1,
+                k_add=np.random.uniform(0.25, 0.75),
+                mu_m=np.random.uniform(0.5, 2.0),
+                # ── News / scheduling ───────────────────────────────
+                eta_news=np.random.uniform(0.0, 0.5),
+                rho_news=np.random.uniform(1.0, 5.0),
+                wake_mean=np.random.uniform(10.0, 60.0),
+                random_state=np.random.RandomState(
+                    seed=np.random.randint(low=0, high=2**31, dtype="uint32")
+                ),
+            )
+        )
+    agent_count += num_mom_ekf_agents
+    agent_types.extend(["EKF_Momentum"])
 
     # ── 7. News Oracle Agent ─────────────────────────────────────────────
     news_oracle_id = agent_count
@@ -328,5 +400,8 @@ def build_config(
         "stdout_log_level": stdout_log_level,
         # Extra metadata for dashboard extraction
         "_ekf_agent_ids": list(range(ekf_start_id, ekf_start_id + num_ekf_agents)),
+        "_mom_ekf_agent_ids": list(
+            range(mom_ekf_start_id, mom_ekf_start_id + num_mom_ekf_agents)
+        ),
         "_news_oracle_id": news_oracle_id,
     }

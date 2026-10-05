@@ -94,7 +94,10 @@ def str_to_ns(string: str) -> NanosecondTime:
         - "1min" -> 6e10 ns
         - "00:00:30" -> 3e10 ns
     """
-    return pd.to_timedelta(string).to_timedelta64().astype(int)
+    td = pd.Timedelta(string)
+    # pandas >= 2: to_timedelta64() may carry microsecond resolution, which
+    # silently shrinks every duration 1000x. Force nanoseconds explicitly.
+    return int(td.as_unit("ns").value) if hasattr(td, "as_unit") else int(td.value)
 
 
 def datetime_str_to_ns(string: str) -> NanosecondTime:

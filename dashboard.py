@@ -476,6 +476,78 @@ with tab2:
             with hc2:
                 metric_card(f"Shares ({ticker})", f"{holdings.get(ticker, 0):,}")
 
+    # ── Momentum EKF agents ──────────────────────────────────────────
+    mom_agents_data = data.get("mom_agents", {})
+    if mom_agents_data:
+        st.markdown("---")
+        st.markdown("## Momentum EKF Agents")
+        mom_names = {aid: m["name"] for aid, m in mom_agents_data.items()}
+        mom_id = st.selectbox("Select Momentum Agent", list(mom_names.keys()),
+                              format_func=lambda x: mom_names[x])
+        mdata = mom_agents_data[mom_id]
+        kf_df = mdata["kf_updates"]
+        dec_df = mdata["decisions"]
+        mc_df = mdata["caution_updates"]
+
+        if len(kf_df) > 0:
+            mt = [ns_to_display(t, baseline_ns, time_unit) for t in kf_df["time_ns"]]
+            fig_l = go.Figure()
+            fig_l.add_trace(go.Scatter(
+                x=mt, y=[v / 100 for v in kf_df["mid"]],
+                mode="lines", name="Market Mid", line=dict(color="#6688cc", width=1),
+            ))
+            fig_l.add_trace(go.Scatter(
+                x=mt, y=[np.exp(l) / 100 for l in kf_df["l_hat"]],
+                mode="lines", name="Trend level exp(l̂)", line=dict(color="#ff9900", width=2),
+            ))
+            fig_l.update_layout(
+                template="plotly_dark", height=350,
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(15,15,26,0.8)",
+                xaxis_title=time_label, yaxis_title="Price ($)", margin=dict(t=20),
+            )
+            st.markdown("### Filter level l̂ vs Market Price")
+            st.plotly_chart(fig_l, use_container_width=True)
+
+            hp = mdata["hyperparams"]
+            fig_m = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                                  subplot_titles=("Trend strength T_k", "Confidence C_k", "State"))
+            fig_m.add_trace(go.Scatter(x=mt, y=kf_df["T"].tolist(), mode="lines", name="T",
+                                       line=dict(color="#00ccff", width=1.5)), row=1, col=1)
+            for th, dash in ((hp["theta_in"], "dash"), (hp["theta_out"], "dot")):
+                for sgn in (1, -1):
+                    fig_m.add_hline(y=sgn * th, line_dash=dash, line_color="#888888", row=1, col=1)
+            if len(mc_df) > 0:
+                ct = [ns_to_display(t, baseline_ns, time_unit) for t in mc_df["time_ns"]]
+                fig_m.add_trace(go.Scatter(x=ct, y=mc_df["C_t"].tolist(), mode="lines", name="C",
+                                           line=dict(color="#00ff88", width=1.5)), row=2, col=1)
+            if len(dec_df) > 0:
+                dt_ = [ns_to_display(t, baseline_ns, time_unit) for t in dec_df["time_ns"]]
+                fig_m.add_trace(go.Scatter(x=dt_, y=dec_df["state"].tolist(), mode="lines",
+                                           line_shape="hv", name="state",
+                                           line=dict(color="#ff6688", width=1.5)), row=3, col=1)
+                fig_m.update_yaxes(categoryorder="array",
+                                   categoryarray=["BEAR", "WATCH", "NEUTRAL", "BULL"], row=3, col=1)
+            fig_m.update_layout(
+                template="plotly_dark", height=650,
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(15,15,26,0.8)",
+                xaxis3_title=time_label, margin=dict(t=30), showlegend=False,
+            )
+            st.plotly_chart(fig_m, use_container_width=True)
+        else:
+            st.info("No filter updates recorded for this agent (still warming up?).")
+
+        mh = mdata["holdings"]
+        mc1, mc2, mc3 = st.columns(3)
+        with mc1:
+            metric_card("Cash", f"${mh.get('CASH', 0) / 100:,.2f}")
+        with mc2:
+            metric_card(f"Shares ({ticker})", f"{mh.get(ticker, 0):,}")
+        with mc3:
+            metric_card("State transitions", f"{len(mdata['state_history'])}")
+        with st.expander("Hyperparameters"):
+            st.json({k: (round(v, 4) if isinstance(v, float) else v)
+                     for k, v in mdata["hyperparams"].items()})
+
 
 # ─────────────────────────────────────────────────────────────────────
 # TAB 3: NEWS & SENTIMENT

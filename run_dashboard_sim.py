@@ -242,6 +242,65 @@ def extract_agent_logs(end_state, ekf_agent_ids):
     return agents_data
 
 
+MOM_HYPERPARAMS = [
+    "initial_exposure", "N_w", "n_er", "lambda_er", "kappa_R", "c_P", "tau",
+    "kappa_l", "kappa_v", "a_eps", "eps_thr", "g_max", "gamma", "k_c",
+    "theta_in", "theta_out", "ER_min", "k_stop", "k_re", "T_0", "lambda_v",
+    "e_max", "e_min", "b", "n_min", "k_add", "mu_m", "eta_news", "rho_news",
+    "wake_mean",
+]
+
+
+def extract_mom_agent_logs(end_state, mom_agent_ids):
+    """Extract MomentumEKFAgent event logs, hyperparameters and state history."""
+    agents_data = {}
+    event_keys = {
+        "MOM_KF_UPDATE": "kf_updates",
+        "CAUTION_UPDATE": "caution_updates",
+        "MOM_STATE": "state_changes",
+        "MOM_DECISION": "decisions",
+        "NEWS_RECEIVED": "news_events",
+    }
+
+    for agent_id in mom_agent_ids:
+        agent = end_state["agents"][agent_id]
+        rows = {key: [] for key in event_keys.values()}
+        holdings_timeline = []
+        warmup = None
+        final = None
+
+        for event_time, event_type, event in agent.log:
+            if event_type in event_keys and isinstance(event, dict):
+                rows[event_keys[event_type]].append({"time_ns": event_time, **event})
+            elif event_type == "MOM_WARMUP_DONE" and isinstance(event, dict):
+                warmup = {"time_ns": event_time, **event}
+            elif event_type == "MOM_FINAL" and isinstance(event, dict):
+                final = event
+            elif event_type == "HOLDINGS_UPDATED" and isinstance(event, dict):
+                holdings_timeline.append({
+                    "time_ns": event_time,
+                    "cash_cents": event.get("CASH", 0),
+                    "shares": event.get(agent.symbol, 0),
+                })
+
+        agents_data[agent_id] = {
+            "name": agent.name,
+            **{key: pd.DataFrame(r) if r else pd.DataFrame() for key, r in rows.items()},
+            "warmup": warmup,
+            "final": final,
+            "holdings_timeline": pd.DataFrame(holdings_timeline) if holdings_timeline else pd.DataFrame(),
+            "holdings": dict(agent.holdings),
+            "starting_cash": agent.starting_cash,
+            "price_log": list(agent.price_log),
+            "time_log": list(agent.time_log),
+            "state_history": list(agent.state_history),
+            "C_t_final": agent.C_t,
+            "hyperparams": {name: getattr(agent, name) for name in MOM_HYPERPARAMS},
+        }
+
+    return agents_data
+
+
 def extract_oracle_data(oracle, ticker):
     """Extract oracle fundamental value series (all entries)."""
     fund_log = oracle.f_log.get(ticker, [])
@@ -260,6 +319,7 @@ def main():
     parser.add_argument("--end-time", type=str, default="16:00:00")
     parser.add_argument("--ticker", type=str, default="ABM")
     parser.add_argument("--num-ekf", type=int, default=5)
+    parser.add_argument("--num-mom-ekf", type=int, default=5)
     parser.add_argument("--news", type=str, action="append", default=[],
                         help="'time_offset,symbol,sentiment,headline'")
     parser.add_argument("--output", type=str, default="sim_data.pkl")
@@ -278,6 +338,7 @@ def main():
     print(f"  Seed:       {args.seed}")
     print(f"  End time:   {args.end_time}")
     print(f"  EKF agents: {args.num_ekf}")
+    print(f"  Mom agents: {args.num_mom_ekf}")
     print(f"  News:       {len(news_events)} events")
     print()
 
@@ -286,6 +347,7 @@ def main():
         end_time=args.end_time,
         ticker=args.ticker,
         num_ekf_agents=args.num_ekf,
+        num_mom_ekf_agents=args.num_mom_ekf,
         book_logging=True,
         log_orders=True,
         exchange_log_orders=True,
@@ -294,6 +356,7 @@ def main():
     )
 
     ekf_agent_ids = config["_ekf_agent_ids"]
+    mom_agent_ids = config["_mom_ekf_agent_ids"]
     print(f"Running simulation ({len(config['agents'])} agents)...")
     end_state = abides.run(config)
     print("Simulation complete!\n")
@@ -319,6 +382,7 @@ def main():
 
     print("\nExtracting agent logs...")
     agents_data = extract_agent_logs(end_state, ekf_agent_ids)
+    mom_agents_data = extract_mom_agent_logs(end_state, mom_agent_ids)
 
     print("Extracting oracle data...")
     oracle_data = extract_oracle_data(oracle, args.ticker)
@@ -329,6 +393,7 @@ def main():
         "ohlcv": ohlcv,
         "time_unit": time_unit,
         "agents": agents_data,
+        "mom_agents": mom_agents_data,
         "oracle": oracle_data,
         "trades": trades,
         "baseline_ns": baseline_ns,
@@ -336,6 +401,7 @@ def main():
         "seed": args.seed,
         "end_time": args.end_time,
         "ekf_agent_ids": ekf_agent_ids,
+        "mom_agent_ids": mom_agent_ids,
         "news_events_input": news_events,
     }
 
@@ -355,6 +421,11 @@ def main():
         print(f"  {adata['name']}: {len(adata['ekf_updates'])} EKF, "
               f"{len(adata['caution_updates'])} caution, "
               f"{len(adata['news_events'])} news")
+    for aid, mdata in mom_agents_data.items():
+        n_orders = int(mdata["decisions"]["qty"].notna().sum()) if len(mdata["decisions"]) else 0
+        print(f"  {mdata['name']}: warm-up={'yes' if mdata['warmup'] else 'NO'}, "
+              f"{len(mdata['kf_updates'])} KF, {len(mdata['state_history'])} transitions, "
+              f"{n_orders} orders, final holdings {mdata['holdings']}")
     print(f"\nRun:  streamlit run dashboard.py")
 
 

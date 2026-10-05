@@ -17,7 +17,7 @@
 #   - Determines trade volume based on conviction and caution
 
 import logging
-from math import exp, sqrt
+from math import exp, floor, sqrt
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -76,11 +76,25 @@ class FundamentalistAgent(TradingAgent):
         mu: float = 0.1,                  # Safety margin multiplier (smaller = tighter limits)
         # --- News Sentiment ---
         news_sensitivity: float = 0.02,   # Max % shift per news event (2%)
+        # --- Initial share endowment ---
+        initial_exposure: float = 0.5,    # e_0: fraction of wealth held in shares at start
+        reference_price: int = 100_000,   # p_ref0 (cents) used to value the endowment
     ) -> None:
         super().__init__(id, name, type, random_state, starting_cash, log_orders)
 
         # Trading parameters
         self.symbol: str = symbol
+
+        # ── Initial share endowment ──────────────────────────────────────
+        # starting_cash stays equal to TOTAL starting wealth so that
+        # kernel_stopping's gain (mark_to_market - starting_cash) does not
+        # report the endowment as profit.
+        self.initial_exposure: float = initial_exposure
+        self.reference_price: int = reference_price
+        n_0 = int(floor(initial_exposure * starting_cash / reference_price))
+        self.holdings["CASH"] = starting_cash - n_0 * reference_price
+        if n_0 > 0:
+            self.holdings[symbol] = n_0
         self.wake_up_freq: NanosecondTime = wake_up_freq
 
         # ── EKF Hyperparameters ──────────────────────────────────────────
@@ -96,7 +110,7 @@ class FundamentalistAgent(TradingAgent):
         # ── Caution State Variables ──────────────────────────────────────
         self.E_t: float = 0.0             # Emotional memory accumulator
         self.D_prev: float = 0.0          # Previous expected direction (+1 / -1)
-        self.C_t: float = 1.0             # Current confidence multiplier
+        self.C_t: float = 0.5             # Current confidence multiplier (sigmoid(0))
         self.beta: float = self.random_state.uniform(5.0, 20.0) # Baseline aggression
         self.mu: float = mu
         self.news_sensitivity: float = news_sensitivity
