@@ -31,6 +31,11 @@ from abides_markets.agents import (
 from abides_markets.agents.fundamental import FundamentalistAgent
 from abides_markets.agents.momentum_ekf import MomentumEKFAgent
 from abides_markets.agents.news_oracle_agent import NewsOracleAgent
+from abides_markets.configs.param_ranges import (
+    FUNDAMENTAL_RANGES as FUND,
+    MOMENTUM_RANGES as MOM,
+    draw,
+)
 from abides_markets.models import OrderSizeModel
 from abides_markets.oracles import SparseMeanRevertingOracle
 from abides_markets.utils import generate_latency_model
@@ -216,17 +221,19 @@ def build_config(
                 log_orders=True,  # Always log our agents
                 wake_up_freq=str_to_ns("10S"),
                 # ── Randomized EKF Hyperparameters ──────────────────
-                er_window=int(np.random.uniform(5, 25)),
-                delta=np.random.uniform(0.002, 0.015),
-                lambda_er=np.random.uniform(1.0, 6.0),
-                sigma_n=np.random.uniform(300, 3000),
-                initial_uncertainty=np.random.uniform(50_000, 500_000),
+                # (ranges in param_ranges.py; keyword-argument evaluation
+                #  order fixes the draw order, keep it unchanged)
+                er_window=draw(FUND, "er_window"),
+                delta=draw(FUND, "delta"),
+                lambda_er=draw(FUND, "lambda_er"),
+                sigma_n=draw(FUND, "sigma_n"),
+                initial_uncertainty=draw(FUND, "initial_uncertainty"),
                 # ── Randomized Caution Parameters ───────────────────
-                gamma=np.random.uniform(0.4, 0.95),
-                k=np.random.uniform(0.3, 2.5),
+                gamma=draw(FUND, "gamma"),
+                k=draw(FUND, "k"),
                 # ── Randomized Limit Price Parameters ───────────────
-                mu=np.random.uniform(0.02, 0.2),
-                news_sensitivity=np.random.uniform(0.005, 0.04),
+                mu=draw(FUND, "mu"),
+                news_sensitivity=draw(FUND, "news_sensitivity"),
                 # ── Initial share endowment ─────────────────────────
                 initial_exposure=ekf_initial_exposure,
                 reference_price=r_bar,
@@ -304,7 +311,9 @@ def build_config(
     #    (herding guard: thresholds, tau and wake times all differ).
     mom_ekf_start_id = agent_count
     for j in range(agent_count, agent_count + num_mom_ekf_agents):
-        n_er = int(np.random.randint(10, 26))
+        # Ranges in param_ranges.py; keyword-argument evaluation order fixes
+        # the draw order, keep it unchanged so seeded runs reproduce.
+        n_er = draw(MOM, "n_er")
         agents.append(
             MomentumEKFAgent(
                 id=j,
@@ -317,38 +326,38 @@ def build_config(
                 reference_price=r_bar,
                 # ── Layer 1 ─────────────────────────────────────────
                 n_er=n_er,
-                N_w=int(np.random.randint(max(n_er + 1, 15), 31)),
-                lambda_er=np.random.uniform(1.0, 6.0),
-                kappa_R=np.random.uniform(0.5, 2.0),
-                c_P=np.random.uniform(1.0, 5.0),
-                tau=float(np.exp(np.random.uniform(np.log(120), np.log(1800)))),
-                kappa_l=np.random.uniform(0.05, 0.5),
-                kappa_v=np.random.uniform(0.5, 2.0),
-                a_eps=np.random.uniform(0.1, 0.3),
-                eps_thr=np.random.uniform(2.0, 4.0),
-                g_max=10.0,
+                N_w=draw(MOM, "N_w", low=max(n_er + 1, MOM["N_w"][0])),
+                lambda_er=draw(MOM, "lambda_er"),
+                kappa_R=draw(MOM, "kappa_R"),
+                c_P=draw(MOM, "c_P"),
+                tau=draw(MOM, "tau"),
+                kappa_l=draw(MOM, "kappa_l"),
+                kappa_v=draw(MOM, "kappa_v"),
+                a_eps=draw(MOM, "a_eps"),
+                eps_thr=draw(MOM, "eps_thr"),
+                g_max=draw(MOM, "g_max"),
                 # ── Layer 2 ─────────────────────────────────────────
-                gamma=np.random.uniform(0.4, 0.95),
-                k_c=np.random.uniform(0.3, 2.5),
+                gamma=draw(MOM, "gamma"),
+                k_c=draw(MOM, "k_c"),
                 # ── State machine ───────────────────────────────────
-                theta_in=np.random.uniform(1.5, 2.5),
-                theta_out=np.random.uniform(0.5, 1.0),
-                ER_min=np.random.uniform(0.2, 0.4),
-                k_stop=np.random.uniform(2.0, 4.0),
-                k_re=np.random.uniform(0.25, 0.5),
+                theta_in=draw(MOM, "theta_in"),
+                theta_out=draw(MOM, "theta_out"),
+                ER_min=draw(MOM, "ER_min"),
+                k_stop=draw(MOM, "k_stop"),
+                k_re=draw(MOM, "k_re"),
                 # ── Layer 3 ─────────────────────────────────────────
-                T_0=np.random.uniform(1.0, 3.0),
-                lambda_v=np.random.uniform(0.5, 2.0),
-                e_max=np.random.uniform(0.7, 0.95),
-                e_min=0.0,
-                b=0.1,
-                n_min=1,
-                k_add=np.random.uniform(0.25, 0.75),
-                mu_m=np.random.uniform(0.5, 2.0),
+                T_0=draw(MOM, "T_0"),
+                lambda_v=draw(MOM, "lambda_v"),
+                e_max=draw(MOM, "e_max"),
+                e_min=draw(MOM, "e_min"),
+                b=draw(MOM, "b"),
+                n_min=int(draw(MOM, "n_min")),
+                k_add=draw(MOM, "k_add"),
+                mu_m=draw(MOM, "mu_m"),
                 # ── News / scheduling ───────────────────────────────
-                eta_news=np.random.uniform(0.0, 0.5),
-                rho_news=np.random.uniform(1.0, 5.0),
-                wake_mean=np.random.uniform(10.0, 60.0),
+                eta_news=draw(MOM, "eta_news"),
+                rho_news=draw(MOM, "rho_news"),
+                wake_mean=draw(MOM, "wake_mean"),
                 random_state=np.random.RandomState(
                     seed=np.random.randint(low=0, high=2**31, dtype="uint32")
                 ),
@@ -404,4 +413,6 @@ def build_config(
             range(mom_ekf_start_id, mom_ekf_start_id + num_mom_ekf_agents)
         ),
         "_news_oracle_id": news_oracle_id,
+        "_mkt_open_ns": MKT_OPEN,
+        "_mkt_close_ns": MKT_CLOSE,
     }
