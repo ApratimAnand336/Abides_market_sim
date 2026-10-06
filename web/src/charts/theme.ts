@@ -52,13 +52,19 @@ const SPLIT_LINE = { lineStyle: { color: C.border, type: 'dashed' as const } };
 
 /** x axis = clock time, seconds since open in [0, duration]. Every time chart
  *  uses the same domain so connected zoom (by percent) lines up exactly. */
-export function timeAxis(duration: number, extra: Record<string, unknown> = {}) {
+export function timeAxis(duration: number, extra: Record<string, unknown> = {}, compact = false): any {
   return {
     type: 'value' as const,
     min: 0,
     max: duration,
     interval: pickInterval(duration),
-    axisLabel: { ...AXIS_LABEL, formatter: (v: number) => clockHM(v), hideOverlap: true },
+    axisLabel: {
+      ...AXIS_LABEL,
+      // compact (half-width) charts label every hour plus the close, and
+      // drop an hourly label that would sit too close to the close label
+      formatter: (v: number) =>
+        !compact || duration <= 1800 || v === duration || (v % 3600 === 0 && duration - v >= 2700) ? clockHM(v) : '',
+    },
     axisLine: { lineStyle: { color: C.border } },
     axisTick: { show: false },
     splitLine: SPLIT_LINE,
@@ -69,20 +75,24 @@ export function timeAxis(duration: number, extra: Record<string, unknown> = {}) 
   };
 }
 
+// Every allowed session length (0.5, 1.5, 2.5, 4.5, 6.5 h) is a multiple of
+// 30 min, so the last tick always lands exactly on the close (no orphan
+// label crowding the previous one).
 function pickInterval(duration: number): number {
-  if (duration <= 1800) return 300; // 5 min
-  if (duration <= 3 * 3600) return 1800; // 30 min
-  return 3600; // 1 h
+  return duration <= 1800 ? 300 : 1800;
 }
 
 type Fmt = 'price' | 'num' | ((v: number) => string);
 
-export function valueAxis(fmt: Fmt = 'num', extra: Record<string, unknown> = {}) {
+export function valueAxis(fmt: Fmt = 'num', extra: Record<string, unknown> = {}): any {
   const formatter = fmt === 'price' ? axisPrice : fmt === 'num' ? axisNum : fmt;
+  // explicit, non-round bounds would print as labels crowding the nice ticks
+  const hideMin = typeof extra.min === 'number' && extra.min !== 0;
+  const hideMax = typeof extra.max === 'number';
   return {
     type: 'value' as const,
     scale: true,
-    axisLabel: { ...AXIS_LABEL, formatter },
+    axisLabel: { ...AXIS_LABEL, formatter, showMinLabel: !hideMin, showMaxLabel: !hideMax },
     axisLine: { show: false },
     axisTick: { show: false },
     splitLine: SPLIT_LINE,
@@ -90,7 +100,7 @@ export function valueAxis(fmt: Fmt = 'num', extra: Record<string, unknown> = {})
   };
 }
 
-export function categoryAxis(data: (string | number)[], extra: Record<string, unknown> = {}) {
+export function categoryAxis(data: (string | number)[], extra: Record<string, unknown> = {}): any {
   return {
     type: 'category' as const,
     data,
@@ -110,7 +120,7 @@ export const TOOLTIP_BASE = {
   extraCssText: 'box-shadow: 0 8px 24px rgba(0,0,0,.45); border-radius: 8px;',
 };
 
-export function axisTooltip(formatter: (params: any) => string, extra: Record<string, unknown> = {}) {
+export function axisTooltip(formatter: (params: any) => string, extra: Record<string, unknown> = {}): any {
   return {
     ...TOOLTIP_BASE,
     trigger: 'axis' as const,
@@ -120,7 +130,7 @@ export function axisTooltip(formatter: (params: any) => string, extra: Record<st
   };
 }
 
-export function itemTooltip(formatter: (params: any) => string) {
+export function itemTooltip(formatter: (params: any) => string): any {
   return { ...TOOLTIP_BASE, trigger: 'item' as const, formatter };
 }
 
@@ -138,12 +148,12 @@ export function tipHtml(title: string, rows: { color?: string; label: string; va
 }
 
 /** Inside (wheel / drag) zoom on the shared x axis. */
-export function insideZoom() {
+export function insideZoom(): any {
   return [{ type: 'inside' as const, xAxisIndex: 'all' as const, filterMode: 'none' as const, zoomOnMouseWheel: true, moveOnMouseMove: true }];
 }
 
 /** Inside zoom plus a slider under the chart (main chart only). */
-export function sliderZoom() {
+export function sliderZoom(): any {
   return [
     ...insideZoom(),
     {
@@ -163,7 +173,7 @@ export function sliderZoom() {
   ];
 }
 
-export function grid(extra: Record<string, unknown> = {}) {
+export function grid(extra: Record<string, unknown> = {}): any {
   return { left: 64, right: 20, top: 16, bottom: 28, containLabel: false, ...extra };
 }
 
@@ -191,3 +201,4 @@ export function robustDomain(values: number[], lo = 0.005, hi = 0.995, pad = 0.1
   const span = b - a || Math.abs(a) * 0.001 || 1;
   return [a - span * pad, b + span * pad];
 }
+
