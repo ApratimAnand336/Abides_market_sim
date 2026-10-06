@@ -23,7 +23,7 @@ export function SectionHeader({
   iconClass = 'text-accent',
 }: {
   icon?: LucideIcon;
-  title: string;
+  title: ReactNode;
   caption?: ReactNode;
   right?: ReactNode;
   iconClass?: string;
