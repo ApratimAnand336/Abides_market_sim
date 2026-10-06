@@ -77,8 +77,15 @@ def list_runs(runs_dir: Path = RUNS_DIR) -> List[Dict]:
 
 
 def expected_seconds(end_time: str, runs_dir: Path = RUNS_DIR) -> Optional[float]:
-    """Median wall time of the last 5 cached runs with the same end_time."""
-    walls = [m["wall_time_s"] for m in list_runs(runs_dir) if m["params"]["end_time"] == end_time][:5]
+    """Median wall time of the last 5 cached runs with the same end_time.
+
+    Uses the whole job time (process start, simulation and export) when the
+    server recorded it, since that is what the progress banner counts."""
+    walls = [
+        m.get("job_s", m["wall_time_s"])
+        for m in list_runs(runs_dir)
+        if m["params"]["end_time"] == end_time
+    ][:5]
     return round(statistics.median(walls), 1) if walls else None
 
 
@@ -246,6 +253,15 @@ class JobManager:
                 return True
         return False
 
+    def _record_job_time(self, job: Job) -> None:
+        path = meta_path(job.run_id, self.runs_dir)
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8"))
+            meta["job_s"] = round(job.finished - job.started, 1)
+            _atomic_write_json(path, meta)
+        except (OSError, ValueError):
+            pass
+
     def _loop(self) -> None:
         import multiprocessing as mp
 
@@ -273,6 +289,7 @@ class JobManager:
                     job.status, job.error = "failed", f"timed out after {self.timeout_s / 60:.0f} minutes"
                 elif proc.exitcode == 0 and payload_path(job.run_id, self.runs_dir).exists():
                     job.status = "done"
+                    self._record_job_time(job)
                 else:
                     job.status = "failed"
                     job.error = (
