@@ -12,7 +12,9 @@
   --color-border-strong: #334155;
   --color-text: #e2e8f0;
   --color-muted: #94a3b8;
-  --color-dim: #64748b;
+  /* spec value #64748B is 3.6:1 on --card, below the 4.5:1 text minimum the
+     same spec requires (acceptance 10.7); lightened to 5.0:1 */
+  --color-dim: #7c8ba1;
   --color-accent: #6366f1;
   --color-accent-strong: #4f46e5;
   --color-up: #10b981;

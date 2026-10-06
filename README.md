@@ -156,6 +156,59 @@ ABIDES currently has the following available background Market Simulation Config
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+## Running the dashboard
+
+The FinVerse dashboard runs real ABIDES simulations (config `rmsc04_ekf`) on a
+Python backend and draws them in a React frontend. Every number on screen comes
+from the simulation's own logs; nothing is generated in the browser.
+
+```
+api/   FastAPI backend: job queue, ABIDES worker process, payload export, stats
+web/   React 19 + Vite + Tailwind + ECharts frontend
+runs/  cached payloads, one JSON per run (gitignored)
+```
+
+**Prerequisites:** the ABIDES packages installed as in *Installation* above,
+Node 18+, and
+
+```
+pip install fastapi "uvicorn[standard]"
+pip install transformers torch   # optional: FinBERT headline scoring
+```
+
+**Start both servers** (backend on :8000, frontend on :5173; Vite proxies `/api`):
+
+```
+scripts/dev.sh
+```
+
+or separately:
+
+```
+uvicorn api.server:app --reload --port 8000
+cd web && npm install && npm run dev
+```
+
+Open http://localhost:5173. With no cached run the dashboard offers to run the
+first simulation; otherwise it loads the most recent one.
+
+**Seed a run without the server:**
+
+```
+python -m api.cli export --seed 42 --end-time 16:00:00 --num-fund 5 --num-mom 5
+python -m api.cli export --end-time 10:00:00 --news "00:05:00|0.9|Company announces record quarterly earnings"
+```
+
+**Caching:** a run is identified by its parameters plus the engine version
+(git short hash, `+dirty` with uncommitted changes), so re-running the same
+parameters returns instantly, and code changes invalidate the cache. Delete
+`runs/` to clear it.
+
+**Tests:** `pytest api/tests` (backend), `cd web && npm run lint && npm run build`
+(frontend).
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
 <!-- CONTRIBUTING -->
 ## Contributing
 

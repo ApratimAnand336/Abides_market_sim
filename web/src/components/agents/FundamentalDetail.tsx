@@ -119,7 +119,7 @@ export function FundamentalDetail({
       xAxis: timeAxis(duration),
       yAxis: [
         valueAxis((v: number) => v.toFixed(1), { min: 0, max: 1, scale: false }),
-        valueAxis((v: number) => `$${v.toFixed(2)}`, { splitLine: { show: false }, position: 'right' }),
+        valueAxis((v: number) => `${v < 0 ? '−' : ''}$${Math.abs(v).toFixed(2)}`, { splitLine: { show: false }, position: 'right' }),
       ],
       dataZoom: insideZoom(),
       tooltip: axisTooltip((params: any[]) => {

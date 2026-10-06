@@ -18,7 +18,9 @@ export function Button({
       {...rest}
       className={cn(
         'inline-flex items-center justify-center gap-1.5 rounded-[10px] text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-        variant === 'primary' && 'bg-accent px-4 py-2.5 text-white hover:bg-accent-strong',
+        // white on --accent is 4.47:1 (just under 4.5), so the resting fill is
+        // --accent-strong (6.3:1) and hover goes one step darker
+        variant === 'primary' && 'bg-accent-strong px-4 py-2.5 text-white hover:bg-[#4338ca]',
         variant === 'secondary' && 'border border-border-strong bg-card px-3 py-2 text-text hover:bg-card-hover',
         variant === 'ghost' && 'px-2 py-1 text-muted hover:bg-card-hover hover:text-text',
         className,

@@ -126,6 +126,7 @@ def execute(params: RunParams, run_id: str, engine: str, runs_dir: Path = RUNS_D
 
     from .export import build_payload
 
+    t_start = time.time()
     runs_dir.mkdir(parents=True, exist_ok=True)
     log_root = runs_dir / "_abides_logs"
     log_root.mkdir(exist_ok=True)
@@ -148,6 +149,9 @@ def execute(params: RunParams, run_id: str, engine: str, runs_dir: Path = RUNS_D
         "engine_version": engine,
         "created_at": created,
         "wall_time_s": round(wall, 2),
+        # build + simulate + export; the server replaces it with the whole job
+        # time (process spawn included) when it ran the job itself
+        "job_s": round(time.time() - t_start, 1),
         "summary": {
             "close": payload["stats"]["close"],
             "change_pct": payload["stats"]["change_pct"],

@@ -120,7 +120,7 @@ export function Sidebar({
         <div className="mb-5">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-accent font-bold text-white shadow-lg shadow-accent/20">FV</div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-accent-strong font-bold text-white shadow-lg shadow-accent/20">FV</div>
               <div>
                 <h2 className="text-[15px] font-bold leading-tight text-text">FinVerse</h2>
                 <span className="font-mono text-[11px] text-muted">Market Simulation</span>

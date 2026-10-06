@@ -10,7 +10,7 @@ export const C = {
   borderStrong: '#334155',
   text: '#E2E8F0',
   muted: '#94A3B8',
-  dim: '#64748B',
+  dim: '#7C8BA1', // lightened from the spec's #64748B for 4.5:1 text contrast (see tokens.css)
   accent: '#6366F1',
   up: '#10B981',
   down: '#F43F5E',
