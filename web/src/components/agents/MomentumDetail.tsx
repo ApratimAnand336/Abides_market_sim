@@ -11,6 +11,7 @@ import { currentState } from '../../lib/agents';
 import { useQueryFlag } from '../../lib/urlState';
 import { Card, LegendItem, SectionHeader } from '../ui/Card';
 import { KpiCard } from '../ui/KpiCard';
+import { VsHoldKpi } from './VsHoldKpi';
 import { Select, Toggle } from '../ui/controls';
 import { StateBadge } from '../ui/Badge';
 import { EmptyState } from '../ui/feedback';
@@ -303,7 +304,8 @@ export function MomentumDetail({
         />
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+        <VsHoldKpi agent={agent} />
         <KpiCard label="Cash reserves" value={fmtPrice(agent.final.cash)} caption={`started with ${fmtPrice(agent.start.cash)}`} icon={Banknote} iconClass="text-up" />
         <KpiCard label="Shares" value={fmtInt(agent.final.shares)} caption={`Active equity exposure ${fmtPct(agent.final.exposure_pct, 1)}`} icon={Layers} />
         <KpiCard label="State transitions" value={fmtInt(agent.states.length)} caption={`${fmtInt(agent.final.n_orders)} orders · ${fmtInt(agent.final.n_fills)} fills`} icon={Workflow} iconClass="text-pink-400" />

@@ -30,11 +30,12 @@ ER_SMOOTH_WINDOW = 20
 EVENT_WINDOW = (-300, 1800, 10)  # seconds relative to the news, step
 
 FUND_HYPERPARAMS = [
-    "beta", "er_window", "delta", "lambda_er", "sigma_n", "gamma", "k", "mu",
-    "news_sensitivity", "initial_exposure",
+    "er_window", "delta", "lambda_er", "sigma_n", "gamma", "k", "mu",
+    "q", "a_max", "z0", "s_max", "b_f", "k_news", "initial_exposure",
 ]
+# tau is realised as tau_ratio * wake_mean (spec v1.1 M3); both are exported
 MOM_HYPERPARAMS = [
-    "initial_exposure", "N_w", "n_er", "lambda_er", "kappa_R", "c_P", "tau",
+    "initial_exposure", "N_w", "n_er", "lambda_er", "kappa_R", "c_P", "tau_ratio", "tau",
     "kappa_l", "kappa_v", "a_eps", "eps_thr", "g_max", "gamma", "k_c",
     "theta_in", "theta_out", "ER_min", "k_stop", "k_re", "T_0", "lambda_v",
     "e_max", "e_min", "b", "n_min", "k_add", "mu_m", "eta_news", "rho_news",
@@ -174,6 +175,12 @@ def _depth(snaps, snap_t: np.ndarray, duration: float) -> Dict:
 # ── agents ────────────────────────────────────────────────────────────────
 
 
+def pnl_vs_hold(final_value: float, start_cash: float, start_shares: int, close: float) -> float:
+    """Spec v1.1 D2: final value minus the value of simply holding the
+    starting portfolio to the close (removes the endowment's mark-to-market)."""
+    return final_value - (start_cash + start_shares * close)
+
+
 def _agent_common(agent, clock: _Clock, ticker: str, candles: Dict, close: float, hyper_keys: List[str]) -> Dict:
     """AgentBase fields shared by both EKF agent kinds."""
     hold_t, hold_cash, hold_sh = [], [], []
@@ -222,6 +229,7 @@ def _agent_common(agent, clock: _Clock, ticker: str, candles: Dict, close: float
     final_cash = agent.holdings.get("CASH", 0) / 100.0
     final_sh = int(agent.holdings.get(ticker, 0))
     pnl = final_value - start_value
+    vs_hold = pnl_vs_hold(final_value, holdings["cash"][0], holdings["shares"][0], close)
     return {
         "id": int(agent.id),
         "name": agent.name,
@@ -233,6 +241,8 @@ def _agent_common(agent, clock: _Clock, ticker: str, candles: Dict, close: float
             "value": round(final_value, 2),
             "pnl": round(pnl, 2),
             "pnl_pct": _sig(100.0 * pnl / start_value if start_value else 0.0),
+            "pnl_vs_hold": round(vs_hold, 2),
+            "pnl_vs_hold_pct": _sig(100.0 * vs_hold / start_value if start_value else 0.0),
             "exposure_pct": _sig(100.0 * final_sh * close / final_value if final_value else 0.0),
             "n_orders": n_orders,
             "n_fills": len(fills["t"]),
@@ -257,8 +267,10 @@ def _fundamental(agent, clock, ticker, candles, close) -> Dict:
         ekf["R"].append(ev["R"] / 1e4)
         ekf["K"].append(ev["K"])
         ekf["ER"].append(ev["ER"])
+        ekf["Q"].append(ev["Q"] / 1e4)  # cents^2 -> $^2
+        ekf["sigma_f2"].append(ev["sigma_f2"] / 1e4)  # cents^2/s -> $^2/s
     ekf["ER_smooth"] = _rolling_mean(ekf["ER"], ER_SMOOTH_WINDOW)
-    keys = ["t", "mid", "x_hat", "P", "R", "K", "ER", "ER_smooth"]
+    keys = ["t", "mid", "x_hat", "P", "R", "K", "ER", "ER_smooth", "Q", "sigma_f2"]
     ekf = downsample_columns({k: ekf[k] for k in keys}, "x_hat", MAX_AGENT_POINTS)
 
     caution = defaultdict(list)
@@ -279,8 +291,11 @@ def _fundamental(agent, clock, ticker, candles, close) -> Dict:
             "headline": ev["headline"],
             "sentiment": float(ev["sentiment"]),
             "shift": _sig(ev["shift"] / 100.0),  # signed $
+            "sigma_move": _sig(ev["sigma_move"] / 100.0),
             "x_hat_before": _price(ev["x_hat_before"]),
             "x_hat_after": _price(ev["x_hat_after"]),
+            "P_before": _sig(ev["P_before"] / 1e4),  # cents^2 -> $^2
+            "P_after": _sig(ev["P_after"] / 1e4),
         })
 
     d.update(
@@ -289,7 +304,7 @@ def _fundamental(agent, clock, ticker, candles, close) -> Dict:
             "t": [_t(x) for x in ekf["t"]],
             "mid": [round(x, 4) for x in ekf["mid"]],
             "x_hat": [round(x, 4) for x in ekf["x_hat"]],
-            **{k: [_sig(x) for x in ekf[k]] for k in ["P", "R", "K", "ER", "ER_smooth"]},
+            **{k: [_sig(x) for x in ekf[k]] for k in ["P", "R", "K", "ER", "ER_smooth", "Q", "sigma_f2"]},
         },
         caution={
             "t": [_t(x) for x in caution["t"]],

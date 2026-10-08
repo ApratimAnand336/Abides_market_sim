@@ -189,3 +189,47 @@ def test_run_params_validation():
                   news=[{"offset": "00:31:00", "headline": "x", "sentiment": 0.1}])
     with pytest.raises(ValueError):
         p.check_news_in_session()
+
+
+# ── spec v1.1 ─────────────────────────────────────────────────────────────
+
+
+def test_pnl_vs_hold_arithmetic():
+    """T-A1."""
+    from api.export import pnl_vs_hold
+
+    # start: $50,000 cash + 50 shares; close $1,010; final value $101,200
+    assert pnl_vs_hold(101_200.0, 50_000.0, 50, 1_010.0) == pytest.approx(700.0)
+    assert pnl_vs_hold(100_000.0, 100_000.0, 0, 999.0) == pytest.approx(0.0)
+
+
+def test_payload_v1_1_fields(sim):
+    _, _, payload = sim
+    assert payload["schema_version"] == "1.1"
+    close = payload["stats"]["close"]
+    for a in payload["agents"]["fundamental"] + payload["agents"]["momentum"]:
+        s, f = a["start"], a["final"]
+        assert f["pnl_vs_hold"] == pytest.approx(f["value"] - (s["cash"] + s["shares"] * close), abs=0.02)
+        assert f["pnl_vs_hold_pct"] == pytest.approx(100 * f["pnl_vs_hold"] / s["value"], rel=1e-4, abs=1e-6)
+    for a in payload["agents"]["fundamental"]:
+        hp = a["hyperparams"]
+        assert {"q", "a_max", "z0", "s_max", "b_f", "k_news"} <= set(hp)
+        assert "beta" not in hp and "news_sensitivity" not in hp
+        assert len(a["ekf"]["Q"]) == len(a["ekf"]["t"]) == len(a["ekf"]["sigma_f2"])
+        for n in a["news"]:
+            assert n["x_hat_after"] - n["x_hat_before"] == pytest.approx(n["shift"], abs=0.02)
+            assert n["P_after"] - n["P_before"] == pytest.approx(n["shift"] ** 2, rel=1e-3, abs=1e-6)
+            assert n["sigma_move"] > 0
+    for a in payload["agents"]["momentum"]:
+        hp = a["hyperparams"]
+        assert hp["tau"] == pytest.approx(hp["tau_ratio"] * hp["wake_mean"], rel=1e-6)
+    ranges = payload["hyperparam_ranges"]
+    assert "tau_ratio" in ranges["momentum"] and "tau" not in ranges["momentum"]
+    assert "beta" not in ranges["fundamental"] and ranges["fundamental"]["q"]["scale"] == "log"
+
+
+def test_engine_version_carries_constant():
+    from api import ENGINE_VERSION
+    from api.jobs import engine_version
+
+    assert engine_version().startswith(f"v{ENGINE_VERSION}-")

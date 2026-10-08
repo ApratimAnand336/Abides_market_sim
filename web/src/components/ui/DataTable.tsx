@@ -1,10 +1,12 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, ArrowDown, ArrowUp } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { Tooltip } from './Tooltip';
 
 export interface Column<T> {
   key: string;
   header: string;
+  headerHint?: string; // tooltip on the column header
   render: (row: T) => ReactNode;
   sortValue?: (row: T) => number | string;
   align?: 'left' | 'right';
@@ -63,6 +65,13 @@ export function DataTable<T>({
             {expand && <th className="w-8" aria-label="Expand" />}
             {columns.map((c) => {
               const active = sort?.key === c.key;
+              const label = c.headerHint ? (
+                <Tooltip text={c.headerHint}>
+                  <span className="cursor-help underline decoration-dotted underline-offset-2">{c.header}</span>
+                </Tooltip>
+              ) : (
+                c.header
+              );
               return (
                 <th
                   key={c.key}
@@ -76,11 +85,11 @@ export function DataTable<T>({
                       onClick={() => setSort({ key: c.key, dir: active && sort!.dir === 'desc' ? 'asc' : 'desc' })}
                       className="micro inline-flex items-center gap-1 hover:text-text"
                     >
-                      {c.header}
+                      {label}
                       {active && (sort!.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
                     </button>
                   ) : (
-                    <span className="micro">{c.header}</span>
+                    <span className="micro">{label}</span>
                   )}
                 </th>
               );

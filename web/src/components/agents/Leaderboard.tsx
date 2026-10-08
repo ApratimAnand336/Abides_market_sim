@@ -5,6 +5,10 @@ import { fmtInt, fmtPct, fmtPctSigned, fmtPrice, fmtUsdSigned } from '../../lib/
 import { Card, SectionHeader } from '../ui/Card';
 import { KindBadge, StateBadge } from '../ui/Badge';
 import { DataTable, type Column } from '../ui/DataTable';
+import { Tooltip } from '../ui/Tooltip';
+
+export const VS_HOLD_HINT =
+  'Profit relative to doing nothing: final value minus what the starting cash and shares would be worth at the close. Removes the starting shares’ price move from the score.';
 
 export function Leaderboard({ payload, selected, onSelect }: { payload: SimPayload; selected: number | null; onSelect: (a: AnyAgent) => void }) {
   const colors = agentColorMap(payload);
@@ -48,6 +52,18 @@ export function Leaderboard({ payload, selected, onSelect }: { payload: SimPaylo
           {a.final.pnl_pct > 0 ? '▲ ' : a.final.pnl_pct < 0 ? '▼ ' : ''}
           {fmtPctSigned(a.final.pnl_pct, 3)}
         </span>
+      ),
+    },
+    {
+      key: 'vs_hold',
+      header: 'vs holding',
+      headerHint: VS_HOLD_HINT,
+      align: 'right',
+      sortValue: (a) => a.final.pnl_vs_hold,
+      render: (a) => (
+        <Tooltip text={`${fmtPctSigned(a.final.pnl_vs_hold_pct, 3)} of starting wealth`}>
+          <span className={`font-mono ${tone(a.final.pnl_vs_hold)}`}>{fmtUsdSigned(a.final.pnl_vs_hold)}</span>
+        </Tooltip>
       ),
     },
     { key: 'exposure', header: 'Exposure %', align: 'right', sortValue: (a) => a.final.exposure_pct, render: (a) => <span className="font-mono">{fmtPct(a.final.exposure_pct, 1)}</span> },

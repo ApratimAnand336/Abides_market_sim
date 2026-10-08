@@ -31,7 +31,6 @@ export function formatParam(v: number, f: ParamFormat): string {
 }
 
 export const FUNDAMENTAL_PARAMS: ParamDef[] = [
-  { key: 'beta', symbol: 'β', label: 'Aggression multiplier', description: 'How much the order size grows with the mispricing', format: { kind: 'float', digits: 2 }, color: '#F59E0B' },
   { key: 'er_window', symbol: 'n_ER', label: 'Efficiency-ratio memory', description: 'Observations used to judge trend vs noise', format: { kind: 'int', unit: 'obs' }, color: '#38BDF8' },
   { key: 'delta', symbol: 'δ', label: 'Noise sensitivity', description: 'Base observation noise as a fraction of price', format: { kind: 'float', digits: 4 }, color: '#34D399' },
   { key: 'lambda_er', symbol: 'λ_ER', label: 'Distrust of choppy prices', description: 'Penalty on observations when the market is choppy', format: { kind: 'float', digits: 2 }, color: '#818CF8' },
@@ -39,11 +38,17 @@ export const FUNDAMENTAL_PARAMS: ParamDef[] = [
   { key: 'gamma', symbol: 'γ', label: 'Caution memory', description: 'How long past right/wrong calls affect confidence', format: { kind: 'float', digits: 3 }, color: '#FB7185' },
   { key: 'k', symbol: 'k', label: 'Caution sensitivity', description: 'How quickly confidence reacts to results', format: { kind: 'float', digits: 3 }, color: '#2DD4BF' },
   { key: 'mu', symbol: 'μ', label: 'Limit safety margin', description: 'How far from its estimate it will pay or sell', format: { kind: 'percent', digits: 2 }, color: '#FDE047' },
-  { key: 'news_sensitivity', symbol: 'η', label: 'News reaction', description: 'Largest shift of the estimate per headline', format: { kind: 'percent', digits: 2 }, color: '#22D3EE' },
+  { key: 'q', symbol: 'q', label: 'Belief flexibility', description: 'How fast it assumes true value drifts; higher keeps the estimate responsive', format: { kind: 'float', digits: 2 }, color: '#F59E0B' },
+  { key: 'a_max', symbol: 'a_max', label: 'Maximum tilt', description: 'Largest move of its stock share away from 50% on a strong view', format: { kind: 'percent', digits: 0 }, color: '#4ADE80' },
+  { key: 'z0', symbol: 'z₀', label: 'Conviction scale', description: 'Edge, in units of its own uncertainty, that earns most of the tilt', format: { kind: 'float', digits: 2 }, color: '#F472B6' },
+  { key: 's_max', symbol: 's_max', label: 'Step size cap', description: 'Largest trade per decision, as a share of wealth', format: { kind: 'percent', digits: 1 }, color: '#FB923C' },
+  { key: 'b_f', symbol: 'b_f', label: 'Dead band', description: 'Skips trades smaller than this share of wealth', format: { kind: 'percent', digits: 1 }, color: '#94A3B8' },
+  { key: 'k_news', symbol: 'k_news', label: 'News reaction', description: 'Belief shift per headline, in typical 30-minute price moves', format: { kind: 'float', digits: 2 }, color: '#22D3EE' },
 ];
 
 export const MOMENTUM_PARAMS: ParamDef[] = [
-  { key: 'tau', symbol: 'τ', label: 'Trend memory', description: 'How long the agent believes a trend lasts', format: { kind: 'seconds' }, color: '#F59E0B' },
+  { key: 'tau_ratio', symbol: 'τ/w̄', label: 'Trend memory (in decisions)', description: 'Trend lifetime measured in decisions; τ = this × decision interval', format: { kind: 'float', digits: 1 }, color: '#F59E0B' },
+  { key: 'tau', symbol: 'τ', label: 'Trend memory', description: 'How long the agent believes a trend lasts (= τ/w̄ × w̄, not drawn directly)', format: { kind: 'seconds' }, color: '#FCD34D' },
   { key: 'wake_mean', symbol: 'w̄', label: 'Decision interval', description: 'Average time between decisions', format: { kind: 'seconds' }, color: '#38BDF8' },
   { key: 'theta_in', symbol: 'θ_in', label: 'Entry threshold', description: 'Trend strength needed to enter', format: { kind: 'float', digits: 2 }, color: '#34D399' },
   { key: 'theta_out', symbol: 'θ_out', label: 'Stay threshold', description: 'Trend strength needed to stay in', format: { kind: 'float', digits: 2 }, color: '#FBBF24' },

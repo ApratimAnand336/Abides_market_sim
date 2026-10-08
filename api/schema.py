@@ -239,6 +239,9 @@ class Wealth(Strict):
 class FinalWealth(Wealth):
     pnl: float
     pnl_pct: float
+    # spec v1.1 D2: profit relative to holding the starting portfolio
+    pnl_vs_hold: float
+    pnl_vs_hold_pct: float
     exposure_pct: float
     n_orders: int
     n_fills: int
@@ -277,6 +280,8 @@ class FundEkf(Strict):
     K: List[float]
     ER: List[float]
     ER_smooth: List[float]
+    Q: List[float]  # $^2, spec v1.1 F3
+    sigma_f2: List[float]  # $^2 / s
 
 
 class FundCaution(Strict):
@@ -290,9 +295,12 @@ class FundNews(Strict):
     t: float
     headline: str
     sentiment: float
-    shift: float
+    shift: float  # signed $
+    sigma_move: float  # $
     x_hat_before: float
     x_hat_after: float
+    P_before: float  # $^2
+    P_after: float  # $^2
 
 
 class FundamentalAgent(AgentBase):
@@ -397,7 +405,7 @@ class Range(Strict):
 
 
 class SimPayload(Strict):
-    schema_version: Literal["1.0"]
+    schema_version: Literal["1.1"]
     meta: Meta
     market: Market
     stats: MarketStats

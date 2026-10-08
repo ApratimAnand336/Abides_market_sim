@@ -1,17 +1,19 @@
 import { useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
-import { Cpu, Gauge, LineChart, ShieldCheck } from 'lucide-react';
+import { Banknote, Cpu, Gauge, Layers, LineChart, ShieldCheck } from 'lucide-react';
 import type { FundamentalAgent, SimPayload } from '../../types/payload';
 import { EChart } from '../../charts/EChart';
 import { C, axisTooltip, grid, insideZoom, pairs, robustDomain, timeAxis, tipHtml, valueAxis } from '../../charts/theme';
 import { bisectRight } from '../../charts/series';
-import { clockHMS, fmtNum, fmtPrice, fmtSci } from '../../lib/format';
+import { clockHMS, fmtInt, fmtNum, fmtPct, fmtPrice, fmtSci } from '../../lib/format';
 import { FUNDAMENTAL_PARAMS } from '../../config/agentParams';
 import { Card, LegendItem, SectionHeader } from '../ui/Card';
 import { Select, Toggle } from '../ui/controls';
 import { EmptyState } from '../ui/feedback';
 import { PersonalityProfile } from './PersonalityProfile';
 import { CashInventory } from './CashInventory';
+import { KpiCard } from '../ui/KpiCard';
+import { VsHoldKpi } from './VsHoldKpi';
 
 const GROUP = 'agents';
 
@@ -177,6 +179,19 @@ export function FundamentalDetail({
           className="w-56"
         />
       </Card>
+
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <VsHoldKpi agent={agent} />
+        <KpiCard label="Cash reserves" value={fmtPrice(agent.final.cash)} caption={`started with ${fmtPrice(agent.start.cash)}`} icon={Banknote} iconClass="text-up" />
+        <KpiCard label="Shares" value={fmtInt(agent.final.shares)} caption={`Active equity exposure ${fmtPct(agent.final.exposure_pct, 1)}`} icon={Layers} />
+        <KpiCard
+          label="Caution confidence C"
+          value={agent.caution.C.length ? fmtPct(agent.caution.C[agent.caution.C.length - 1] * 100, 1) : '—'}
+          caption={`${fmtInt(agent.final.n_orders)} orders · ${fmtInt(agent.final.n_fills)} fills`}
+          icon={ShieldCheck}
+          iconClass="text-up"
+        />
+      </div>
 
       <PersonalityProfile params={FUNDAMENTAL_PARAMS} values={agent.hyperparams} ranges={payload.hyperparam_ranges.fundamental} />
 

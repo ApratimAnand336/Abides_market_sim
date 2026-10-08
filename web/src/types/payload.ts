@@ -27,7 +27,7 @@ export interface RunParams {
 }
 
 export interface SimPayload {
-  schema_version: '1.0';
+  schema_version: '1.1';
   meta: {
     run_id: string;
     params: RunParams;
@@ -123,6 +123,9 @@ export interface AgentBase {
     value: number;
     pnl: number;
     pnl_pct: number;
+    // spec v1.1 D2: final value − (start cash + start shares × close)
+    pnl_vs_hold: number;
+    pnl_vs_hold_pct: number;
     exposure_pct: number;
     n_orders: number;
     n_fills: number;
@@ -143,15 +146,20 @@ export interface FundamentalAgent extends AgentBase {
     K: number[];
     ER: number[];
     ER_smooth: number[];
+    Q: number[]; // $², process noise added at each prediction (spec v1.1 F3)
+    sigma_f2: number[]; // $²/s, the agent's estimate of how fast value moves
   };
   caution: { t: Seconds[]; D: number[]; E: number[]; C: number[] }; // E in $
   news: {
     t: Seconds;
     headline: string;
     sentiment: number;
-    shift: number;
+    shift: number; // signed $
+    sigma_move: number; // $, a typical 30-minute move
     x_hat_before: number;
     x_hat_after: number;
+    P_before: number; // $²
+    P_after: number; // $²
   }[];
 }
 

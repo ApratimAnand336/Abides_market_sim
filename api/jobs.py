@@ -1,8 +1,9 @@
 """Simulation jobs: cache keys, the worker process and the FIFO job queue.
 
 - run_id = first 12 hex chars of sha1(normalised RunParams JSON + engine_version)
-- engine_version = git short hash, plus "+dirty" when tracked files have
-  uncommitted changes (so code changes invalidate the cache)
+- engine_version = "v" + ENGINE_VERSION + "-" + git short hash, plus "+dirty"
+  when tracked files have uncommitted changes (so code changes invalidate the
+  cache)
 - runs execute one at a time in a separate (spawned) process; up to
   MAX_QUEUED further requests wait in FIFO order
 - results are written atomically to runs/<run_id>.json, with a small
@@ -23,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from . import ENGINE_VERSION
 from .schema import RunParams
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -45,8 +47,8 @@ def engine_version() -> str:
         short = git("rev-parse", "--short", "HEAD") or "unknown"
         dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
     except (OSError, subprocess.SubprocessError):
-        return "unknown"
-    return short + ("+dirty" if dirty else "")
+        return f"v{ENGINE_VERSION}-unknown"
+    return f"v{ENGINE_VERSION}-{short}" + ("+dirty" if dirty else "")
 
 
 def make_run_id(params: RunParams, engine: str) -> str:
