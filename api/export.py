@@ -680,11 +680,14 @@ def build_payload(
 
 
 def _round_tree(x):
-    """Round every float in a nested structure to 6 significant figures."""
+    """Round every float in a nested structure to 8 significant figures.
+
+    8, not 6: prices near $1000 need 7 digits to keep half-cent mids
+    ($1000.705 rounded to 6 figures is $1000.71)."""
     if isinstance(x, dict):
         return {k: _round_tree(v) for k, v in x.items()}
     if isinstance(x, list):
         return [_round_tree(v) for v in x]
     if isinstance(x, float):
-        return _sig(x)
+        return _sig(x, 8)
     return x

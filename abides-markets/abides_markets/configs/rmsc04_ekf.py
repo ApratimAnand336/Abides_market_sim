@@ -37,7 +37,7 @@ from abides_markets.configs.param_ranges import (
     draw,
 )
 from abides_markets.models import OrderSizeModel
-from abides_markets.oracles import SparseMeanRevertingOracle
+from abides_markets.oracles import PregeneratedOracle
 from abides_markets.utils import generate_latency_model
 
 
@@ -121,13 +121,17 @@ def build_config(
             "megashock_lambda_a": megashock_lambda_a,
             "megashock_mean": megashock_mean,
             "megashock_var": megashock_var,
+            "path_source": "synthetic_ou",
             "random_state": np.random.RandomState(
                 seed=np.random.randint(low=0, high=2**31)
             ),
         }
     }
 
-    oracle = SparseMeanRevertingOracle(MKT_OPEN, NOISE_MKT_CLOSE, symbols)
+    # Spec v1.2 Part 3: the whole true-value path (to 16:00, whatever end_time
+    # is) is generated here from the symbol's own RandomState, drawn before any
+    # agent, so it is identical across agent counts, news and session length.
+    oracle = PregeneratedOracle(MKT_OPEN, NOISE_MKT_CLOSE, symbols, grid_s=1.0)
 
     agent_count, agents, agent_types = 0, [], []
 

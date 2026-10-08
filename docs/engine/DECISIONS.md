@@ -91,3 +91,18 @@ them, with the evidence that led to them.
 ## Decisions made while implementing v1.2
 
 (Added by milestone; each with its evidence.)
+
+### 2026-10-09 (W2) — Megashocks enter the OU state
+- **Decision:** a megashock is added to the OU *state* at the first grid point at or after its time, and then decays with the OU dynamics (factor e^(−κd) per step), rather than being added as a permanent constant to all later points.
+- **Reason:** it is what the sparse oracle does (`v_adj` is added to the state before the next OU step). With κ = 1.67e-16/ns the two readings differ by at most 0.39% of the shock size over a full 6.5 h day.
+- **Alternatives:** a permanent additive offset (the literal reading of spec §3.1). **Evidence:** `test_megashocks_jump_the_state`.
+
+### 2026-10-09 (W2) — The path always covers 09:30–16:00
+- **Decision:** `rmsc04_ekf` builds the oracle for the full trading day (`NOISE_MKT_CLOSE`, as the sparse oracle was), not up to `end_time`.
+- **Reason:** a 10:00 run then sees exactly the first 30 minutes of the 16:00 run's true value, so sessions of different lengths are comparable. Cost: 23,401 grid points (≈0.8 s to build).
+- **Alternatives:** generate only up to `end_time`. **Evidence:** —
+
+### 2026-10-09 (W2) — Market statistics keep 8 significant figures
+- **Decision:** `api/export._round_tree` rounds statistics to 8 significant figures (was 6).
+- **Reason:** at $1000, 6 figures cannot hold a half-cent mid: a close of $1000.705 was exported as $1000.71, so `stats.close` (and P&L vs holding computed from it) disagreed with the quotes. The new seed-42 path produced such a close and three export tests caught it.
+- **Alternatives:** —  **Evidence:** `test_close_is_last_mid`, `test_payload_v1_1_fields`, `test_population_volume_shares`.
