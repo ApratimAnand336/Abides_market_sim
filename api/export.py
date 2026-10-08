@@ -19,10 +19,11 @@ from abides_markets.configs.param_ranges import ranges_for_export
 from . import SCHEMA_VERSION
 from .downsample import change_points, downsample_columns, lttb_indices
 from .schema import RunParams, SimPayload
-from .stats import market_stats, value_at
+from .stats import gap_series, market_stats, value_at
 
 MAX_QUOTES = 6000
 MAX_ORACLE = 2000
+MAX_GAP = 2000
 MAX_AGENT_POINTS = 3000
 DEPTH_STEP_S = 30
 DEPTH_LEVELS = 10
@@ -481,6 +482,105 @@ def _news(news_agent, clock: _Clock, q_t: np.ndarray, q_mid: np.ndarray, fund: L
     return records
 
 
+# ── market population (spec v1.1 D4) ──────────────────────────────────────
+
+# class name -> display label, in display order
+POPULATION_LABELS = {
+    "NoiseAgent": "Noise",
+    "ValueAgent": "Value",
+    "AdaptiveMarketMakerAgent": "Market maker",
+    "MomentumAgent": "Momentum (ABIDES MA)",
+    "FundamentalistAgent": "Fundamentalist (ours)",
+    "MomentumEKFAgent": "Momentum EKF (ours)",
+}
+POPULATION_EXCLUDE = {"ExchangeAgent", "NewsOracleAgent"}
+
+
+def _wake_desc(cls: str, members: List) -> str:
+    a = members[0]
+
+    def periodic(freq_ns, poisson) -> str:
+        return f"{'Poisson, mean' if poisson else 'every'} {int(freq_ns) / 1e9:.0f} s"
+
+    if cls == "NoiseAgent":
+        return "once per day"
+    if cls == "ValueAgent":
+        return f"Poisson, mean ~{1.0 / a.lambda_a / 1e9:.0f} s"
+    if cls == "MomentumEKFAgent":
+        lo, hi = min(m.wake_mean for m in members), max(m.wake_mean for m in members)
+        return f"Poisson, mean {lo:.0f}–{hi:.0f} s" if round(lo) != round(hi) else f"Poisson, mean {lo:.0f} s"
+    if hasattr(a, "wake_up_freq"):
+        return periodic(a.wake_up_freq, getattr(a, "poisson_arrival", False))
+    return "—"
+
+
+def _start_position(agent):
+    """(cash, shares) at the start in cents. Our agents hold an endowment of
+    floor(e0 * W0 / p_ref) shares bought at p_ref; ABIDES agents hold cash."""
+    w0 = int(agent.starting_cash)
+    if hasattr(agent, "initial_exposure") and hasattr(agent, "reference_price"):
+        n0 = int(math.floor(agent.initial_exposure * w0 / agent.reference_price))
+        return w0 - n0 * agent.reference_price, n0
+    return w0, 0
+
+
+def population(agents, history, close: float, ticker: str = "ABM") -> List[Dict]:
+    """One row per agent class present. close in $.
+
+    orders_sent counts distinct order ids per class: LIMIT entries (orders
+    that rested in the book) plus the aggressor order of EXEC entries
+    (marketable orders that filled on arrival never produce a LIMIT entry).
+    shares_traded counts both sides of every EXEC."""
+    groups: Dict[str, List] = defaultdict(list)
+    for a in agents:
+        cls = type(a).__name__
+        if cls not in POPULATION_EXCLUDE:
+            groups[cls].append(a)
+    cls_of = {a.id: type(a).__name__ for a in agents}
+
+    order_ids: Dict[str, set] = defaultdict(set)
+    traded: Dict[str, int] = defaultdict(int)
+    total_exec = 0
+    for h in history:
+        typ = h.get("type")
+        if typ == "LIMIT":
+            order_ids[cls_of.get(h["agent_id"], "")].add(h["order_id"])
+        elif typ == "EXEC":
+            q = int(h["quantity"])
+            total_exec += q
+            traded[cls_of.get(h["agent_id"], "")] += q
+            traded[cls_of.get(h["oppos_agent_id"], "")] += q
+            order_ids[cls_of.get(h["oppos_agent_id"], "")].add(h["oppos_order_id"])
+
+    close_c = close * 100.0
+    order = list(POPULATION_LABELS) + sorted(c for c in groups if c not in POPULATION_LABELS)
+    rows = []
+    for cls in order:
+        members = groups.get(cls)
+        if not members:
+            continue
+        starts = [_start_position(a) for a in members]
+        final_value = sum(a.holdings.get("CASH", 0) + a.holdings.get(ticker, 0) * close_c for a in members)
+        start_wealth = sum(a.starting_cash for a in members)
+        hold_value = sum(c + n * close_c for c, n in starts)
+        cash_each = [c / 100.0 for c, _ in starts]
+        rows.append({
+            "label": POPULATION_LABELS.get(cls, cls),
+            "class_name": cls,
+            "count": len(members),
+            "starting_cash_each": {"min": round(min(cash_each), 2), "max": round(max(cash_each), 2)},
+            "starting_shares_total": int(sum(n for _, n in starts)),
+            "wake_desc": _wake_desc(cls, members),
+            "orders_sent": len(order_ids.get(cls, ())),
+            "shares_traded": int(traded.get(cls, 0)),
+            "volume_share_pct": round(100.0 * traded.get(cls, 0) / (2 * total_exec), 4) if total_exec else 0.0,
+            "final_value_total": round(final_value / 100.0, 2),
+            "pnl_total": round((final_value - start_wealth) / 100.0, 2),
+            "pnl_vs_hold_total": round((final_value - hold_value) / 100.0, 2),
+        })
+    return rows
+
+
 # ── entry point ───────────────────────────────────────────────────────────
 
 
@@ -519,11 +619,13 @@ def build_payload(
     o_mask = (o_t >= 0) & (o_t <= clock.duration)
     o_t, o_v = o_t[o_mask], o_v[o_mask]
 
+    g_t, g_v = gap_series(q_t, q_mid, o_t, o_v, clock.duration)
     stats = market_stats(
         q_t, q_bid, q_ask, q_mid, np.array(candles["c"]), o_t, o_v,
-        trades=len(execs), volume_shares=int(exec_q.sum()),
+        trades=len(execs), volume_shares=int(exec_q.sum()), gap=g_v,
     )
     close = stats["close"]
+    g_idx = lttb_indices(g_t, g_v, MAX_GAP) if len(g_t) else []
 
     q_idx = lttb_indices(q_t, q_mid, MAX_QUOTES)
     o_idx = lttb_indices(o_t, o_v, MAX_ORACLE)
@@ -542,6 +644,7 @@ def build_payload(
         "oracle": {"t": [_t(o_t[i]) for i in o_idx], "v": [round(float(o_v[i]), 4) for i in o_idx]},
         "depth": _depth(snaps, q_t, clock.duration),
         "totals": {"price_points": int(len(q_t)), "trades": len(execs), "volume_shares": int(exec_q.sum())},
+        "gap": {"t": [_t(g_t[i]) for i in g_idx], "v": [round(float(g_v[i]), 4) for i in g_idx]},
     }
 
     # ── agents ────────────────────────────────────────────────────────────
@@ -569,6 +672,7 @@ def build_payload(
         "stats": stats_rounded,
         "news": news,
         "agents": {"fundamental": fund, "momentum": mom},
+        "population": population(agents, ob.history, close),
         "hyperparam_ranges": ranges_for_export(),
     }
     SimPayload.model_validate(payload)

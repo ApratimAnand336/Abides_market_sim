@@ -65,12 +65,16 @@ def meta_path(run_id: str, runs_dir: Path = RUNS_DIR) -> Path:
 
 
 def list_runs(runs_dir: Path = RUNS_DIR) -> List[Dict]:
-    """Cached runs (meta sidecars), newest first."""
+    """Cached runs (meta sidecars) made by the current ENGINE_VERSION, newest
+    first. Runs from older engines use an older payload schema the dashboard
+    cannot show, so they are not listed (their files are kept)."""
     out = []
     for p in runs_dir.glob("*.meta.json"):
         try:
             meta = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError):
+            continue
+        if not str(meta.get("engine_version", "")).startswith(f"v{ENGINE_VERSION}-"):
             continue
         if payload_path(meta["run_id"], runs_dir).exists():
             out.append(meta)
@@ -110,6 +114,9 @@ def build_run_config(params: RunParams) -> Dict:
         ticker=TICKER,
         num_ekf_agents=params.num_fund,
         num_mom_ekf_agents=params.num_mom,
+        num_value_agents=params.num_value,
+        num_noise_agents=params.num_noise,
+        num_mm=params.num_mm,
         book_logging=True,
         # background agents: no order logging (logs only, no behaviour change);
         # our EKF agents always log orders (set inside the config)

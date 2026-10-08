@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Activity, BarChart2, Cpu, Newspaper, Play } from 'lucide-react';
 import { useHealth, usePayload, usePresets, useRunController, useRunList } from './hooks/useSimulation';
 import { useQueryParam, useTab, type TabId } from './lib/urlState';
-import type { SimPayload } from './types/payload';
-import { Sidebar, type SimForm } from './components/Sidebar';
+import { SCHEMA_VERSION, type SimPayload } from './types/payload';
+import { POPULATION_DEFAULTS, Sidebar, type SimForm } from './components/Sidebar';
 import { Header, KpiRow } from './components/Header';
 import { RunBanner } from './components/RunBanner';
 import { GuideModal } from './components/GuideModal';
@@ -15,7 +15,7 @@ import { NewsSentiment } from './tabs/NewsSentiment';
 import { MarketHealth } from './tabs/MarketHealth';
 import { cn } from './lib/cn';
 
-const DEFAULT_FORM: SimForm = { seed: 42, end_time: '16:00:00', num_fund: 5, num_mom: 5, news: [] };
+const DEFAULT_FORM: SimForm = { seed: 42, end_time: '16:00:00', num_fund: 5, num_mom: 5, ...POPULATION_DEFAULTS, news: [] };
 
 const TAB_DEFS: { id: TabId; label: string; icon: typeof BarChart2; iconClass: string }[] = [
   { id: 'overview', label: 'Market Overview', icon: BarChart2, iconClass: 'text-up' },
@@ -40,7 +40,10 @@ export function App() {
   const initialRunId = urlRun || runList.data?.[0]?.run_id || null;
   const ctrl = useRunController(initialRunId);
   const payloadQ = usePayload(ctrl.displayedId);
-  const payload: SimPayload | null = payloadQ.data ?? null;
+  const loaded: SimPayload | null = payloadQ.data ?? null;
+  // runs cached by an older engine lack v1.1 fields: show a notice, not a crash
+  const staleSchema = loaded && loaded.schema_version !== SCHEMA_VERSION ? (loaded.schema_version as string) : null;
+  const payload: SimPayload | null = staleSchema ? null : loaded;
 
   useEffect(() => {
     if (ctrl.displayedId && ctrl.displayedId !== urlRun) setUrlRun(ctrl.displayedId);
@@ -50,7 +53,16 @@ export function App() {
   useEffect(() => {
     if (payload && !formFromRun) {
       const p = payload.meta.params;
-      setForm({ seed: p.seed, end_time: p.end_time, num_fund: p.num_fund, num_mom: p.num_mom, news: p.news });
+      setForm({
+        seed: p.seed,
+        end_time: p.end_time,
+        num_fund: p.num_fund,
+        num_mom: p.num_mom,
+        num_value: p.num_value ?? POPULATION_DEFAULTS.num_value,
+        num_noise: p.num_noise ?? POPULATION_DEFAULTS.num_noise,
+        num_mm: p.num_mm ?? POPULATION_DEFAULTS.num_mm,
+        news: p.news,
+      });
       setFormFromRun(true);
     }
   }, [payload, formFromRun]);
@@ -146,6 +158,11 @@ export function App() {
             />
           ) : runList.isLoading || (ctrl.displayedId && payloadQ.isLoading) ? (
             <LoadingSkeleton />
+          ) : staleSchema ? (
+            <ErrorState
+              title="This run was made by an older engine"
+              error={`Run ${ctrl.displayedId} uses payload schema ${staleSchema}; this dashboard shows schema ${SCHEMA_VERSION}.\nRun the simulation again (same parameters) to see it with the current agents.`}
+            />
           ) : payloadQ.isError ? (
             <ErrorState title="Could not load the run" error={(payloadQ.error as Error).message} onRetry={() => payloadQ.refetch()} />
           ) : !payload ? (

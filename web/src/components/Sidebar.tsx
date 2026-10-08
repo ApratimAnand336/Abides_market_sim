@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BookOpen, Dices, Loader2, Newspaper, Play, Plus, Sliders, Sparkles, Trash2, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, ChevronDown, ChevronRight, Dices, Loader2, Newspaper, Play, Plus, Sliders, Sparkles, Trash2, Users, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { clockHM, fmtElapsed, parseHMS, sessionSeconds } from '../lib/format';
 import type { EndTime, NewsInput, RunListItem } from '../types/payload';
@@ -13,8 +13,14 @@ export interface SimForm {
   end_time: EndTime;
   num_fund: number;
   num_mom: number;
+  // market population (spec v1.1 D4)
+  num_value: number;
+  num_noise: number;
+  num_mm: number;
   news: NewsInput[];
 }
+
+export const POPULATION_DEFAULTS = { num_value: 97, num_noise: 1000, num_mm: 2 } as const;
 
 const END_TIMES: { value: EndTime; label: string }[] = [
   { value: '10:00:00', label: '10:00:00 (30 min)' },
@@ -67,6 +73,9 @@ export function Sidebar({
   const [manual, setManual] = useState(0);
   const [scoring, setScoring] = useState(false);
   const [scoreNote, setScoreNote] = useState<string | null>(null);
+  const [popOpen, setPopOpen] = useState(false);
+  const popChanged =
+    form.num_value !== POPULATION_DEFAULTS.num_value || form.num_noise !== POPULATION_DEFAULTS.num_noise || form.num_mm !== POPULATION_DEFAULTS.num_mm;
 
   const running = !!progress && (progress.status === 'queued' || progress.status === 'running');
   const sessionS = sessionSeconds(form.end_time);
@@ -176,6 +185,53 @@ export function Sidebar({
               onChange={(v) => setForm({ ...form, num_mom: v })}
               help="Replaces stock momentum agents (max 12)"
             />
+            <div className="rounded-[10px] border border-border">
+              <button
+                type="button"
+                aria-expanded={popOpen}
+                aria-controls="population-controls"
+                onClick={() => setPopOpen((o) => !o)}
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[12px] font-medium text-muted hover:text-text"
+              >
+                <span className="flex items-center gap-2">
+                  <Users className="h-3.5 w-3.5 text-accent" aria-hidden />
+                  Market population (advanced)
+                  {popChanged && <span className="rounded-[6px] bg-warn/15 px-1.5 font-mono text-[10px] text-amber-200">changed</span>}
+                </span>
+                {popOpen ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
+              </button>
+              {popOpen && (
+                <div id="population-controls" className="flex flex-col gap-4 border-t border-border px-3 pt-3 pb-3">
+                  <p className="flex items-start gap-1.5 text-[11px] leading-snug text-amber-200">
+                    <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+                    Changing these changes how tightly price follows true value.
+                  </p>
+                  <Slider
+                    label="Value agents"
+                    value={form.num_value}
+                    min={0}
+                    max={150}
+                    onChange={(v) => setForm({ ...form, num_value: v })}
+                    help="See the hidden true value; default 97"
+                  />
+                  <Slider
+                    label="Noise agents"
+                    value={form.num_noise}
+                    min={0}
+                    max={2000}
+                    step={10}
+                    onChange={(v) => setForm({ ...form, num_noise: v })}
+                    help="Trade about once a day at random; default 1000"
+                  />
+                  <Slider label="Market makers" value={form.num_mm} min={0} max={2} onChange={(v) => setForm({ ...form, num_mm: v })} help="Quote both sides; default 2" />
+                  {popChanged && (
+                    <Button variant="ghost" className="self-start text-[11px]" onClick={() => setForm({ ...form, ...POPULATION_DEFAULTS })}>
+                      Reset to defaults
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

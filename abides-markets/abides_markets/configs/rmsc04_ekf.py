@@ -69,6 +69,7 @@ def build_config(
     megashock_mean=1000,
     megashock_var=50_000,
     # 4) Market Maker Agents
+    num_mm=2,  # 0..2: how many of the two configured market makers to build
     mm_window_size="adaptive",
     mm_pov=0.025,
     mm_num_ticks=10,
@@ -100,6 +101,8 @@ def build_config(
         (mm_window_size, mm_pov, mm_num_ticks, mm_wake_up_freq, mm_min_order_size),
         (mm_window_size, mm_pov, mm_num_ticks, mm_wake_up_freq, mm_min_order_size),
     ]
+    assert 0 <= num_mm <= len(MM_PARAMS), f"num_mm must be in 0..{len(MM_PARAMS)}"
+    MM_PARAMS = MM_PARAMS[:num_mm]
     NUM_MM = len(MM_PARAMS)
     SIGMA_N = r_bar / 100
 

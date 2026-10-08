@@ -4,7 +4,7 @@ All statistics are computed here, once, from full-resolution series. Inputs are
 plain numpy arrays; prices in dollars, times in seconds since market open.
 """
 
-from typing import Dict, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy import stats as sps
@@ -13,6 +13,8 @@ N_ACF_LAGS = 20
 N_HIST_BINS = 41
 N_NORMAL_POINTS = 200
 MAX_TICK_BUCKET = 11  # spread buckets 1..10 cents, 11 = ">= 11"
+GAP_LAGS_S = (60, 120, 300, 600)  # spec v1.1 D5
+GAP_RHO_RANGE = (0.05, 0.98)
 
 
 def spread_stats(spread_dollars: np.ndarray) -> Dict:
@@ -122,6 +124,48 @@ def tracking(t: np.ndarray, mid: np.ndarray, oracle_t: np.ndarray, oracle_v: np.
     }
 
 
+def gap_series(
+    t: np.ndarray, mid: np.ndarray, oracle_t: np.ndarray, oracle_v: np.ndarray, duration: float
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Spec v1.1 D5: gap(t) = mid(t) - oracle(t) on a 1 s grid over the
+    session, both series linearly interpolated. Returns (grid, gap)."""
+    if len(t) < 2 or len(oracle_t) < 2:
+        return np.array([]), np.array([])
+    grid = np.arange(0.0, float(duration) + 1e-9, 1.0)
+    return grid, np.interp(grid, t, mid) - np.interp(grid, oracle_t, oracle_v)
+
+
+def gap_half_life(gap: np.ndarray, dt: float = 1.0, lags_s: Sequence[int] = GAP_LAGS_S) -> Dict:
+    """Spec v1.1 D5 (Appendix A5): treat the mispricing as a spring,
+    rho(L) = exp(-k L).
+
+    rho(L) = autocorrelation of the de-meaned gap at lag L seconds;
+    k_L = -ln(rho(L)) / L for lags with 0.05 < rho < 0.98; k = median(k_L);
+    half-life = ln 2 / k / 60 minutes (None if no lag qualifies)."""
+    g = np.asarray(gap, dtype=float)
+    d = g - g.mean() if len(g) else g
+    denom = float(d @ d) if len(d) else 0.0
+    rho: List[float] = []
+    ks: List[float] = []
+    for L in lags_s:
+        n = int(round(L / dt))
+        if n <= 0 or n >= len(d) or denom == 0:
+            rho.append(0.0)
+            continue
+        r = float(d[:-n] @ d[n:]) / denom
+        rho.append(r)
+        if GAP_RHO_RANGE[0] < r < GAP_RHO_RANGE[1]:
+            ks.append(-np.log(r) / L)
+    k = float(np.median(ks)) if ks else None
+    return {
+        "std": float(np.std(g)) if len(g) else 0.0,
+        "mean_abs": float(np.mean(np.abs(g))) if len(g) else 0.0,
+        "half_life_min": (np.log(2.0) / k / 60.0) if k and k > 0 else None,
+        "lags_s": [int(L) for L in lags_s],
+        "rho": rho,
+    }
+
+
 def market_stats(
     t: np.ndarray,
     bid: np.ndarray,
@@ -132,8 +176,10 @@ def market_stats(
     oracle_v: np.ndarray,
     trades: int,
     volume_shares: int,
+    gap: Optional[np.ndarray] = None,
 ) -> Dict:
-    """Everything in MarketStats. Prices in dollars."""
+    """Everything in MarketStats. Prices in dollars. gap: the 1 s
+    mid - oracle series from gap_series (spec v1.1 D5)."""
     spread = ask - bid
     open_, close = (float(mid[0]), float(mid[-1])) if len(mid) else (0.0, 0.0)
     change = close - open_
@@ -149,6 +195,7 @@ def market_stats(
         "returns_1m": returns_1m(candle_close),
         "returns_tick": returns_tick(mid),
         "tracking": tracking(t, mid, oracle_t, oracle_v),
+        "gap": gap_half_life(np.array([]) if gap is None else gap),
         "trades": int(trades),
         "volume_shares": int(volume_shares),
     }

@@ -48,6 +48,11 @@ class RunParams(Strict):
     num_fund: int = Field(ge=0, le=20)
     # the config takes momentum agents from the 12 momentum slots
     num_mom: int = Field(ge=0, le=12)
+    # market population (spec v1.1 D4); part of the canonical params, so the
+    # cache key changes with them
+    num_value: int = Field(default=97, ge=0, le=150)
+    num_noise: int = Field(default=1000, ge=0, le=2000)
+    num_mm: int = Field(default=2, ge=0, le=2)
     news: List[NewsItem] = []
 
     def session_seconds(self) -> int:
@@ -136,6 +141,7 @@ class Market(Strict):
     oracle: Series
     depth: Depth
     totals: Totals
+    gap: Series  # spec v1.1 D5: mid - oracle ($), 1 s grid, LTTB-downsampled
 
 
 class SpreadStats(Strict):
@@ -184,6 +190,15 @@ class Tracking(Strict):
     corr: float
 
 
+class GapStats(Strict):
+    """Spec v1.1 D5: price vs true value on a 1 s grid."""
+    std: float
+    mean_abs: float
+    half_life_min: Optional[float]
+    lags_s: List[int]
+    rho: List[float]
+
+
 class MarketStats(Strict):
     open: float
     close: float
@@ -196,6 +211,7 @@ class MarketStats(Strict):
     returns_1m: Returns1m
     returns_tick: ReturnsTick
     tracking: Tracking
+    gap: GapStats
     trades: int
     volume_shares: int
 
@@ -398,6 +414,28 @@ class Agents(Strict):
     momentum: List[MomentumAgent]
 
 
+class MinMax(Strict):
+    min: float
+    max: float
+
+
+class PopulationRow(Strict):
+    """Spec v1.1 D4: one row per agent class present (exchange and news
+    oracle excluded). Money in $."""
+    label: str
+    class_name: str
+    count: int
+    starting_cash_each: MinMax
+    starting_shares_total: int
+    wake_desc: str
+    orders_sent: int
+    shares_traded: int
+    volume_share_pct: float
+    final_value_total: float
+    pnl_total: float
+    pnl_vs_hold_total: float
+
+
 class Range(Strict):
     min: float
     max: float
@@ -411,4 +449,5 @@ class SimPayload(Strict):
     stats: MarketStats
     news: List[NewsRecord]
     agents: Agents
+    population: List[PopulationRow]
     hyperparam_ranges: Dict[Literal["fundamental", "momentum"], Dict[str, Range]]

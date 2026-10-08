@@ -9,6 +9,8 @@ import { useQueryFlag } from '../lib/urlState';
 import { Card, LegendItem, SectionHeader } from '../components/ui/Card';
 import { KpiCard } from '../components/ui/KpiCard';
 import { Toggle } from '../components/ui/controls';
+import { PopulationCard } from '../components/health/PopulationCard';
+import { PriceVsValue } from '../components/health/PriceVsValue';
 import { cn } from '../lib/cn';
 
 const toBps = (r: number) => r * 1e4;
@@ -202,6 +204,9 @@ export function MarketHealth({ payload }: { payload: SimPayload }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <PopulationCard rows={payload.population} />
+      <PriceVsValue payload={payload} />
+
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KpiCard label="Excess kurtosis (1-min)" value={fmtNum(r.excess_kurtosis, 2)} caption="Fat tails if > 0; normal = 0" icon={Sigma} iconClass="text-spread" />
         <KpiCard label="Skewness (1-min)" value={fmtSigned(r.skew, 3)} caption="0 = symmetric returns" icon={Activity} />

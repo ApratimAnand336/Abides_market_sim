@@ -233,3 +233,69 @@ def test_engine_version_carries_constant():
     from api.jobs import engine_version
 
     assert engine_version().startswith(f"v{ENGINE_VERSION}-")
+
+
+def test_population_volume_shares(sim):
+    """T-A2 plus the population table's bookkeeping."""
+    end_state, _, payload = sim
+    pop = payload["population"]
+    assert sum(r["volume_share_pct"] for r in pop) == pytest.approx(100.0, abs=0.01)
+    by = {r["class_name"]: r for r in pop}
+    assert {"ExchangeAgent", "NewsOracleAgent"}.isdisjoint(by)
+    assert by["NoiseAgent"]["count"] == 1000 and by["ValueAgent"]["count"] == 97
+    assert by["AdaptiveMarketMakerAgent"]["count"] == 2
+    assert by["FundamentalistAgent"]["count"] == PARAMS.num_fund
+    assert by["MomentumEKFAgent"]["count"] == PARAMS.num_mom
+    assert by["FundamentalistAgent"]["starting_shares_total"] == 50 * PARAMS.num_fund
+    total = payload["market"]["totals"]["volume_shares"]
+    assert sum(r["shares_traded"] for r in pop) == 2 * total
+    # our agents' totals agree with the per-agent rows. Population values use
+    # cash + shares x close mid (spec D4); per-agent final.value is ABIDES's
+    # mark-to-market at the last trade price, so recompute it here.
+    close = payload["stats"]["close"]
+    fund = payload["agents"]["fundamental"]
+    value = sum(a["final"]["cash"] + a["final"]["shares"] * close for a in fund)
+    hold = sum(a["start"]["cash"] + a["start"]["shares"] * close for a in fund)
+    assert by["FundamentalistAgent"]["final_value_total"] == pytest.approx(value, abs=0.05)
+    assert by["FundamentalistAgent"]["pnl_vs_hold_total"] == pytest.approx(value - hold, abs=0.05)
+    # every agent that traded sent at least one order
+    assert all(r["orders_sent"] > 0 for r in pop if r["shares_traded"] > 0)
+
+
+def test_gap_payload(sim):
+    _, _, payload = sim
+    g = payload["stats"]["gap"]
+    assert g["lags_s"] == [60, 120, 300, 600] and len(g["rho"]) == 4
+    assert g["std"] > 0 and g["mean_abs"] > 0
+    assert 0 < len(payload["market"]["gap"]["t"]) <= 2000
+
+
+def _ar1(n, half_life_s, seed):
+    from scipy.signal import lfilter
+
+    phi = np.exp(-np.log(2) / half_life_s)
+    return lfilter([1.0], [1.0, -phi], np.random.RandomState(seed).normal(0, 0.05, n))
+
+
+def test_gap_half_life_ar1():
+    """T-A3: synthetic AR(1) gap with a 10-minute half-life.
+
+    Measured on 10 trading days (234,000 s) so the estimator, not sampling
+    noise, is tested: all of 20 seeds land within +/-20%. Note for the
+    dashboard: on ONE 6.5-hour day the same estimator spreads ~5-16 min
+    across seeds (a day holds only ~13 independent mispricing episodes)."""
+    from api.stats import gap_half_life
+
+    out = gap_half_life(_ar1(10 * 23_400, 600.0, seed=0))
+    assert out["half_life_min"] == pytest.approx(10.0, rel=0.2)
+    assert out["rho"][3] == pytest.approx(0.5, abs=0.1)  # rho(600 s)
+    one_day = gap_half_life(_ar1(23_400, 600.0, seed=1))["half_life_min"]
+    assert 4.0 < one_day < 20.0
+
+
+def test_gap_half_life_no_qualifying_lag():
+    from api.stats import gap_half_life
+
+    white = np.random.RandomState(0).normal(size=20_000)  # rho ~ 0 at every lag
+    assert gap_half_life(white)["half_life_min"] is None
+    assert gap_half_life(np.zeros(100))["half_life_min"] is None

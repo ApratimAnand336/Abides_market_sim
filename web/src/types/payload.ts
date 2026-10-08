@@ -10,6 +10,9 @@
 
 export type Seconds = number;
 
+/** Payload schema this dashboard renders (api/__init__.py SCHEMA_VERSION). */
+export const SCHEMA_VERSION = '1.1';
+
 export type EndTime = '10:00:00' | '11:00:00' | '12:00:00' | '14:00:00' | '16:00:00';
 
 export interface NewsInput {
@@ -23,6 +26,10 @@ export interface RunParams {
   end_time: EndTime;
   num_fund: number; // FundamentalistAgent count (0–20)
   num_mom: number; // MomentumEKFAgent count (0–12)
+  // market population (spec v1.1 D4); the server defaults to 97 / 1000 / 2
+  num_value?: number; // ValueAgent count (0–150)
+  num_noise?: number; // NoiseAgent count (0–2000)
+  num_mm?: number; // market makers (0–2)
   news: NewsInput[];
 }
 
@@ -42,7 +49,24 @@ export interface SimPayload {
   stats: MarketStats;
   news: NewsRecord[];
   agents: { fundamental: FundamentalAgent[]; momentum: MomentumAgent[] };
+  population: PopulationRow[];
   hyperparam_ranges: Record<'fundamental' | 'momentum', Record<string, ParamRange>>;
+}
+
+/** One row per agent class in the market (spec v1.1 D4). Money in $. */
+export interface PopulationRow {
+  label: string;
+  class_name: string;
+  count: number;
+  starting_cash_each: { min: number; max: number };
+  starting_shares_total: number;
+  wake_desc: string;
+  orders_sent: number;
+  shares_traded: number; // both sides of every execution
+  volume_share_pct: number; // rows sum to 100
+  final_value_total: number; // cash + shares × close
+  pnl_total: number;
+  pnl_vs_hold_total: number;
 }
 
 export interface ParamRange {
@@ -65,6 +89,7 @@ export interface Market {
   oracle: { t: Seconds[]; v: number[] }; // LTTB ≤ 2000
   depth: { t: Seconds[]; bids: [number, number][][]; asks: [number, number][][] }; // every 30 s, 10 levels
   totals: { price_points: number; trades: number; volume_shares: number };
+  gap: { t: Seconds[]; v: number[] }; // mid − oracle ($), 1 s grid, LTTB ≤ 2000 (spec v1.1 D5)
 }
 
 export interface MarketStats {
@@ -90,6 +115,8 @@ export interface MarketStats {
   };
   returns_tick: { std: number; excess_kurtosis: number };
   tracking: { rms: number; mean_abs: number; corr: number };
+  // spec v1.1 D5: mispricing half-life from rho(L) = exp(−kL)
+  gap: { std: number; mean_abs: number; half_life_min: number | null; lags_s: number[]; rho: number[] };
   trades: number;
   volume_shares: number;
 }
