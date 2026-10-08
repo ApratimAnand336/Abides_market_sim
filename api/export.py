@@ -274,14 +274,13 @@ def _fundamental(agent, clock, ticker, candles, close) -> Dict:
 
     news = []
     for t_ns, _, ev in _events(agent, "NEWS_RECEIVED"):
-        shift = float(ev["shift"])
         news.append({
             "t": _t(clock.s(t_ns)),
             "headline": ev["headline"],
             "sentiment": float(ev["sentiment"]),
-            "shift": _sig(shift),
-            "x_hat_before": _price(ev["x_hat_new"] / shift),
-            "x_hat_after": _price(ev["x_hat_new"]),
+            "shift": _sig(ev["shift"] / 100.0),  # signed $
+            "x_hat_before": _price(ev["x_hat_before"]),
+            "x_hat_after": _price(ev["x_hat_after"]),
         })
 
     d.update(

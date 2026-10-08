@@ -21,16 +21,24 @@ import numpy as np
 Range = Tuple[float, float, str]
 
 FUNDAMENTAL_RANGES: Dict[str, Range] = {
-    "beta": (5.0, 20.0, "linear"),  # drawn inside FundamentalistAgent itself
     "er_window": (5, 24, "floor"),
-    "delta": (0.002, 0.015, "linear"),
-    "lambda_er": (1.0, 6.0, "linear"),
+    # spec v1.1 F2: delta * mid = $0.50-$3, ER penalty 1.3x-2.7x at median ER
+    "delta": (0.0005, 0.003, "linear"),
+    "lambda_er": (0.5, 2.0, "linear"),
     "sigma_n": (300.0, 3000.0, "linear"),
     "initial_uncertainty": (50_000.0, 500_000.0, "linear"),
     "gamma": (0.4, 0.95, "linear"),
     "k": (0.3, 2.5, "linear"),
     "mu": (0.02, 0.2, "linear"),
-    "news_sensitivity": (0.005, 0.04, "linear"),
+    # spec v1.1 F3: process noise Q = q * sigma_f2_hat * dt
+    "q": (0.3, 3.0, "log"),
+    # spec v1.1 F4: target position sizing
+    "a_max": (0.6, 1.0, "linear"),
+    "z0": (1.0, 3.0, "linear"),
+    "s_max": (0.10, 0.25, "linear"),
+    "b_f": (0.01, 0.03, "linear"),
+    # spec v1.1 F5: news shift in units of a typical 30-minute move
+    "k_news": (0.5, 3.0, "linear"),
 }
 
 MOMENTUM_RANGES: Dict[str, Range] = {

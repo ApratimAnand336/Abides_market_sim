@@ -233,7 +233,13 @@ def build_config(
                 k=draw(FUND, "k"),
                 # ── Randomized Limit Price Parameters ───────────────
                 mu=draw(FUND, "mu"),
-                news_sensitivity=draw(FUND, "news_sensitivity"),
+                # ── spec v1.1: process noise, sizing, news ──────────
+                q=draw(FUND, "q"),
+                a_max=draw(FUND, "a_max"),
+                z0=draw(FUND, "z0"),
+                s_max=draw(FUND, "s_max"),
+                b_f=draw(FUND, "b_f"),
+                k_news=draw(FUND, "k_news"),
                 # ── Initial share endowment ─────────────────────────
                 initial_exposure=ekf_initial_exposure,
                 reference_price=r_bar,
