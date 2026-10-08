@@ -4,7 +4,7 @@ import { Banknote, Cpu, Gauge, Layers, LineChart, ShieldCheck } from 'lucide-rea
 import type { FundamentalAgent, SimPayload } from '../../types/payload';
 import { EChart } from '../../charts/EChart';
 import { C, axisTooltip, grid, insideZoom, pairs, robustDomain, timeAxis, tipHtml, valueAxis } from '../../charts/theme';
-import { bisectRight } from '../../charts/series';
+import { bisectRight, clipToDomain, markersNear, offScaleMarkerSeries } from '../../charts/series';
 import { clockHMS, fmtInt, fmtNum, fmtPct, fmtPrice, fmtSci } from '../../lib/format';
 import { FUNDAMENTAL_PARAMS } from '../../config/agentParams';
 import { Card, LegendItem, SectionHeader } from '../ui/Card';
@@ -33,8 +33,8 @@ export function FundamentalDetail({
   const [fullRange, setFullRange] = useState(false);
   const [rawEr, setRawEr] = useState(true);
 
-  // y-domain from the mid's 0.5–99.5 percentile ±15%; x̂ is clipped unless
-  // "Show full range" is on (fixes the early-transient flattening)
+  // y-domain from the mid's 0.5–99.5 percentile ±15%; x̂ breaks where it
+  // leaves it (spec v1.1 D1) unless "Show full range" is on
   const midDomain = useMemo(() => robustDomain(e.mid), [e.mid]);
   const domain = useMemo<[number, number]>(() => {
     if (!fullRange) return midDomain;
@@ -46,17 +46,9 @@ export function FundamentalDetail({
   const offScale = useMemo(() => e.x_hat.filter((v) => v < midDomain[0] || v > midDomain[1]).length, [e.x_hat, midDomain]);
 
   const xhatOption = useMemo<EChartsOption>(() => {
-    // clipped x̂ marked at the plot edge; at most ~60 markers so a long
-    // off-scale stretch reads as a dotted hint, not a solid line
-    const edge: [number, number][] = [];
-    if (!fullRange) {
-      const step = Math.max(1, Math.floor(e.t.length / 60));
-      for (let i = 0; i < e.t.length; i += step) {
-        const v = e.x_hat[i];
-        if (v > domain[1]) edge.push([e.t[i], domain[1]]);
-        else if (v < domain[0]) edge.push([e.t[i], domain[0]]);
-      }
-    }
+    // off-scale x̂ becomes a gap, with one edge marker per off-scale run
+    const clipped = fullRange ? null : clipToDomain(e.t, e.x_hat, domain, `x̂ ${agent.name}`, color);
+    const markers = clipped?.markers ?? [];
     return {
       grid: grid({ top: 14, bottom: 26 }),
       xAxis: timeAxis(duration, {}, true),
@@ -67,20 +59,23 @@ export function FundamentalDetail({
         const i = bisectRight(e.t, t);
         if (i < 0) return '';
         const off = e.x_hat[i] < midDomain[0] || e.x_hat[i] > midDomain[1];
-        return tipHtml(clockHMS(e.t[i]), [
+        const rows = [
           { label: 'Mid', value: fmtPrice(e.mid[i]), color: C.mid },
           { label: `x̂${off && !fullRange ? ' (off-scale)' : ''}`, value: fmtPrice(e.x_hat[i]), color },
           { label: 'x̂ − mid', value: fmtPrice(e.x_hat[i] - e.mid[i]) },
-        ]);
+        ];
+        for (const m of markersNear(markers, t, Math.max(30, duration / 300))) {
+          if (m.t !== e.t[i]) rows.push({ label: `${m.edge === 'top' ? '▲' : '▼'} run peak at ${clockHMS(m.t)}`, value: fmtPrice(m.v), color });
+        }
+        return tipHtml(clockHMS(e.t[i]), rows);
       }),
       series: [
         { type: 'line', name: 'Mid', data: pairs(e.t, e.mid), showSymbol: false, lineStyle: { color: C.mid, width: 1.5 } },
-        { type: 'line', name: 'x̂', data: pairs(e.t, e.x_hat), showSymbol: false, lineStyle: { color, width: 2 } },
-        // clipped x̂ marked at the edge of the plot
-        { type: 'scatter', name: 'x̂ off-scale', data: edge, symbol: 'triangle', symbolSize: 5, itemStyle: { color, opacity: 0.6 }, silent: true },
+        { type: 'line', name: 'x̂', data: clipped ? clipped.data : pairs(e.t, e.x_hat), connectNulls: false, showSymbol: false, lineStyle: { color, width: 2 } },
+        ...(markers.length ? [offScaleMarkerSeries(markers, domain, 'x̂ off-scale')] : []),
       ],
     };
-  }, [e, duration, domain, fullRange, color, midDomain]);
+  }, [e, duration, domain, fullRange, color, midDomain, agent.name]);
 
   const kOption = useMemo<EChartsOption>(
     () => ({

@@ -1,10 +1,23 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EChartsOption } from 'echarts';
 import { BarChart3, BookOpen, RotateCcw, Ruler } from 'lucide-react';
 import type { SimPayload } from '../types/payload';
 import { EChart, resetGroupZoom } from '../charts/EChart';
 import { C, axisTooltip, grid, insideZoom, pairs, sliderZoom, timeAxis, tipHtml, valueAxis } from '../charts/theme';
-import { aggregateCandles, bandSeries, bisectRight, candleSeries, intervalBarSeries, newsMarkLine, newsNear, type Candle } from '../charts/series';
+import {
+  aggregateCandles,
+  bandSeries,
+  bisectRight,
+  candleSeries,
+  clipToDomain,
+  intervalBarSeries,
+  markersNear,
+  newsMarkLine,
+  newsNear,
+  offScaleMarkerSeries,
+  type Candle,
+  type OffScaleMarker,
+} from '../charts/series';
 import { agentColorMap } from '../lib/agents';
 import { clockHMS, escapeHtml, fmtInt, fmtNum, fmtPct, fmtPrice } from '../lib/format';
 import { useQueryFlag, useQueryParam } from '../lib/urlState';
@@ -29,6 +42,20 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
   const [hoverT, setHoverT] = useState<number | null>(null);
   const raf = useRef<number | null>(null);
 
+  // spec v1.1 D3: belief-line overlays only for selected agents (component
+  // state, not storage). Default: every fundamentalist, no momentum agent.
+  const defaultOverlay = useCallback(() => new Set(payload.agents.fundamental.map((a) => a.id)), [payload]);
+  const [overlayIds, setOverlayIds] = useState<Set<number>>(defaultOverlay);
+  useEffect(() => setOverlayIds(defaultOverlay()), [defaultOverlay]);
+  const toggleOverlay = (id: number) =>
+    setOverlayIds((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  const overlayFund = useMemo(() => payload.agents.fundamental.filter((a) => overlayIds.has(a.id)), [payload.agents.fundamental, overlayIds]);
+  const overlayMom = useMemo(() => payload.agents.momentum.filter((a) => overlayIds.has(a.id)), [payload.agents.momentum, overlayIds]);
+
   const iv = (INTERVALS[ivKey as IntervalKey] ?? 5) as number;
   const ivS = iv * 60;
   const candles = useMemo(() => aggregateCandles(market.candles_1m, iv), [market.candles_1m, iv]);
@@ -37,7 +64,7 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
   const isCandles = view !== 'tick';
 
   // y-domain from market prices only (candle lows/highs or the mid), ±10% of
-  // the range; overlays are clipped so they can never move it
+  // the range; overlays never move it: they break where they leave it (D1)
   const yDomain = useMemo<[number, number]>(() => {
     let lo: number;
     let hi: number;
@@ -63,17 +90,25 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
     if (showOracle) {
       series.push({ type: 'line', name: 'Oracle', data: pairs(market.oracle.t, market.oracle.v), showSymbol: false, lineStyle: { color: C.oracle, width: 1.5, type: 'dashed' }, z: 4 });
     }
+    const offScale: OffScaleMarker[] = [];
     if (showXhat) {
-      for (const a of payload.agents.fundamental) {
-        series.push({ type: 'line', name: `x̂ ${a.name}`, data: pairs(a.ekf.t, a.ekf.x_hat), showSymbol: false, lineStyle: { color: colors.get(a.id), width: 1.25, opacity: 0.7 }, z: 2 });
+      for (const a of overlayFund) {
+        const color = colors.get(a.id)!;
+        const { data, markers } = clipToDomain(a.ekf.t, a.ekf.x_hat, yDomain, `x̂ ${a.name}`, color);
+        offScale.push(...markers);
+        series.push({ type: 'line', name: `x̂ ${a.name}`, data, connectNulls: false, showSymbol: false, lineStyle: { color, width: 1.25, opacity: 0.7 }, z: 2 });
       }
     }
     if (showLevel) {
-      for (const a of payload.agents.momentum) {
-        series.push({ type: 'line', name: `l̂ ${a.name}`, data: pairs(a.kf.t, a.kf.level), showSymbol: false, lineStyle: { color: colors.get(a.id), width: 1 }, z: 2 });
+      for (const a of overlayMom) {
+        const color = colors.get(a.id)!;
+        const { data, markers } = clipToDomain(a.kf.t, a.kf.level, yDomain, `l̂ ${a.name}`, color);
+        offScale.push(...markers);
+        series.push({ type: 'line', name: `l̂ ${a.name}`, data, connectNulls: false, showSymbol: false, lineStyle: { color, width: 1 }, z: 2 });
       }
     }
     if (showNews && news.length && series.length) series[series.length - 1].markLine = newsMarkLine(news);
+    if (offScale.length) series.push(offScaleMarkerSeries(offScale, yDomain));
 
     return {
       grid: grid({ bottom: 64, top: 20 }),
@@ -114,13 +149,16 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
         const j = bisectRight(market.oracle.t, t);
         if (j >= 0) rows.push({ label: 'Oracle', value: fmtPrice(market.oracle.v[j]), color: C.oracle });
       }
+      for (const m of markersNear(offScale, t, Math.max(30, duration / 300))) {
+        rows.push({ label: `${m.edge === 'top' ? '▲' : '▼'} ${m.label} (off-scale)`, value: fmtPrice(m.v), color: m.color });
+      }
       let html = tipHtml(clockHMS(t), rows);
       for (const n of newsNear(news, t, Math.max(30, duration / 300))) {
         html += `<div style="margin-top:6px;max-width:260px;white-space:normal;color:${n.sentiment >= 0 ? C.up : C.down}">📰 ${escapeHtml(n.headline)} (${n.sentiment >= 0 ? '+' : '−'}${Math.abs(n.sentiment).toFixed(2)})</div>`;
       }
       return html;
     }
-  }, [isCandles, candles, candleT, ivS, market, showBand, showOracle, showXhat, showLevel, showNews, news, payload.agents, colors, duration, yDomain]);
+  }, [isCandles, candles, candleT, ivS, market, showBand, showOracle, showXhat, showLevel, showNews, news, overlayFund, overlayMom, colors, duration, yDomain]);
 
   const volOption = useMemo<EChartsOption>(() => {
     const t = candles.map((c) => c.t);
@@ -233,6 +271,35 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
             <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Reset zoom
           </Button>
         </div>
+        {(payload.agents.fundamental.length > 0 || payload.agents.momentum.length > 0) && (
+          <div className="flex w-full flex-wrap items-center gap-2 border-t border-border pt-3" role="group" aria-label="Overlay agents">
+            <span className="micro mr-1">Overlay agents</span>
+            {[...payload.agents.fundamental, ...payload.agents.momentum].map((a) => {
+              const on = overlayIds.has(a.id);
+              const color = colors.get(a.id)!;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleOverlay(a.id)}
+                  title={`${a.kind === 'fundamental' ? 'x̂' : 'l̂'} overlay for ${a.name}`}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px] transition-colors',
+                    on ? 'text-text' : 'border-border text-dim hover:text-muted',
+                  )}
+                  style={on ? { borderColor: `${color}99`, background: `${color}1F` } : undefined}
+                >
+                  <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: on ? color : 'transparent', boxShadow: `inset 0 0 0 1.5px ${color}` }} />
+                  {a.kind === 'fundamental' ? 'x̂' : 'l̂'} {a.name}
+                </button>
+              );
+            })}
+            <span className="font-mono text-[11px] text-dim">
+              {!showXhat && !showLevel ? 'turn on x̂ or l̂ above to draw them' : 'x̂ / l̂ toggles apply to the selected agents'}
+            </span>
+          </div>
+        )}
       </Card>
 
       {/* main chart */}
@@ -270,11 +337,11 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
           </div>
         </div>
         <EChart option={mainOption} height={460} group={GROUP} onEvents={onEvents} ariaLabel={`${isCandles ? `${iv}-minute candlestick` : 'tick mid-price'} chart of ${payload.meta.ticker} over the session`} />
-        {(showXhat || showLevel) && (
+        {((showXhat && overlayFund.length > 0) || (showLevel && overlayMom.length > 0)) && (
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-            {showXhat && payload.agents.fundamental.map((a) => <LegendItem key={a.id} color={colors.get(a.id)!} label={`x̂ ${a.name}`} />)}
-            {showLevel && payload.agents.momentum.map((a) => <LegendItem key={a.id} color={colors.get(a.id)!} label={`l̂ ${a.name}`} />)}
-            <span className="font-mono text-[11px] text-dim">overlays are clipped to the market price range</span>
+            {showXhat && overlayFund.map((a) => <LegendItem key={a.id} color={colors.get(a.id)!} label={`x̂ ${a.name}`} />)}
+            {showLevel && overlayMom.map((a) => <LegendItem key={a.id} color={colors.get(a.id)!} label={`l̂ ${a.name}`} />)}
+            <span className="font-mono text-[11px] text-dim">overlays break where they leave the price range · ▲▼ at the edge mark off-scale stretches (hover for the value)</span>
           </div>
         )}
       </Card>

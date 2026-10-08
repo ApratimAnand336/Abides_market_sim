@@ -158,3 +158,76 @@ export function bisectRight(arr: number[], x: number): number {
 export function newsNear(news: NewsRecord[], t: number, window: number): NewsRecord[] {
   return news.filter((n) => Math.abs(n.t - t) <= window);
 }
+
+// ── Off-scale overlays (spec v1.1 D1) ──────────────────────────────────────
+
+export interface OffScaleMarker {
+  t: number; // time of the run's largest excursion
+  v: number; // its true (off-scale) value
+  edge: 'top' | 'bottom';
+  label: string; // series / agent label for the tooltip
+  color: string;
+}
+
+/** Break an overlay line where it leaves the y-domain instead of clipping it
+ *  (clipping draws vertical streaks along the plot edge). Off-scale points
+ *  become null (use with connectNulls: false); each contiguous off-scale run
+ *  gets one marker at the axis edge, placed at the run's largest excursion. */
+export function clipToDomain(
+  t: number[],
+  v: (number | null)[],
+  domain: [number, number],
+  label = '',
+  color = C.muted,
+): { data: [number, number | null][]; markers: OffScaleMarker[] } {
+  const data: [number, number | null][] = new Array(t.length);
+  const markers: OffScaleMarker[] = [];
+  let run: OffScaleMarker | null = null;
+  for (let i = 0; i < t.length; i++) {
+    const x = v[i];
+    const edge = x === null || x === undefined ? null : x > domain[1] ? 'top' : x < domain[0] ? 'bottom' : null;
+    if (edge === null) {
+      data[i] = [t[i], x ?? null];
+      run = null;
+      continue;
+    }
+    data[i] = [t[i], null];
+    const dist = edge === 'top' ? x! - domain[1] : domain[0] - x!;
+    if (run && run.edge === edge) {
+      const runDist = edge === 'top' ? run.v - domain[1] : domain[0] - run.v;
+      if (dist > runDist) {
+        run.t = t[i];
+        run.v = x!;
+      }
+    } else {
+      run = { t: t[i], v: x!, edge, label, color };
+      markers.push(run);
+    }
+  }
+  return { data, markers };
+}
+
+/** Scatter series drawing off-scale markers at the axis edge: a triangle
+ *  pointing up at the top, down at the bottom. */
+export function offScaleMarkerSeries(markers: OffScaleMarker[], domain: [number, number], name = 'off-scale'): any {
+  return {
+    type: 'scatter' as const,
+    name,
+    silent: true,
+    clip: false,
+    z: 6,
+    symbolSize: 9,
+    data: markers.map((m) => ({
+      value: [m.t, m.edge === 'top' ? domain[1] : domain[0]],
+      symbol: 'triangle',
+      symbolRotate: m.edge === 'top' ? 0 : 180,
+      symbolOffset: [0, m.edge === 'top' ? 5 : -5], // keep the triangle inside the plot
+      itemStyle: { color: m.color, borderColor: C.card, borderWidth: 1 },
+    })),
+  };
+}
+
+/** Markers within `window` seconds of t, for an axis tooltip. */
+export function markersNear(markers: OffScaleMarker[], t: number, window: number): OffScaleMarker[] {
+  return markers.filter((m) => Math.abs(m.t - t) <= window);
+}
