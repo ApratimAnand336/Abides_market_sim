@@ -1,0 +1,35 @@
+# Changelog
+
+Sources: the git log of this repository and the specs in [`docs/specs/`](../specs/).
+Upstream ABIDES history (2021–2023, J.P. Morgan) is not repeated here.
+
+## v1.2 — R1: foundation fixes and living documentation (in progress, branch `v1.2`)
+
+Spec: [`docs/specs/spec_v1.2.txt`](../specs/spec_v1.2.txt). Filled in as each milestone lands.
+
+## v1.1 — fundamentalist and momentum fixes, dashboard additions (2026-10-08)
+
+Spec: [`docs/specs/spec_v1.1.txt`](../specs/spec_v1.1.txt). Report and acceptance numbers:
+[`docs/v1.1/REPORT.md`](../v1.1/REPORT.md). Commits e40df56 … 3c0b859.
+
+| Milestone | Commit | Files | Change |
+|---|---|---|---|
+| V1 | e40df56 | `agents/fundamental.py`, `configs/param_ranges.py`, `configs/rmsc04_ekf.py`, `tests/test_fundamental.py` | Removed the ±1% nudge; process noise Q from a 300 s value-speed estimate; smaller R ranges; target-position sizing (`target_position`, FUND_DECISION); volatility-scaled news (`apply_news`); `beta` and `news_sensitivity` removed |
+| V2 | 2ddee51 | `agents/momentum_ekf.py`, `configs/param_ranges.py`, `configs/rmsc04_ekf.py`, `tests/test_momentum_ekf.py`, `.gitignore` | M1 κ ranges; M2 `detrended_var`; M3 `tau_ratio` (τ = ratio × wake_mean); M4 ratchet follows down; M5 re-entry needs T ≥ θ_out; M6 `exit_pending`; M7 log keys; `log/` and `*.pkl` ignored |
+| V3 | 2caaed7 | `api/__init__.py`, `api/export.py`, `api/jobs.py`, `api/schema.py`, `web/src/…` | Payload schema 1.1; `ENGINE_VERSION` in the cache key; new fundamental export fields; D2 "P&L vs holding" (leaderboard column, KPI) |
+| V4 | e2a6e02 | `web/src/charts/series.ts`, `tabs/MarketOverview.tsx`, `agents/FundamentalDetail.tsx` | D1 off-scale overlays break with edge markers; D3 overlay agent chips |
+| V5 | 49c46bc | `api/export.py`, `api/stats.py`, `api/schema.py`, `api/jobs.py`, `configs/rmsc04_ekf.py` (`num_mm`), `web/src/components/health/…`, `Sidebar.tsx` | D4 market population table and count controls (`num_value`, `num_noise`, `num_mm`); D5 price vs true value panel (gap std, half-life) |
+| V6 | 3c0b859 | `scripts/acceptance_v1_1.py`, `docs/v1.1/` | Full-day acceptance (all targets met), report, screenshots |
+
+## v1.0 — our agents and the dashboard (2026-09-25 … 2026-10-06)
+
+There was no single written spec for the fundamentalist v1.0. The momentum agent follows
+"momentum_agent_spec v1.0" and the dashboard follows "dashboard_spec v1.0" (both in the
+owner's project notes, not in this repository).
+
+| Date | Commit | Files | Change |
+|---|---|---|---|
+| 2026-09-25 | 9a8fb8c | `agents/fundamental.py`, `agents/news_oracle_agent.py`, `messages/news.py`, `models/finbert_sentiment.py`, `models/order_size_model.py`, `configs/rmsc04_ekf.py`, `dashboard.py`, `run_dashboard_sim.py`, `run_simulation.py` | First version of our FundamentalistAgent (scalar Kalman filter, ER-based R, caution modulator), the NewsOracleAgent and news messages, FinBERT headline scoring, the `rmsc04_ekf` market, and a Streamlit dashboard |
+| 2026-09-25 | ea3ecf7 | `agents/fundamental.py`, `configs/rmsc04_ekf.py`, `run_dashboard_sim.py` | Bug fixes |
+| 2026-10-05 | 539ec6b | `agents/momentum_ekf.py`, `tests/test_momentum_ekf.py`, `configs/rmsc04_ekf.py`, `abides_core/utils.py`, `agents/fundamental.py` | MomentumEKFAgent; endowments for our agents; pandas ≥ 2 fix in `str_to_ns` |
+| 2026-10-06 | 826ab70 … aa38353 | `api/`, `web/`, `configs/param_ranges.py` | Dashboard M1–M8: payload export, HTTP API, React frontend with four tabs, and the hyperparameter ranges as a single source of truth |

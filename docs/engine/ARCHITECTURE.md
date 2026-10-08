@@ -1,0 +1,124 @@
+# Architecture
+
+## In one paragraph
+
+A simulation is a list of **agents** that only talk to each other by sending **messages**.
+A **kernel** keeps a queue of messages sorted by delivery time and hands them out one by one;
+time jumps straight from one event to the next (a *discrete-event* simulation). One special
+agent, the **exchange**, holds the **order book**: it receives buy and sell orders, matches
+them, and tells both sides when they trade. Every other agent is a trader that wakes up from
+time to time, asks the exchange for the current prices, decides, and sends orders. A hidden
+**oracle** knows the company's true value; some traders may look at it with noise. After the
+run our **export** reads the agents' logs and the exchange's history and writes one JSON
+**payload**, which the **web dashboard** draws.
+
+## Data flow
+
+```
+ configs/rmsc04_ekf.py: build_config(seed, counts, news, ...)
+        │  creates every agent (with its own seeded RNG), the oracle, the latency model
+        ▼
+ abides_core.Kernel  ── delivers messages in time order (latency + computation delay)
+        │
+        ├── ExchangeAgent (id 0) ── OrderBook: matching, book_log2 (L1–L10 snapshots), history (LIMIT/EXEC/CANCEL…)
+        │        ▲   │
+        │ orders │   │ fills, quotes, market hours
+        │        │   ▼
+        ├── traders: Noise, Value, MarketMaker, ABIDES Momentum, our Fundamentalist, our MomentumEKF
+        │        │   each keeps agent.log: (time, event type, dict)
+        │        └── oracle.observe_price(...)   (value agents, fundamentalist init, exchange)
+        │
+        └── NewsOracleAgent ── broadcasts NewsSentimentMsg (headline, sentiment) at set times
+        ▼
+ end_state["agents"]  (all agent objects, their logs, the exchange's books)
+        ▼
+ api/export.py: build_payload() ── quotes, candles, oracle path, depth, per-agent series,
+        │                         news reactions, population, market stats (api/stats.py);
+        │                         downsampled (LTTB) and validated against api/schema.py
+        ▼
+ runs/<run_id>.json  (cached by params + engine version, api/jobs.py)
+        ▼
+ api/server.py (FastAPI) ──► web/ (React + ECharts): four tabs
+```
+
+Entry points: `api/jobs.py:build_run_config` (the single place the dashboard and tests turn
+`RunParams` into a config) and `api/jobs.py:execute`.
+
+**"News oracle" ≠ "value oracle".** `NewsOracleAgent` is an *agent* that broadcasts
+headlines with a sentiment score; it knows nothing about value. The *oracle*
+(`kernel.oracle`) is not an agent; it is the source of the true value
+([ORACLE.md](ORACLE.md)). In v1.2 news changes beliefs only, never the true value
+([KNOWN_ISSUES.md](KNOWN_ISSUES.md), K6).
+
+## The agent population
+
+Defaults of `rmsc04_ekf.build_config`; the dashboard sidebar changes the counts marked †.
+Agent ids are assigned in this order.
+
+| Group | Count | Starting position | Wakes | Information | Role |
+|---|---|---|---|---|---|
+| ExchangeAgent | 1 | – | on messages | everything in the book | matching engine |
+| NoiseAgent | 1000 † (0–2000) | $100,000 cash | **once per day**, at a time drawn from a U-quadratic distribution over 09:00–16:00 (more mass near both ends) | best bid/ask only | random-direction liquidity taker |
+| ValueAgent | 97 † (0–150) | $100,000 cash | Poisson, mean ≈175 s (`lambda_a = 5.7e-12`/ns) | **noisy true value** (variance 1000 cents², sd ≈ 32¢) + best bid/ask | informed trader; pulls price to value |
+| FundamentalistAgent (ours) | 0–20 † | $50,000 + 50 shares | every 10 s | market mid only (one noisy oracle look at start-up) | Kalman value investor |
+| AdaptiveMarketMakerAgent | 2 † (0–2) | $100,000 cash | Poisson, mean 60 s | best bid/ask, recent volume | quotes ladders on both sides |
+| MomentumAgent (ABIDES MA) | 12 − our momentum count | $100,000 cash | Poisson, mean 37 s | mid history | 20/50 moving-average crossover |
+| MomentumEKFAgent (ours) | 0–12 † | $50,000 + 50 shares | Poisson, mean `wake_mean` ∈ [10, 60] s | market mid only | Kalman trend follower |
+| NewsOracleAgent | 1 | – | at scheduled news times | the headlines | broadcasts news |
+
+Details of the stock agents are in [AGENTS_ABIDES.md](AGENTS_ABIDES.md), and of ours in
+[AGENT_FUNDAMENTALIST.md](AGENT_FUNDAMENTALIST.md) and [AGENT_MOMENTUM.md](AGENT_MOMENTUM.md).
+"Starting position" for our agents: `starting_cash` stays $100,000 (total wealth) and
+`floor(0.5 · 100,000 / 1000) = 50` shares are bought at the reference price r̄ = $1000
+before the open, so P&L is measured against total starting wealth.
+
+## Units and session
+
+| Quantity | Unit inside the engine | Notes |
+|---|---|---|
+| prices, cash | integer cents | $1000.00 = 100,000. Mid can be a half-cent ((bid+ask)/2). |
+| variances (P, R, Q, sigma_n) | cents² | `oracle.observe_price(sigma_n=…)` takes a **variance**, not a standard deviation. |
+| time | integer nanoseconds | `str_to_ns("10S")` = 10,000,000,000. |
+| rates (`lambda_a`, `kappa`, `megashock_lambda_a`) | per nanosecond | e.g. `lambda_a = 5.7e-12`/ns ⇒ mean gap 1/λ = 175 s. |
+| momentum filter | log-price, seconds | z = ln(mid in cents); v̂ in log-return per second. |
+
+Session: the market opens at 09:30 and closes at `end_time` (10:00–16:00). Noise agents may
+wake from 09:00. The kernel stops 1 s after the close. The date (2021-02-05) is a label only.
+
+## Where randomness comes from
+
+A run is meant to be a pure function of its parameters. All randomness is seeded from the
+single `seed` in `build_config`:
+
+| RNG | Created where | Seeded from | Used for |
+|---|---|---|---|
+| global `np.random` | `build_config`: `np.random.seed(seed)` | `seed` | **config time only**: every agent's seed below, hyperparameter draws (`param_ranges.draw`), noise-agent wake times (`get_wake_time`) |
+| oracle `random_state` (per symbol) | `build_config` | `np.random.randint(0, 2³¹)` | the true-value path. v1.2: the whole path is drawn at construction from this RNG only ([ORACLE.md](ORACLE.md)) |
+| each agent's `random_state` | `build_config` | `np.random.randint(0, 2³¹)`, in agent order | everything the agent randomises: wake gaps, order sizes and sides, noisy oracle looks |
+| latency model RNG | `generate_latency_model` | `np.random.randint(0, 2³¹)` | pairwise message latencies (fixed at config time) |
+| kernel `random_state` | `build_config` | `np.random.randint(0, 2³¹)` | kernel-level randomness |
+
+Consequences:
+
+- Changing the number of agents of one type changes every seed drawn **after** it, so
+  "same seed, one more noise agent" is a different market. v1.2's oracle is drawn **before**
+  any agent, so the true-value path is the same whatever the agent counts (tested, I2).
+- Before v1.2 the oracle generated values lazily, one random draw per query, and drew
+  megashock times from the global `np.random` during the run. The true value therefore
+  depended on how often agents looked at it ([DECISIONS.md](DECISIONS.md), 2026-10-09).
+- Determinism across processes is tested by invariant I1 ([TESTING.md](TESTING.md)).
+
+## Code map
+
+| Path | Contents |
+|---|---|
+| `abides-core/abides_core/` | kernel, base `Agent`, message plumbing, time utilities |
+| `abides-markets/abides_markets/agents/` | exchange and trader agents; ours are `fundamental.py`, `momentum_ekf.py`, `news_oracle_agent.py` |
+| `abides-markets/abides_markets/order_book.py` | matching, `history`, `book_log2` |
+| `abides-markets/abides_markets/oracles/` | true-value sources |
+| `abides-markets/abides_markets/configs/rmsc04_ekf.py` | the market we run (`build_config`) |
+| `abides-markets/abides_markets/configs/param_ranges.py` | ranges of every randomised hyperparameter (single source of truth, also sent to the dashboard) |
+| `api/` | `jobs.py` (run + cache), `export.py` (payload), `stats.py` (market statistics), `schema.py` (payload contract), `server.py` (HTTP) |
+| `web/src/` | dashboard: `tabs/`, `components/`, `charts/`, `types/payload.ts` (TypeScript mirror of `api/schema.py`) |
+| `abides-markets/tests/`, `api/tests/` | unit and invariant tests |
+| `scripts/` | `dev.sh`, acceptance scripts |

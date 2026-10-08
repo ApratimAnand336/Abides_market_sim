@@ -1,0 +1,461 @@
+FINVERSE: SPEC v1.2 ("R1: foundation fixes + living documentation")
+====================================================================
+Date: 2026-10-09.  Owner: Apratim Anand (with Sarthak Agrawal), IIT Bombay.
+Audience: Claude Code (implementation) and any new Claude chat picking this up.
+Status: APPROVED by the owner. Build on branch v1.2, created from origin/v1.1 (3c0b859).
+Commit once per milestone (Part 7). Do not push; the owner reviews and pushes.
+Do not delete tracked files.
+
+The document is self-contained. Part 0 is the background. Part 1 is the documentation
+system, which is a first-class deliverable here: the owner asked that everything be
+documented as we go.
+
+
+====================================================================
+PART 0. CONTEXT
+====================================================================
+0.1 Project
+  FinVerse (startup + IIT Bombay ITSP 2026 project) is a realistic simulated stock market where
+  students trade against AI investors and learn the theory alongside. The engine is a fork of
+  ABIDES (J.P. Morgan's discrete-event market simulator). Repository:
+  ApratimAnand336/Abides_market_sim.
+  Branches: Momentum (MomentumEKFAgent), dashboard (FastAPI api/ + React web/),
+            v1.1 (spec v1.1, all done).
+  Prices are integer CENTS internally; variances are in cents^2. Price is about $1000
+  (r_bar = 100,000 cents).
+
+0.2 Market composition (rmsc04_ekf.py defaults; the dashboard can change counts)
+  1000 NoiseAgent, 97 ValueAgent (stock ABIDES), 2 AdaptiveMarketMakerAgent,
+  up to 20 FundamentalistAgent (ours, Kalman filter on the market price),
+  up to 12 MomentumEKFAgent (ours, 2-state Kalman trend filter),
+  1 ExchangeAgent, 1 NewsOracleAgent. Every agent starts with $100,000. Our agents hold 50% of
+  that in stock at the open (50 shares).
+
+0.3 What v1.1 achieved (verified independently 2026-10-08, seed 42, full day)
+  Fundamentalist: no drift (beliefs within about $0.13 of the market), the gain stays about
+  0.025 all day, no dumping of the endowment; news shifts are $0.28-1.55 instead of $33.
+  Momentum: all 12 agents can enter trends; they see 60-83% of the true trend speed; position
+  scale about 0.9 in trends. Dashboard D1-D5 are in. 55 agent tests and 22 export tests pass.
+
+0.4 Problems found after v1.1 that this spec fixes (evidence from experiments on 2026-10-09)
+  P1 Fundamentalist overtrading: each traded a median of about 1,900 shares/day on a 50-share
+     endowment, swinging 0 <-> 100 shares, with all 20 in sync. Together they placed more
+     orders than all 97 value agents. Cause: z = gap/sqrt(P) compares the gap only with the
+     agent's own belief uncertainty (about $0.30), not with the normal noise of the price
+     (sqrt(R) about $2). Tested fix z = gap/sqrt(P+R): turnover 168-231 shares/day, holdings
+     46-57 (10th-90th percentile), loss vs holding $5-13 instead of $80-110; market kurtosis
+     2.5-3.0 -> 6.7-8.0 (more realistic).
+  P2 The true value is not reproducible: SparseMeanRevertingOracle generates the fundamental
+     LAZILY. Each query draws one random number from the oracle's RNG, conditioned on the time
+     since the last query. The realised path therefore depends on how many queries happen and
+     when. Same seed with vs without news: identical for 10 min, $0.10 apart at 30 min, about
+     $2 apart after 2 h. Megashock times also use numpy's GLOBAL RNG. Consequence: no clean
+     counterfactuals, and in future a user's trade would change the company's true value.
+  P3 Market-maker death: AdaptiveMarketMakerAgent (polling mode), on a wake where the book has
+     no bid or ask and it has no last mid, places nothing AND never calls set_wakeup again.
+     With 3 value agents both MMs were dead all day (0 orders) and spreads reached $1.37.
+  P4 Market cannot start without value agents: with num_value = 0 there are zero orders all
+     day. Value agents are the only agents that place an order into an empty book; everyone
+     else waits for a two-sided book. (P3 makes this permanent.)
+  P5 No automated guarantees (determinism, conservation of cash and shares, book sanity).
+
+0.5 Explicitly NOT in this spec (planned later, do not implement)
+  R2 realism lab (stylized-facts scorecard, scenarios); R3 fundamentalist "research channel"
+  and step-by-step replacement of ValueAgents; R4 information news moving value,
+  calm/stressed volatility periods, MM inventory limits/skew; R5 calibration; R6 user
+  trading. The skewed initial noise, the uncertainty-based safety margin and the herding
+  tilt stay deferred.
+
+
+====================================================================
+PART 1. LIVING DOCUMENTATION (deliverable; update in every milestone)
+====================================================================
+Create docs/engine/ with the files below. Write for a smart newcomer (a new teammate, a
+judge or a mentor): plain language first, then the maths, then the code pointers. Every
+number must state where it came from (run config + seed + date). Never invent history: use
+this spec, the code, and the git log as sources.
+
+  docs/engine/README.md         index; how to run a simulation, the dashboard, the tests;
+                                glossary (mid, spread, oracle, fundamental, belief x_hat, P, R, Q,
+                                K, z, endowment, P&L vs holding)
+  docs/engine/ARCHITECTURE.md   components and data flow: kernel -> exchange/order book ->
+                                agents -> logs -> api/export -> payload -> web; agent population
+                                table (count, cash, wake pattern, information, role); units
+                                (cents, ns); where randomness comes from (one table of every RNG
+                                and its seed source)
+  docs/engine/ORACLE.md         what the oracle is and is not (section 1.1 below); the maths
+                                (OU + megashocks, units of fund_vol and kappa, measured
+                                volatility); the v1.2 pre-generated design; the reproducibility
+                                guarantee; future path sources (historical CSV, scenarios)
+  docs/engine/AGENT_FUNDAMENTALIST.md  full current maths (Kalman prediction with Q, R with
+                                ER, correction, caution, target-position sizing with the v1.2
+                                signal-to-noise z, news handling), each parameter with its range
+                                (read from param_ranges.py), log events and their keys, the
+                                history of changes (v1.0 -> v1.1 -> v1.2) with the reasons
+  docs/engine/AGENT_MOMENTUM.md same for MomentumEKFAgent (summarise spec v1.0 + v1.1 M1-M7;
+                                include the trend-bias formula v_hat/v ~= tau/(tau + K_l/K_v))
+  docs/engine/AGENTS_ABIDES.md  NoiseAgent, ValueAgent, AdaptiveMarketMakerAgent, ABIDES
+                                momentum: what each does, what information it has, order sizes,
+                                wake pattern, known limitations (section 1.2 below), and the v1.2
+                                market-maker cold-start fix
+  docs/engine/DECISIONS.md      decision log, one entry per decision: date, decision, reason,
+                                alternatives considered, evidence. Seed it with Appendix A.
+  docs/engine/CHANGELOG.md      v1.0, v1.1, v1.2: what changed, by file, with links to specs
+  docs/engine/KNOWN_ISSUES.md   the realism gaps with status (Appendix B), updated as they
+                                close
+  docs/engine/TESTING.md        how to run unit, invariant and acceptance tests; what each
+                                invariant guarantees; the latest results table
+Also copy the specs into docs/specs/ (spec_v1.1.txt, spec_v1.2.txt) if they are not already
+in the repo, so the history lives with the code. (The owner will provide v1.1 if it is
+missing; do not reconstruct it.)
+
+Rule: a milestone is not done until its docs are updated in the same commit.
+
+1.1 Text to adapt for ORACLE.md, "What the oracle is (and is not)"
+  - Two different things exist in the simulator:
+      the MARKET PRICE: produced by agents' orders meeting in the order book. Market
+        dynamics (volatility, trends, crashes, clustering) must come from here.
+      the TRUE VALUE ("fundamental"): what the company is really worth. In real life nobody
+        observes it directly; it changes when information arrives (earnings, news).
+        Informed traders estimate it with noise.
+  - The oracle is the simulator's source of the true value. It is NOT historical market data.
+    ABIDES' SparseMeanRevertingOracle invents the value with a random process: an
+    Ornstein-Uhlenbeck random walk with very weak pull to r_bar, plus rare "megashocks".
+    Its docstring says: "Historical dates are effectively meaningless to this oracle. It is
+    driven by the numpy random number seed."
+  - Why synthetic and not historical: a historical price series is itself a market price
+    (made by real traders), not a true value. Using it as the fundamental would make our
+    agents replay history instead of producing their own dynamics. Synthetic value lets us
+    control the information environment (calm days, shocks, news) and measure how the
+    market reacts.
+  - Measured on seed 42: value changes about 1.6-1.9 cents per sqrt(second); a whole day
+    spans about $2-4. The mean-reversion pull (kappa = 1.67e-16 per ns) is negligible within
+    a day. Megashocks (rate 2.78e-18 per ns, a mean gap of about 11 years; size about +/-$10)
+    essentially never happen within a session. That calmness is one root cause of the market's low volatility, to be
+    addressed in R4 (calm/stressed periods, information jumps).
+  - Historical data still has a place later: as an optional path source ("replay the
+    true-value shape of a real stock or event"), which the v1.2 design makes a drop-in.
+
+1.2 Text to adapt for AGENTS_ABIDES.md, "Why the market currently depends on ValueAgents"
+  ValueAgents do three jobs at once:
+    (1) INFORMATION: they observe the true value with small noise (variance r_bar/100 =
+        1000 cents^2, about 32 cents std) about every 175 s, so they pull the price toward
+        value and are the only consistently profitable group;
+    (2) LIQUIDITY and VOLUME: about 13,000 orders of about 100 shares per day, about 83% of
+        traded volume;
+    (3) STARTING THE MARKET: they are the only agents that will place an order into an empty
+        book (at their value estimate).
+  v1.2 removes dependency (3) for market makers (cold start, Part 4). R3 builds our
+  fundamentalist to take over (1) and, with enough agents and capital, (2). After that the
+  ValueAgents can be phased out. Until then they stay as scaffolding.
+
+
+====================================================================
+PART 2. FUNDAMENTALIST: SIGNAL-TO-NOISE SIZING (fixes P1)
+====================================================================
+File: abides-markets/abides_markets/agents/fundamental.py (target_position, execute_strategy).
+
+2.1 Change
+  Store the observation variance used in the current update: self.R_last = R
+  (set in execute_strategy right after _compute_observation_variance).
+  In target_position:
+      z = (x_hat - mid) / sqrt(P + R_last)       (P = posterior variance after correction)
+  Guard: if P + R_last <= 0, z = 0. The rest of target_position is unchanged:
+      w_star = clip(w0 + a_max*C_t*tanh(z/z0), 0, 1), step cap s_max, dead band b_f, side
+      from d.
+  Parameter ranges unchanged (a_max 0.6-1.0, z0 1-3, s_max 0.10-0.25, b_f 0.01-0.03).
+
+2.2 Meaning (put in AGENT_FUNDAMENTALIST.md)
+  P + R is the variance of (belief - price) when nothing is mispriced: my own uncertainty
+  plus the normal noise of the price. z is therefore a t-statistic, signal / noise:
+  z = 1 is one normal wiggle; z = 3 is a real mispricing.
+  Worked example (seed 42 medians): gap 13 cents, sqrt(P) = 30 cents, sqrt(R) = $2.09.
+      old z = 0.13/0.30 = 0.43 -> about 9 shares of target change
+      new z = 0.13/2.11 = 0.06 -> about 1.3 shares, below the dead band -> hold
+  Side effect: R rises in choppy markets (low ER), so the agent trades less in chop and
+  more when prices move cleanly.
+  Why the old version herded: all agents watch the same price through similar lagging
+  filters, so their gaps share sign and timing. Every dip looked like a strong buy signal
+  to all of them at once.
+
+2.3 Logging
+  FUND_DECISION adds "z_den" (= sqrt(P + R_last), cents) and keeps "z".
+  Export: no payload change is required. If the fundamental detail view shows z, label it
+  "edge (signal/noise)".
+
+2.4 Tests (update existing ones that assumed z = gap/sqrt(P))
+  T-F8  z uses P + R_last: with P = 900, R_last = 40,000 and gap = 100 cents,
+        z = 100/sqrt(40,900) (+/-1e-9).
+  T-F9  Typical gap, no trade: gap = 13 cents, P = 900, R = 43,681, C = 0.5, a_max = 0.9,
+        z0 = 2.1, W = $100k, holdings at 50% -> no order (dead band).
+  T-F10 Large gap trades: gap = $6 under the same settings -> a BUY of >= 1 share and
+        <= s_max*W/mid.
+
+
+====================================================================
+PART 3. PRE-GENERATED, SEED-STABLE ORACLE (fixes P2)
+====================================================================
+3.1 New class
+  File: abides-markets/abides_markets/oracles/pregenerated_oracle.py
+  class PregeneratedOracle(Oracle)   (keep SparseMeanRevertingOracle untouched for the stock
+                                      ABIDES configs)
+  Constructor: (mkt_open, mkt_close, symbols: Dict[str, Dict], grid_s: float = 1.0)
+  Per symbol, a params dict like today's, plus:
+      "path_source": "synthetic_ou"   (only this source in v1.2; design for more, see 3.4)
+      "random_state": np.random.RandomState   (dedicated; the ONLY RNG the path may use)
+  At construction, generate the whole path for [mkt_open, mkt_close] on a grid of grid_s
+  seconds:
+      t_k = mkt_open + k*grid_s*1e9,  k = 0..N   (N = ceil(duration/grid_s))
+      v_0 = r_bar
+      exact OU transition per step (same maths as compute_fundamental_at_timestamp):
+          d = grid_s*1e9 ns;  a = exp(-kappa*d)
+          v_{k+1} = r_bar + (v_k - r_bar)*a
+                    + sqrt( fund_vol^2/(2*kappa) * (1 - a^2) ) * eps_k,   eps_k ~ N(0,1)
+          Compute 1 - a^2 as -expm1(-2*kappa*d) for precision (kappa*d is about 1.7e-7
+          here). If kappa*d < 1e-12, use the limit: the stdev is fund_vol*sqrt(d) and a = 1.
+      megashocks: draw the arrival times as a Poisson process with rate megashock_lambda_a over
+          the session, and the values from the same bimodal distribution as today
+          (+/- megashock_mean with variance megashock_var, sign 50/50), ALL from the
+          dedicated random_state. Add each shock at the first grid point >= its time
+          (affecting all later points).
+      store values as float; round to int cents only when served (as ABIDES does).
+  Draw order must be fixed (the full eps vector first, then the megashocks) so the path is a
+  pure function of (seed, params, grid, session).
+
+3.2 Interface (drop-in for every current caller)
+  observe_price(symbol, current_time, random_state, sigma_n=1000) -> int
+      t < mkt_open  -> v_0;  t >= mkt_close -> last value;  otherwise the value at the
+      last grid point <= t (a step function; document why: no look-ahead).
+      sigma_n == 0 -> exact value; otherwise round(normal(value, sqrt(sigma_n))) drawn from
+      the CALLER's random_state (unchanged semantics: sigma_n is a variance).
+  get_daily_open_price(symbol, mkt_open, cents=True) -> v_0 (as int cents).
+  f_log[symbol]: a list of {"FundamentalTime": t_k, "FundamentalValue": int(round(v_k))}
+      for the whole grid, so ExchangeAgent and api/export keep working unchanged. If the
+      export payload grows too much, downsample in export (LTTB already exists), not here.
+  Also expose value_at(symbol, t) and path(symbol) -> (times_ns, values) for tests and future
+  features.
+  Any other method the current callers use (grep for "oracle." across abides-markets and
+  api) must keep working.
+
+3.3 Config
+  rmsc04_ekf.py: build PregeneratedOracle instead of SparseMeanRevertingOracle, same
+  parameters (kappa_oracle, fund_vol, megashock_*), grid_s = 1.0. The oracle's
+  random_state seed is still drawn from the config's seeded np.random, as today. Remove
+  every use of the global np.random from the oracle.
+  NewsOracleAgent is a different thing (it broadcasts headlines). Do not rename it, but
+  document in ARCHITECTURE.md that "news oracle" != "value oracle".
+
+3.4 Designed for later (do not build now; leave clean extension points)
+  path_source = "csv": read a (time, value) series and rescale it to r_bar (historical
+                shape replay)
+  path_source = "scenario": synthetic path plus scripted events (value jumps for
+                information news, calm/stressed volatility periods), each event logged
+  Implement path generation as a function generate_path(params, times, rng) so new sources
+  are added by writing one function.
+
+3.5 Tests
+  T-O1 Same seed, different market: run (a) default, (b) the same plus one news event,
+       (c) num_value = 20 and num_fund = 0, each for 1 hour. The oracle path(symbol) arrays
+       are identical (exact equality).
+  T-O2 Statistics match the old oracle: for 200 seeds, the std of 10 s / 60 s / 300 s value
+       changes is within +/-10% of the theory, sqrt(fund_vol^2*d_ns) (equivalently, compare
+       with SparseMeanRevertingOracle samples at the same horizons).
+  T-O3 observe_price(sigma_n=0) equals the step-function value at random times; times before
+       open and after close are clamped.
+  T-O4 The observation noise uses the caller's RNG: the same caller seed gives the same
+       observation, and different caller seeds give different observations, while the path
+       is unchanged.
+
+
+====================================================================
+PART 4. MARKET-MAKER COLD START AND LIVENESS (fixes P3, P4)
+====================================================================
+File: abides-markets/abides_markets/agents/market_makers/adaptive_market_maker_agent.py
+4.1 New constructor parameter  cold_start_price: Optional[int] = None  (cents).
+  Meaning: the price a market maker anchors to before any two-sided book exists, like
+  "yesterday's close" which every real trader knows. It is used ONLY while the agent has
+  neither a current mid nor a last mid.
+4.2 Polling mode (subscribe = False), in receive_message, after both AWAITING_* flags are
+    False:
+      if mid is None: mid = self.last_mid
+      if mid is None and self.cold_start_price is not None: mid = self.cold_start_price
+      if mid is not None: self.place_orders(mid)
+      ALWAYS: self.state = self.initialise_state(); self.set_wakeup(current_time +
+              self.get_wake_frequency())
+  (Today set_wakeup is reached only when mid is not None, which kills the agent forever.)
+  Subscription mode: apply the same fallback for mid (no wake change is needed there).
+  Log a "MM_COLD_START" event the first time cold_start_price is used.
+4.3 Config: rmsc04_ekf.py passes cold_start_price = r_bar to both market makers.
+4.4 Our agents: no change. With MMs quoting from the cold start, the book becomes two-sided
+    at the open, so noise, fundamentalist and momentum agents can act.
+4.5 Tests
+  T-M6 Empty book: a market with num_value = 0 runs 1 hour; trades > 0; each MM places
+       orders in every 10-minute window; one MM_COLD_START per MM.
+  T-M7 Liveness: in the default config, each MM's number of wakes is >= 90% of
+       duration/mean_wake (no silent death).
+  Document in AGENTS_ABIDES.md: with num_mm = 0 and num_value = 0 the market still cannot
+  start. That is a known limitation, addressed in R3 (our fundamentalist will be able to
+  quote into an empty book).
+
+
+====================================================================
+PART 5. INVARIANTS TEST SUITE (fixes P5)
+====================================================================
+File: abides-markets/tests/test_invariants.py. Each test runs a short real simulation
+(end_time 10:30 unless stated, 5 fundamentalists, 4 momentum, seed 42) through
+api.jobs.build_run_config so it matches the dashboard path.
+  I1 Determinism: two runs in separate fresh processes (subprocess) with the same params
+     give an identical sha256 of (a) every EXEC entry (time, price, quantity, agent_id,
+     oppos_agent_id) and (b) every agent's final holdings. If this fails, find and fix the
+     source (typically global np.random or set/dict ordering) and record it in
+     DECISIONS.md.
+  I2 Oracle stability: T-O1 (can share code).
+  I3 Conservation: snapshot every agent's holdings from config["agents"] BEFORE
+     abides.run. After the run: sum of shares over all agents is unchanged, and sum of CASH
+     is unchanged (no fees exist; if any rounding appears, the tolerance is 0 cents and the
+     cause must be found).
+  I4 Long-only safety (our agents): from HOLDINGS_UPDATED, shares >= 0 and CASH >= 0 at every
+     point for every FundamentalistAgent and MomentumEKFAgent.
+  I5 Book sanity: in every L1 snapshot with both sides, bid < ask; every EXEC price > 0.
+  I6 Runs without value agents: T-M6.
+  I7 MM liveness: T-M7.
+  TESTING.md lists each invariant, what it guarantees and how long it takes.
+
+
+====================================================================
+PART 6. SMALL DASHBOARD FIXES
+====================================================================
+  U1 Market Health "Price vs true value" caption: remove the hard-coded "Seed-42 reference:
+     std $0.37, half-life about 7.5 min". Show the run's own numbers only. A reference band
+     comes back in R2 from the realism lab.
+  U2 Market population table: the last column ("FINAL ...") is clipped on narrow widths.
+     Make the table scroll horizontally inside its card or wrap; no clipped values.
+  U3 The true-value line now comes from the full pre-generated path. Make sure it is
+     downsampled for the payload (target: total payload for a 20+12 full day <= 9 MB; report
+     the size).
+  Bump ENGINE_VERSION (cache invalidation). Schema changes only if needed; update
+  payload.ts if so.
+
+
+====================================================================
+PART 7. MILESTONES, ACCEPTANCE, REPORT
+====================================================================
+7.1 Milestones (one commit each, on branch v1.2; each includes its docs)
+  W0  docs/engine skeleton: README, ARCHITECTURE, DECISIONS (seeded with Appendix A),
+      CHANGELOG (v1.0, v1.1), KNOWN_ISSUES (Appendix B), TESTING (current state)
+  W1  Part 2 (sizing) + tests + AGENT_FUNDAMENTALIST.md
+  W2  Part 3 (oracle) + tests + ORACLE.md
+  W3  Part 4 (MM cold start) + tests + AGENTS_ABIDES.md
+  W4  Part 5 (invariants) + TESTING.md; fix any non-determinism found
+  W5  Part 6 (dashboard) + AGENT_MOMENTUM.md (documentation only; no momentum code changes)
+  W6  Acceptance (7.2), REPORT, CHANGELOG v1.2, KNOWN_ISSUES updated
+
+7.2 Acceptance runs (report numbers; if a target is missed, report it, do not tune silently)
+  Run A: seed 42, end 16:00, 20 fundamentalists, 12 momentum, no news.
+  Run B: as A plus "Company announces record quarterly earnings" (+0.9) at 00:10:00.
+  Run C: as A with seed 7.
+  Run Z: as A with num_value = 0 (market must run).
+  Fundamentalists (A, B, C):
+    - median shares traded per agent per day in [100, 400]   (v1.1 was about 1,900)
+    - holdings 10th-90th percentile within [35, 65]
+    - no agent at 0 or 100 shares for more than 1% of the session
+    - all v1.1 tracking targets still pass: median of per-agent median |x_hat - mid| < $1;
+      max < $5 excluding 5 min after news; median K over the last hour > 0.003
+  Oracle: the A and B true-value paths are identical (exact).
+  Run Z: trades > 0; both MMs active all session; report spread, gap and return statistics
+    (no targets; this is the baseline for R3).
+  Report for A, B, C, Z: trading P&L per agent by group (vs holding) and its sum (must be
+    $0); market maker P&L; 1-min return std, lag-1 autocorrelation, kurtosis; gap std and
+    half-life; payload size.
+7.3 Report: docs/v1.2/REPORT.md in the same style as v1.1 (what changed, tests, acceptance
+  table, deviations with reasons, open questions). Keep the numbers in KNOWN_ISSUES.md in
+  sync.
+
+
+====================================================================
+APPENDIX A. DECISION LOG SEED (for docs/engine/DECISIONS.md)
+====================================================================
+Use these entries as given (dates are when the owner approved). Add new decisions as they
+are made.
+  2026-10 (momentum spec v1.0)  MomentumEKFAgent: log-price damped-trend Kalman filter,
+      warm-up fit, Kaufman-ER observation noise, regime monitor, state machine
+      (NEUTRAL/BULL/BEAR/WATCH) with hysteresis, target-exposure sizing with a staircase
+      ratchet, primed news handling, long-only, endowment 0.5. Reason: a trend follower that
+      reasons about the speed and its uncertainty instead of fixed moving averages.
+  2026-10 (v1.0)  Our agents start with 50% of wealth in stock (an endowment), so they can
+      sell as well as buy. Reason: without shares, long-only fundamentalists could never act
+      on "overvalued".
+  2026-10-08 (v1.1)  Deleted the fundamentalist's +/-1% nudge after each order. Reason: it
+      made a $10 jump per order, equivalent to a phantom price thousands of dollars away;
+      beliefs drifted to about $949. Alternative (a herding tilt used only in decisions)
+      deferred.
+  2026-10-08 (v1.1)  Added process noise Q = q*sigma_f2_hat*dt (sigma_f2_hat estimated from
+      300 s price changes, prior 3 cents^2/s). Reason: without Q the gain fell like 1/n and
+      the belief froze into an all-day average. Constant Q rejected: it would not adapt to
+      other oracle settings.
+  2026-10-08 (v1.1)  Smaller observation noise delta in [0.0005, 0.003], lambda_er in
+      [0.5, 2]. Reason: the old R said prices were $2.6-70 off when the real noise is cents
+      to tens of cents. A self-calibrating R from innovations was deferred until the value
+      agents are replaced.
+  2026-10-08 (v1.1)  Target-position sizing (a holding target from the edge, a step cap, a
+      dead band) replaced flow sizing. Reason: the flow rule plus a 1-share minimum sold the
+      whole endowment within 7-19 minutes.
+  2026-10-08 (v1.1)  News shift = sentiment*k_news*sqrt(sigma_f2_hat*1800 s), additive, with
+      P += shift^2. Reason (owner's idea): scale news by how much the stock usually moves,
+      not by a % of price; the added P makes the market confirm or fade the news. The spread
+      was rejected as the scale (it measures liquidity, not movement).
+  2026-10-08 (v1.1)  Momentum M1-M7: kappa_l [0.02, 0.15], kappa_v [1, 2]; detrended
+      volatility; tau = tau_ratio*wake_mean with tau_ratio log-U[15, 40]; the ratchet cap
+      follows down; re-entry needs T >= theta_out; a persistent stop exit. Reason: the filter
+      saw only 26-28% of trend speed in the worst parameter corner; the trend counted as
+      volatility; agents with tau/wake <= 5 could never enter; noisy re-entries.
+  2026-10-08 (v1.1)  Dashboard D1-D5 (off-scale line breaks, P&L vs holding, overlay agent
+      selection, market population panel with count controls, price vs true value panel).
+  2026-10-08 (v1.1)  Deferred: skewed initial noise; self-calibrating R; the safety margin
+      in uncertainty units; replacing value agents; two news types; the herding tilt.
+  2026-10-09 (v1.2)  Fundamentalist edge z = gap/sqrt(P + R) (a t-statistic) instead of
+      gap/sqrt(P). Reason: overtrading and synchronised herding; experiment evidence in
+      0.4 P1.
+  2026-10-09 (v1.2)  Pre-generated, seed-stable true-value path. Reason: the lazy oracle
+      made the true value depend on agent activity, which breaks counterfactuals and future
+      user trading. Historical data is rejected as the fundamental (it is a market price,
+      not a value) but kept as a future optional path source.
+  2026-10-09 (v1.2)  Market-maker cold start from a reference price, and guaranteed
+      rescheduling. Reason: MMs died when the book was empty at their first wake; the market
+      could not start without value agents.
+  2026-10-09 (v1.2)  ValueAgents stay for now as scaffolding; they are replaced in R3 by
+      fundamentalists with a research channel. Reason: they currently provide information,
+      about 83% of volume and the market's first prices. Removing them directly (tested with
+      20, 3 and 0) gives either the same pinned market or a broken, illiquid one.
+  2026-10-09  Roadmap: R1 (this spec) -> R2 realism lab -> R3 informed fundamentalists and
+      value-agent replacement -> R4 value dynamics and news types, MM inventory management ->
+      R5 calibration -> R6 user trading.
+
+
+====================================================================
+APPENDIX B. KNOWN ISSUES SEED (for docs/engine/KNOWN_ISSUES.md)
+====================================================================
+Measured 2026-10-09: seed 42 and seed 7, 20+12 agents, 97 value agents, with v1.2 sizing.
+Real-market references are approximate stylized facts (R. Cont, Quantitative Finance,
+2001).
+  K1 Volatility too low: 1-min return std about 0.8-0.9 bps (about 2.6%/year) vs about
+     15-40%/year for real stocks. Root: calm synthetic value + tight pinning. Plan: R4.
+  K2 Predictable returns: 1-min lag-1 autocorrelation +0.14 to +0.37 (real about 0).
+     Plan: R3/R4.
+  K3 Weak volatility clustering: |r| autocorrelation about 0.06-0.07. Plan: R4.
+  K4 Price pinned to value: gap half-life 1-2 min; corr 0.95-0.99. Plan: R3.
+  K5 No regimes: the wildest 30-min volatility is only 2-3x the quietest. Plan: R4.
+  K6 News barely moves price (value agents pull it back; value never changes on news).
+     Plan: R3/R4.
+  K7 Flat intraday activity (noise agents wake uniformly; value agents at a constant rate).
+     Plan: R4/R5.
+  K8 Market makers lose money every day ($1.3k-12k each; adverse selection by value agents;
+     inventory skew disabled, mm_skew_beta = 0). Plan: R4.
+  K9 Fundamentalists have no information edge (they only see the price), so they lose
+     slightly. Plan: R3 research channel.
+  K10 Stock ABIDES agents have no budget limits (ignore_risk = True: unlimited shorting and
+     leverage). Plan: R3.
+  K11 Price impact of large orders not yet measured (needed before user trading). Plan: R2.
+  K12 Payload for a full day about 9 MB (budget 8 MB). Plan: R2.
+  CLOSED in v1.2 (verify in W6): P2 oracle reproducibility, P3 MM death, P4 market cannot
+  start without value agents (when at least one MM exists).
