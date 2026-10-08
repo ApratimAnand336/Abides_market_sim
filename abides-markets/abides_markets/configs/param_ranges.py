@@ -48,9 +48,11 @@ MOMENTUM_RANGES: Dict[str, Range] = {
     "lambda_er": (1.0, 6.0, "linear"),
     "kappa_R": (0.5, 2.0, "linear"),
     "c_P": (1.0, 5.0, "linear"),
-    "tau": (120.0, 1800.0, "log"),
-    "kappa_l": (0.05, 0.5, "linear"),
-    "kappa_v": (0.5, 2.0, "linear"),
+    # spec v1.1 M3: tau = tau_ratio * wake_mean (15-40 looks per trend lifetime)
+    "tau_ratio": (15.0, 40.0, "log"),
+    # spec v1.1 M1: the agent sees ~tau/(tau + K_l/K_v) of a steady trend
+    "kappa_l": (0.02, 0.15, "linear"),
+    "kappa_v": (1.0, 2.0, "linear"),
     "a_eps": (0.1, 0.3, "linear"),
     "eps_thr": (2.0, 4.0, "linear"),
     "g_max": (10.0, 10.0, "fixed"),

@@ -1,4 +1,6 @@
-# EKF-Based Momentum Investor Agent  (FinVerse spec v1.0)
+# EKF-Based Momentum Investor Agent  (FinVerse spec v1.0, with the v1.1
+# changes M1-M7: detrended volatility, ratchet that follows down, re-entry
+# needs T >= theta_out, persistent stop exit)
 #
 # Same three-layer template as the FundamentalistAgent (fundamental.py):
 #
@@ -53,6 +55,25 @@ def endowment(starting_cash: int, e0: float, p_ref: int) -> Tuple[int, int]:
     return starting_cash - n0 * p_ref, n0
 
 
+def detrended_var(t, z) -> float:
+    """Spec v1.1 M2: variance per second of log returns after removing the
+    window's time-weighted mean drift, so a trend does not count as
+    volatility (E[r^2/dt] = sigma^2 + v^2*dt for raw returns).
+
+        r_i = z_i - z_{i-1},  dt_i = t_i - t_{i-1}
+        v_bar = sum(r_i) / sum(dt_i)
+        e_i = r_i - v_bar * dt_i
+        variance = mean(e_i^2 / dt_i)
+    """
+    r = np.diff(np.asarray(z, dtype=float))
+    dt = np.diff(np.asarray(t, dtype=float))
+    if len(r) == 0:
+        return 0.0
+    v_bar = float(r.sum() / dt.sum())
+    e = r - v_bar * dt
+    return float(np.mean(e ** 2 / dt))
+
+
 def warmup_fit(
     t: List[float],
     z: List[float],
@@ -64,7 +85,9 @@ def warmup_fit(
     tau: float,
 ) -> Dict:
     """C.2: OLS fit of z on [1, t - t_last] and self-calibration of the noise
-    scales. Times in seconds, z in log-cents."""
+    scales. Times in seconds, z in log-cents.
+
+    sigma_ref2 is the detrended return variance (spec v1.1 M2)."""
     t = np.asarray(t, dtype=float)
     z = np.asarray(z, dtype=float)
     X = np.column_stack([np.ones_like(t), t - t[-1]])
@@ -74,9 +97,8 @@ def warmup_fit(
     s2_res = max(float(resid @ resid) / (len(z) - 2), sigma_q2)
     P0 = c_P * s2_res * XtX_inv
 
-    r = np.diff(z)
     dt = np.diff(t)
-    sigma_ref2 = max(float(np.mean(r ** 2 / dt)), sigma_q2 / float(np.mean(dt)))
+    sigma_ref2 = max(detrended_var(t, z), sigma_q2 / float(np.mean(dt)))
 
     return {
         "x": c.copy(),
@@ -156,7 +178,9 @@ def trend_strength(x: np.ndarray, P: np.ndarray) -> float:
 
 
 def realised_var(t: List[float], z: List[float], n: int, floor_var: float = 0.0) -> float:
-    """C.7: mean of r_i^2 / dt_i over the last n steps (variance per second).
+    """C.7: detrended variance per second of the last n log returns
+    (spec v1.1 M2: the window's mean drift is removed first, see
+    detrended_var).
 
     floor_var: lower bound. The agent passes sigma_q^2 / mean(dt) — the same
     tick-quantisation floor used for sigma_ref^2 in C.2 — so a perfectly flat
@@ -167,7 +191,7 @@ def realised_var(t: List[float], z: List[float], n: int, floor_var: float = 0.0)
     z = np.asarray(z[-(n + 1):], dtype=float)
     if len(z) < 2:
         return floor_var
-    return max(float(np.mean(np.diff(z) ** 2 / np.diff(t))), floor_var)
+    return max(detrended_var(t, z), floor_var)
 
 
 def forecast(
@@ -236,8 +260,11 @@ def ratchet_bull(
     e_star: float, e_cap: float, p_add: float, p: float, k_add: float, sigma_tau: float
 ) -> Tuple[float, float, float, bool]:
     """F.3 (BULL): exposure may only rise at a new high k_add*sigma_tau above
-    the last add point. Returns (e_target, e_cap, p_add, added)."""
+    the last add point. Spec v1.1 M4: the cap first follows e_star down, so
+    after a cut the exposure is rebuilt only at a fresh high.
+    Returns (e_target, e_cap, p_add, added)."""
     added = False
+    e_cap = min(e_cap, e_star)
     if p >= p_add + k_add * sigma_tau:
         e_cap = max(e_cap, e_star)
         p_add = p
@@ -248,8 +275,10 @@ def ratchet_bull(
 def ratchet_bear(
     e_star: float, e_floor: float, p_add: float, p: float, k_add: float, sigma_tau: float
 ) -> Tuple[float, float, float, bool]:
-    """F.3 (BEAR, mirror). Returns (e_target, e_floor, p_add, added)."""
+    """F.3 (BEAR, mirror; spec v1.1 M4: the floor follows e_star up first).
+    Returns (e_target, e_floor, p_add, added)."""
     added = False
+    e_floor = max(e_floor, e_star)
     if p <= p_add - k_add * sigma_tau:
         e_floor = min(e_floor, e_star)
         p_add = p
@@ -355,6 +384,7 @@ class MomentumEKFAgent(TradingAgent):
         kappa_R: float = 1.0,
         c_P: float = 2.0,
         tau: float = 600.0,
+        tau_ratio: Optional[float] = None,  # v1.1 M3: tau / wake_mean (display)
         kappa_l: float = 0.2,
         kappa_v: float = 1.0,
         a_eps: float = 0.2,
@@ -407,6 +437,7 @@ class MomentumEKFAgent(TradingAgent):
         self.k_add, self.mu_m = k_add, mu_m
         self.eta_news, self.rho_news = eta_news, rho_news
         self.wake_mean = wake_mean
+        self.tau_ratio = tau_ratio if tau_ratio is not None else tau / wake_mean
 
         # ── Endowment (B.2): starting_cash stays = total starting wealth ─
         cash, n0 = endowment(starting_cash, initial_exposure, reference_price)
@@ -447,6 +478,9 @@ class MomentumEKFAgent(TradingAgent):
         self.e_cap: Optional[float] = None
         self.e_floor: Optional[float] = None
         self.p_add: Optional[float] = None
+        self.added: bool = False
+        # v1.1 M6: a STOP exit stays urgent until the target is reached
+        self.exit_pending: bool = False
         self.state_history: List[Dict] = []
 
         # ── Messaging state ─────────────────────────────────────────────
@@ -629,7 +663,8 @@ class MomentumEKFAgent(TradingAgent):
         e_star, e_target = self._target_with_ratchet(p, a, v_hat, sigma_tau, entered)
 
         return self._decide_order(
-            bid, ask, p, v_hat, er, a, s, m, g, e_star, e_target, exit_kind
+            bid, ask, p, v_hat, er, a, s, m, g, e_star, e_target, exit_kind,
+            {"sigma_hat2": sigma_hat2, "sigma_tau": sigma_tau},
         )
 
     # ── helpers for process_observation ─────────────────────────────────
@@ -711,9 +746,12 @@ class MomentumEKFAgent(TradingAgent):
         else:
             self.trough, self.e_floor = p, e_star
         self.p_add = p
+        self.exit_pending = False
         self._record_transition(t, new_state, reason, p)
 
     def _exit_to_watch(self, t: float, kind: str, extreme: float) -> None:
+        if kind == STOP:
+            self.exit_pending = True
         self.came_from = self.mstate
         self.L = extreme
         self.t_w = t
@@ -774,10 +812,13 @@ class MomentumEKFAgent(TradingAgent):
             return None, False
 
         # WATCH
-        if self.came_from == BULL and p >= self.L + self.k_re * sigma_tau and v_hat > 0:
+        # v1.1 M5: re-entry also needs the trend strength back past theta_out
+        if (self.came_from == BULL and p >= self.L + self.k_re * sigma_tau
+                and v_hat > 0 and T >= self.theta_out):
             self._enter(BULL, t, p, a, v_hat, "REENTRY")
             return None, True
-        if self.came_from == BEAR and p <= self.L - self.k_re * sigma_tau and v_hat < 0:
+        if (self.came_from == BEAR and p <= self.L - self.k_re * sigma_tau
+                and v_hat < 0 and T <= -self.theta_out):
             self._enter(BEAR, t, p, a, v_hat, "REENTRY")
             return None, True
         opposite = BEAR if self.came_from == BULL else BULL
@@ -795,17 +836,18 @@ class MomentumEKFAgent(TradingAgent):
         ratchet was just initialised (e_cap/e_floor = e*, p_add = p), so no
         add event is evaluated."""
         e_star = target_exposure(self.mstate, a, v_hat, self.e_0, self.e_max, self.e_min)
+        self.added = False
         if self.mstate == BULL:
             if entered:
                 return e_star, min(e_star, self.e_cap)
-            e_target, self.e_cap, self.p_add, _ = ratchet_bull(
+            e_target, self.e_cap, self.p_add, self.added = ratchet_bull(
                 e_star, self.e_cap, self.p_add, p, self.k_add, sigma_tau
             )
             return e_star, e_target
         if self.mstate == BEAR:
             if entered:
                 return e_star, max(e_star, self.e_floor)
-            e_target, self.e_floor, self.p_add, _ = ratchet_bear(
+            e_target, self.e_floor, self.p_add, self.added = ratchet_bear(
                 e_star, self.e_floor, self.p_add, p, self.k_add, sigma_tau
             )
             return e_star, e_target
@@ -825,11 +867,20 @@ class MomentumEKFAgent(TradingAgent):
         e_star: float,
         e_target: float,
         exit_kind: Optional[str],
+        extra: Optional[Dict] = None,
     ) -> Optional[Tuple[Side, int, int]]:
-        """F.2 sizing + F.4 limit price; logs MOM_DECISION."""
+        """F.2 sizing + F.4 limit price; logs MOM_DECISION.
+
+        v1.1 M6: while exit_pending, orders use STOP (urgent) pricing and
+        ignore the dead band; the flag clears once |n - n_star| < n_min."""
         cash = self.holdings.get("CASH", 0)
         n = self.holdings.get(self.symbol, 0)
         n_star, dn, skip = target_shares_delta(e_target, cash, n, p, self.b, self.n_min)
+        if self.exit_pending:
+            if abs(dn) < self.n_min:
+                self.exit_pending = False
+            else:
+                skip = False
 
         decision = {
             "state": self.mstate,
@@ -846,6 +897,10 @@ class MomentumEKFAgent(TradingAgent):
             "u": None,
             "P_L": None,
             "skipped_reason": None,
+            "added": bool(self.added),
+            "exit_pending": self.exit_pending,
+            "sigma_hat2": None if extra is None else float(extra["sigma_hat2"]),
+            "sigma_tau": None if extra is None else float(extra["sigma_tau"]),
         }
 
         order = None
@@ -853,7 +908,7 @@ class MomentumEKFAgent(TradingAgent):
             decision["skipped_reason"] = "dead_band"
         else:
             is_buy = dn > 0
-            if exit_kind == STOP:
+            if exit_kind == STOP or self.exit_pending:
                 order_class = STOP
             elif (self.mstate == BULL and is_buy) or (self.mstate == BEAR and not is_buy):
                 order_class = TREND

@@ -319,6 +319,8 @@ def build_config(
     for j in range(agent_count, agent_count + num_mom_ekf_agents):
         # Ranges in param_ranges.py; keyword-argument evaluation order fixes
         # the draw order, keep it unchanged so seeded runs reproduce.
+        # Spec v1.1 M3: wake_mean is drawn FIRST and tau = tau_ratio * wake_mean.
+        wake_mean = draw(MOM, "wake_mean")
         n_er = draw(MOM, "n_er")
         agents.append(
             MomentumEKFAgent(
@@ -336,7 +338,8 @@ def build_config(
                 lambda_er=draw(MOM, "lambda_er"),
                 kappa_R=draw(MOM, "kappa_R"),
                 c_P=draw(MOM, "c_P"),
-                tau=draw(MOM, "tau"),
+                tau_ratio=(tau_ratio := draw(MOM, "tau_ratio")),
+                tau=tau_ratio * wake_mean,
                 kappa_l=draw(MOM, "kappa_l"),
                 kappa_v=draw(MOM, "kappa_v"),
                 a_eps=draw(MOM, "a_eps"),
@@ -363,7 +366,7 @@ def build_config(
                 # ── News / scheduling ───────────────────────────────
                 eta_news=draw(MOM, "eta_news"),
                 rho_news=draw(MOM, "rho_news"),
-                wake_mean=draw(MOM, "wake_mean"),
+                wake_mean=wake_mean,
                 random_state=np.random.RandomState(
                     seed=np.random.randint(low=0, high=2**31, dtype="uint32")
                 ),

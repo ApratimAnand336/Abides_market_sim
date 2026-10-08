@@ -1,4 +1,5 @@
-"""Unit tests for the MomentumEKFAgent (FinVerse spec v1.0, Part H.2).
+"""Unit tests for the MomentumEKFAgent (FinVerse spec v1.0 Part H.2, and the
+spec v1.1 changes M1-M7: tests T-M1..T-M5 at the end).
 
 No simulation kernel is needed: the maths is tested through the pure helpers
 in momentum_ekf.py, and the decision logic by building an agent directly and
@@ -19,6 +20,7 @@ from abides_markets.agents.momentum_ekf import (
     WATCH,
     MomentumEKFAgent,
     apply_news,
+    detrended_var,
     endowment,
     kaufman_er,
     kf_correct,
@@ -26,6 +28,7 @@ from abides_markets.agents.momentum_ekf import (
     obs_variance,
     ratchet_bear,
     ratchet_bull,
+    realised_var,
     regime_update,
     target_exposure,
     target_shares_delta,
@@ -271,10 +274,12 @@ def test_pyramiding_adds_only_at_new_highs():
 
     # exposure may decrease at any time
     _, _, e = sm_step(agent, 420, p_new, T=2.5, a=0.2, sigma_tau=sigma_tau)
-    assert e == pytest.approx(0.5 + 0.2 * 0.4)
-    # ... and never exceeds the confirmed cap without a new add event
+    e_cut = 0.5 + 0.2 * 0.4
+    assert e == pytest.approx(e_cut)
+    # ... and (v1.1 M4: the cap followed it down) is not rebuilt without a
+    # new add event
     _, _, e = sm_step(agent, 450, p_new - 3, T=2.5, a=0.99, sigma_tau=sigma_tau)
-    assert e <= agent.e_cap + 1e-12 and agent.e_cap == pytest.approx(e_high)
+    assert e == pytest.approx(e_cut) and agent.e_cap == pytest.approx(e_cut)
 
 
 def test_bear_ratchet_mirror():
@@ -302,7 +307,10 @@ def test_trailing_stop_then_reentry():
     assert agent.mstate == WATCH
     sm_step(agent, 450, 100_040 + margin + 1, T=-0.5)  # past L but v < 0
     assert agent.mstate == WATCH
-    _, entered, _ = sm_step(agent, 480, 100_040 + margin + 1, T=0.5)  # v > 0
+    # v1.1 M5: v > 0 is not enough, T must be back at theta_out (0.75)
+    sm_step(agent, 465, 100_040 + margin + 1, T=0.5)
+    assert agent.mstate == WATCH
+    _, entered, _ = sm_step(agent, 480, 100_040 + margin + 1, T=1.0)
     assert entered and agent.mstate == BULL
     assert agent.state_history[-1]["reason"] == "REENTRY"
 
@@ -471,3 +479,162 @@ def test_endowment(agent_cls):
     )
     assert poor.holdings == {"CASH": 150_000}
     assert endowment(150_000, 0.5, P0_CENTS) == (150_000, 0)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Spec v1.1 (6.2 T-M1..T-M5)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _ramp_steady_state(kappa_l, kappa_v, wake=30.0, tau_ratio=15.0, n=3000, N_w=20, n_er=15):
+    """Noiseless log-price ramp at regular dt = wake. Returns
+    (v_hat / v, dt / ((1 - phi)(tau + K_l / K_v)))."""
+    v = 2e-6
+    tau = tau_ratio * wake
+    t = np.arange(n) * wake
+    z = log(P0_CENTS) + v * t
+    sigma_q2 = 1.0 / (12.0 * exp(z[N_w - 1]) ** 2)
+    fit = warmup_fit(t[:N_w], z[:N_w], sigma_q2, 2.0, 1.0, kappa_l, kappa_v, tau)
+    x, P = fit["x"], fit["P"]
+    epsbar, g_Q = 1.0, 1.0
+    for k in range(N_w, n):
+        F, Q = transition(wake, tau, fit["sigma_l2"], fit["sigma_vinf"], g_Q)
+        x_minus, P_minus = kf_predict(x, P, F, Q)
+        R = obs_variance(fit["R_base"], 3.0, kaufman_er(list(z[k - n_er : k + 1])))
+        x, P, y, S, K = kf_correct(x_minus, P_minus, z[k], R)
+        _, epsbar, g_Q = regime_update(epsbar, y, S, 0.2, 3.0, 10.0)
+    phi = exp(-wake / tau)
+    return x[1] / v, wake / ((1.0 - phi) * (tau + K[0] / K[1]))
+
+
+@pytest.mark.parametrize("kappa_l", [0.02, 0.15])
+@pytest.mark.parametrize("kappa_v", [1.0, 2.0])
+def test_ramp_bias_new_ranges(kappa_l, kappa_v):
+    """T-M1. Measured v_hat/v (tau_ratio 15, wake 30 s): 0.854 (0.02, 1.0),
+    0.879 (0.02, 2.0), 0.833 (0.15, 1.0), 0.866 (0.15, 2.0); the formula
+    agrees to < 0.01%."""
+    ratio, predicted = _ramp_steady_state(kappa_l, kappa_v)
+    assert ratio >= 0.60
+    assert ratio == pytest.approx(predicted, rel=0.02)
+
+
+def test_detrended_variance():
+    """T-M2: random walk with drift; the returns' noise variance is known."""
+    rng = np.random.RandomState(21)
+    n = 4000
+    dt = rng.uniform(5, 60, n)
+    t = np.concatenate([[0.0], np.cumsum(dt)])
+    sigma2, v = 1e-9, 3e-6  # per second; raw adds v^2 * mean(dt) ~ 0.3 * sigma2
+    r = v * dt + rng.normal(0, 1, n) * np.sqrt(sigma2 * dt)
+    z = log(P0_CENTS) + np.concatenate([[0.0], np.cumsum(r)])
+    est = realised_var(list(t), list(z), n)
+    raw = float(np.mean(np.diff(z) ** 2 / np.diff(t)))
+    assert est == pytest.approx(sigma2, rel=0.15)
+    assert est < raw and raw > 1.2 * sigma2
+    assert detrended_var(t, z) == pytest.approx(est)
+    fit = warmup_fit(list(t[:400]), list(z[:400]), 1e-20, 2.0, 1.0, 0.1, 1.0, 600.0)
+    assert fit["sigma_ref2"] == pytest.approx(sigma2, rel=0.25)
+
+
+def test_ratchet_follows_down():
+    """T-M3: 0.6, 0.3, 0.6 without a new high -> 0.6, 0.3, 0.3; then a new
+    high -> 0.6. Bear mirror (exposures reflected around 0.5)."""
+    cap, p_add, k_add, sig = 0.6, 100_000.0, 0.5, 10.0
+    out = []
+    for e_star in (0.6, 0.3, 0.6):
+        e, cap, p_add, added = ratchet_bull(e_star, cap, p_add, 100_000.0, k_add, sig)
+        out.append(e)
+        assert not added
+    assert out == pytest.approx([0.6, 0.3, 0.3])
+    e, cap, p_add, added = ratchet_bull(0.6, cap, p_add, 100_010.0, k_add, sig)
+    assert added and e == pytest.approx(0.6) and p_add == 100_010.0
+
+    flr, p_add = 0.4, 100_000.0
+    out = []
+    for e_star in (0.4, 0.7, 0.4):
+        e, flr, p_add, added = ratchet_bear(e_star, flr, p_add, 100_000.0, k_add, sig)
+        out.append(e)
+        assert not added
+    assert out == pytest.approx([0.4, 0.7, 0.7])
+    e, flr, p_add, added = ratchet_bear(0.4, flr, p_add, 99_990.0, k_add, sig)
+    assert added and e == pytest.approx(0.4)
+
+
+def _to_watch_after_stop(direction=BULL):
+    agent = neutral_agent()
+    sign = 1 if direction == BULL else -1
+    sm_step(agent, 300, 100_000 + sign * 10, T=sign * 2.5)
+    sm_step(agent, 330, 100_000 + sign * 40, T=sign * 2.5)
+    kind, _, _ = sm_step(agent, 360, 100_000 + sign * 9, T=sign * 2.5)
+    assert kind == STOP and agent.mstate == WATCH and agent.exit_pending
+    return agent
+
+
+@pytest.mark.parametrize("direction", [BULL, BEAR])
+def test_reentry_needs_theta_out(direction):
+    """T-M4: past L + k_re*sigma_tau with the right velocity sign, but
+    0 < |T| < theta_out: blocked; |T| >= theta_out: re-entry."""
+    agent = _to_watch_after_stop(direction)
+    sign = 1 if direction == BULL else -1
+    p = agent.L + sign * (agent.k_re * 10.0 + 1)
+    sm_step(agent, 390, p, T=sign * 0.5 * agent.theta_out)
+    assert agent.mstate == WATCH
+    _, entered, _ = sm_step(agent, 420, p, T=sign * agent.theta_out)
+    assert entered and agent.mstate == direction
+    assert agent.state_history[-1]["reason"] == "REENTRY"
+    assert not agent.exit_pending  # cleared on entry
+
+
+def test_exit_pending_survives_skipped_wake():
+    """T-M5: after a STOP the flag keeps STOP pricing and bypasses the dead
+    band until the position is back at target."""
+    agent = _to_watch_after_stop(BULL)
+    warm = _warm_agent()  # filter state needed by the F.4 forecast
+    for k in ('x_hat', 'P', 'R_base', 'sigma_l2', 'sigma_vinf'):
+        setattr(agent, k, getattr(warm, k))
+    bid, ask, p = 99_999, 100_001, 100_000.0
+    # long 70% after the trend; the stop target is e_0 = 50%
+    agent.holdings = {"CASH": CASH - 70 * P0_CENTS, "ABM": 70}
+    args = (bid, ask, p, 0.0, 0.9, 0.5, 0.5, 0.5, 1.0, 0.5, 0.5)
+    order = agent._decide_order(*args, STOP)
+    assert order is not None and order[0] == Side.ASK and order[2] == bid  # urgent
+    # the order did not fill (wake skipped / order cancelled): still pending
+    order = agent._decide_order(*args, None)
+    assert agent.exit_pending and order is not None and order[2] == bid
+    dec = [ev for _, typ, ev in agent.log if typ == "MOM_DECISION"][-1]
+    assert dec["order_class"] == STOP and dec["exit_pending"] is True
+    # inside the normal dead band (2 shares < b * n_star = 5): still trades
+    agent.holdings = {"CASH": CASH - 52 * P0_CENTS, "ABM": 52}
+    order = agent._decide_order(*args, None)
+    assert order == (Side.ASK, 2, bid)
+    # target reached: flag clears, no order
+    agent.holdings = {"CASH": CASH - 50 * P0_CENTS, "ABM": 50}
+    assert agent._decide_order(*args, None) is None
+    assert not agent.exit_pending
+    # once cleared the dead band applies again
+    agent.holdings = {"CASH": CASH - 52 * P0_CENTS, "ABM": 52}
+    assert agent._decide_order(*args, None) is None
+
+
+def test_tau_ratio_and_decision_log_keys():
+    agent = make_agent(tau=900.0, wake_mean=30.0)
+    assert agent.tau_ratio == pytest.approx(30.0)
+    agent = make_agent(tau=450.0, tau_ratio=15.0, wake_mean=30.0)
+    assert agent.tau_ratio == 15.0
+    agent = _warm_agent()
+    agent.process_observation(int(30e9) * 30, 100_000, 100_001)
+    dec = [ev for _, typ, ev in agent.log if typ == "MOM_DECISION"][-1]
+    assert {"added", "exit_pending", "sigma_hat2", "sigma_tau"} <= set(dec)
+    assert dec["sigma_hat2"] > 0 and dec["sigma_tau"] > 0
+
+
+def test_config_ties_tau_to_wake():
+    from abides_markets.configs.param_ranges import MOMENTUM_RANGES
+    from abides_markets.configs.rmsc04_ekf import build_config
+
+    cfg = build_config(seed=3, num_ekf_agents=0, num_mom_ekf_agents=4, end_time="09:31:00")
+    lo, hi, _ = MOMENTUM_RANGES["tau_ratio"]
+    for i in cfg["_mom_ekf_agent_ids"]:
+        a = cfg["agents"][i]
+        assert a.tau == pytest.approx(a.tau_ratio * a.wake_mean)
+        assert lo <= a.tau_ratio <= hi

@@ -156,3 +156,7 @@ cython_debug/
 runs/
 web/node_modules/
 web/dist/
+
+# Simulation logs and pickles (spec v1.1 M7; existing tracked files stay tracked)
+log/
+*.pkl
