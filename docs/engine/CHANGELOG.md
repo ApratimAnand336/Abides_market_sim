@@ -7,6 +7,11 @@ Upstream ABIDES history (2021–2023, J.P. Morgan) is not repeated here.
 
 Spec: [`docs/specs/spec_v1.2.txt`](../specs/spec_v1.2.txt). Filled in as each milestone lands.
 
+| Milestone | Files | Change |
+|---|---|---|
+| W0 | `docs/engine/`, `docs/specs/` | Living documentation skeleton; specs stored with the code |
+| W1 | `agents/fundamental.py`, `tests/test_fundamental.py` | Edge z = (x̂ − mid)/√(P + R_last) (`R_last` stored each update); `z_den` in FUND_DECISION; T-F8 … T-F10 |
+
 ## v1.1 — fundamentalist and momentum fixes, dashboard additions (2026-10-08)
 
 Spec: [`docs/specs/spec_v1.1.txt`](../specs/spec_v1.1.txt). Report and acceptance numbers:

@@ -146,6 +146,9 @@ class FundamentalistAgent(TradingAgent):
         self.P: float = initial_uncertainty
         # sigma_f2_hat: estimated speed of value moves (cents^2 / s), F3
         self.sigma_f2_hat: float = SIGMA_F_PRIOR
+        # R_last: observation variance used in the latest update (cents^2);
+        # the noise term of the edge z (spec v1.2 Part 2)
+        self.R_last: float = 0.0
 
         # ── Internal Market Price Log ────────────────────────────────────
         # Every time we query the spread, we append the observed mid-price.
@@ -410,7 +413,7 @@ class FundamentalistAgent(TradingAgent):
         Target-position sizing (spec v1.1 F4): decide how much to HOLD given
         the edge, then trade only the difference.
 
-            z      = (x_hat - mid) / sqrt(P)          edge in belief sd's
+            z      = (x_hat - mid) / sqrt(P + R_last)  edge as signal / noise
             w_star = clip(w0 + a_max * C * tanh(z / z0), 0, 1)
             d_star = round((w_star * W - shares * mid) / mid)
 
@@ -418,13 +421,21 @@ class FundamentalistAgent(TradingAgent):
         dropped (dead band) when |d| * mid < b_f * W.  Long-only, no
         leverage caps are applied later, once the limit price is known.
 
-        Returns a dict with z, w_star, w_now, d_star, d (after the step cap
+        Spec v1.2: P + R is the variance of (belief - price) when nothing is
+        mispriced (own uncertainty + normal price noise), so z is a
+        t-statistic: z = 1 is one normal wiggle, z = 3 a real mispricing.
+        (v1.1 used sqrt(P) alone, which made every wiggle look like a strong
+        signal and synchronised the agents.)
+
+        Returns a dict with z, z_den, w_star, w_now, d_star, d (after the step cap
         and dead band; 0 when skipped) and skipped_reason.
         """
         cash = self.holdings.get("CASH", 0)
         shares = self.holdings.get(self.symbol, 0)
         W = cash + shares * mid
-        z = (self.x_hat - mid) / sqrt(self.P) if self.P > 0 else 0.0
+        var = self.P + self.R_last
+        z_den = sqrt(var) if var > 0 else 0.0
+        z = (self.x_hat - mid) / z_den if var > 0 else 0.0
         w_star = min(1.0, max(0.0, self.initial_exposure
                               + self.a_max * confidence * tanh(z / self.z0)))
         w_now = shares * mid / W if W > 0 else 0.0
@@ -437,6 +448,7 @@ class FundamentalistAgent(TradingAgent):
             d, skipped_reason = 0, "dead_band"
         return {
             "z": z,
+            "z_den": z_den,
             "w_star": w_star,
             "w_now": w_now,
             "d_star": d_star,
@@ -481,6 +493,7 @@ class FundamentalistAgent(TradingAgent):
 
         # ── 5. Compute observation variance ──────────────────────────────
         R = self._compute_observation_variance(mid)
+        self.R_last = R
 
         # ── 6. Correction step ───────────────────────────────────────────
         self.x_hat, self.P, K = self.correction(x_predicted, P_predicted, mid, R)
@@ -543,6 +556,7 @@ class FundamentalistAgent(TradingAgent):
 
         self.logEvent("FUND_DECISION", {
             "z": round(decision["z"], 4),
+            "z_den": round(decision["z_den"], 4),
             "w_star": round(decision["w_star"], 4),
             "w_now": round(decision["w_now"], 4),
             "d_star": decision["d_star"],

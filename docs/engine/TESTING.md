@@ -28,7 +28,7 @@ agents, three news items) once per session and checks the payload against it.
 
 | File | Tests | Covers |
 |---|---|---|
-| `abides-markets/tests/test_fundamental.py` | 12 | FundamentalistAgent: no nudge (T-F1), gain does not decay (T-F2), step tracking (T-F3), value-speed estimate (T-F4), target-position sizing and dead band (T-F5), side from d (T-F6), news shift (T-F7), log keys, long-only orders |
+| `abides-markets/tests/test_fundamental.py` | 16 | FundamentalistAgent: no nudge (T-F1), gain does not decay (T-F2), step tracking (T-F3), value-speed estimate (T-F4), target-position sizing and dead band (T-F5), side from d (T-F6), news shift (T-F7), log keys, long-only orders; v1.2 edge z = gap/√(P+R) (T-F8), a typical 13¢ gap holds (T-F9), a $6 gap buys within the step cap (T-F10) |
 | `abides-markets/tests/test_momentum_ekf.py` | 43 | MomentumEKFAgent: trend detection, noise rejection, numerical stability, news priming, state machine, ratchet, sizing, endowment; v1.1 T-M1 … T-M5 (ramp bias, detrended variance, ratchet follows down, re-entry, persistent stop) |
 | `api/tests/test_export.py` | 22 | payload validity (schema, no NaN), trade counts, close, mark-to-market, equal-length series, size budget, news records, candles, P&L vs holding, population (volume shares sum to 100), gap half-life on a synthetic AR(1) |
 | `api/tests/test_server.py` | 18 | HTTP validation (readable 400s, including population bounds), presets, 404s, run listing |

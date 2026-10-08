@@ -216,7 +216,8 @@ def test_side_from_d_takes_profit():
     mid = float(P0)
     # small positive z giving w_star = 0.6 (C = 0.5)
     z = agent.z0 * atanh(0.1 / (agent.a_max * 0.5))
-    agent.correction = lambda xp, Pp, zobs, R: (mid + z * sqrt(Pp), Pp, 0.01)
+    # v1.2: z = gap / sqrt(P + R), with R the variance of this very update
+    agent.correction = lambda xp, Pp, zobs, R: (mid + z * sqrt(Pp + R), Pp, 0.01)
     step(agent, DT_NS, P0 - 1, P0 + 1)
     dec = events(agent, "FUND_DECISION")[-1]
     assert dec["z"] > 0 and dec["w_star"] == pytest.approx(0.6, abs=1e-3)
@@ -272,3 +273,58 @@ def test_ekf_update_log_keys():
     ev = events(agent, "EKF_UPDATE")[-1]
     assert {"mid", "x_hat", "P", "R", "K", "ER", "Q", "dt", "sigma_f2"} <= set(ev)
     assert ev["dt"] == 10.0 and ev["Q"] == pytest.approx(agent.q * 3.0 * 10.0)
+
+
+# ── spec v1.2: signal-to-noise edge (T-F8 .. T-F10) ───────────────────────
+
+
+def _v12_agent(gap, P=900.0, R=43_681.0):
+    """Holdings at the 50% endowment, W = $100k, mid = $1000."""
+    agent = make_agent(a_max=0.9, z0=2.1)  # b_f default 0.02, s_max 0.15
+    agent.P, agent.R_last = P, R
+    agent.x_hat = P0 + gap
+    return agent
+
+
+def test_z_uses_p_plus_r():
+    """T-F8."""
+    agent = _v12_agent(100.0, P=900.0, R=40_000.0)
+    dec = agent.target_position(float(P0), 0.5)
+    assert dec["z"] == pytest.approx(100.0 / sqrt(40_900.0), abs=1e-9)
+    assert dec["z_den"] == pytest.approx(sqrt(40_900.0))
+
+
+def test_z_guard_zero_variance():
+    agent = _v12_agent(100.0, P=0.0, R=0.0)
+    assert agent.target_position(float(P0), 0.5)["z"] == 0.0
+
+
+def test_typical_gap_holds():
+    """T-F9: a 13-cent gap is 0.06 of a normal wiggle -> no order.
+
+    Target: w* = 0.5 + 0.45 tanh(0.0616 / 2.1) = 0.513, i.e. about 1.3 shares,
+    which rounds to 1 share = 1% of W, inside the 2% dead band (b_f default)."""
+    agent = _v12_agent(13.0)
+    dec = agent.target_position(float(P0), 0.5)
+    assert dec["z"] == pytest.approx(13.0 / sqrt(900.0 + 43_681.0))
+    assert dec["d"] == 0 and dec["skipped_reason"] == "dead_band"
+    # end to end: no order placed
+    agent = _v12_agent(13.0)
+    agent.price_log.append(float(P0)); agent.time_log.append(0)
+    agent.correction = lambda xp, Pp, zobs, R: (agent.x_hat, 900.0, 0.01)
+    agent._compute_observation_variance = lambda mid: 43_681.0
+    step(agent, DT_NS, P0 - 1, P0 + 1)
+    assert agent.orders_placed == []
+    assert events(agent, "FUND_DECISION")[-1]["z_den"] == pytest.approx(sqrt(900.0 + 43_681.0), abs=1e-3)
+
+
+def test_large_gap_buys_within_step_cap():
+    """T-F10: a $6 gap (z = 2.84) buys, capped at s_max * W / mid."""
+    agent = _v12_agent(600.0)
+    agent.price_log.append(float(P0)); agent.time_log.append(0)
+    agent.correction = lambda xp, Pp, zobs, R: (agent.x_hat, 900.0, 0.01)
+    agent._compute_observation_variance = lambda mid: 43_681.0
+    step(agent, DT_NS, P0 - 1, P0 + 1)
+    (side, qty, price), = agent.orders_placed
+    W = CASH  # holdings at the endowment, valued at mid = P0
+    assert side == Side.BID and 1 <= qty <= agent.s_max * W / P0
