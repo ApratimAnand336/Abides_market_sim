@@ -131,3 +131,8 @@ them, with the evidence that led to them.
 ### 2026-10-09 (W3) — Market makers never quote at or below zero
 - **Decision:** buy levels below 1 cent are dropped from the ladder.
 - **Reason:** a safety guard for crashing markets; it never matters with value agents present.
+
+### 2026-10-09 (W4) — Determinism test with different hash seeds
+- **Decision:** I1 runs the two processes with `PYTHONHASHSEED` 1 and 2.
+- **Reason:** the most likely hidden source of non-determinism is iteration over sets or dicts of strings, which Python randomises per process; equal hash seeds would hide it.
+- **Evidence:** I1 passes: the same sha256 of all executions and final holdings (seed 42, 09:30–10:30). No fix was needed.

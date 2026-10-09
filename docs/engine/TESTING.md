@@ -32,6 +32,7 @@ agents, three news items) once per session and checks the payload against it.
 | `abides-markets/tests/test_momentum_ekf.py` | 43 | MomentumEKFAgent: trend detection, noise rejection, numerical stability, news priming, state machine, ratchet, sizing, endowment; v1.1 T-M1 … T-M5 (ramp bias, detrended variance, ratchet follows down, re-entry, persistent stop) |
 | `abides-markets/tests/test_oracle.py` | 7 | PregeneratedOracle: the same seed gives the same path in three different markets (T-O1, also invariant I2; three 1-hour simulations), increment std matches OU theory over 200 seeds (T-O2), exact observations are the step function with clamped ends (T-O3), the noise comes from the caller's RNG (T-O4), the path ignores the global RNG, megashocks, unknown sources |
 | `abides-markets/tests/test_market_maker.py` | 4 | Market maker cold start and liveness: without value agents the market trades and each MM quotes in every 10-minute window (T-M6, invariant I6); each MM wakes ≥ 90% of duration/mean wake and is never silent for 10 minutes, with and without value agents (T-M7, invariant I7); the spread cap does not bind in the default market. Two 1-hour simulations, ≈8 s |
+| `abides-markets/tests/test_invariants.py` | 7 | Invariants I1–I7 (below) |
 | `api/tests/test_export.py` | 22 | payload validity (schema, no NaN), trade counts, close, mark-to-market, equal-length series, size budget, news records, candles, P&L vs holding, population (volume shares sum to 100), gap half-life on a synthetic AR(1) |
 | `api/tests/test_server.py` | 18 | HTTP validation (readable 400s, including population bounds), presets, 404s, run listing |
 | `abides-markets/tests/orderbook/*`, `test_orders.py`, `test_generators.py`, `test_sim.py`, `agent_utils_test.py` | 48 | upstream ABIDES order book and utilities |
@@ -41,6 +42,7 @@ agents, three news items) once per session and checks the payload against it.
 | Date | Branch / commit | Result |
 |---|---|---|
 | 2026-10-09 | `v1.2` at 3c0b859 (v1.1 code) | 147 passed, 1 failed (`test_ou_process`, pre-existing, see below) |
+| 2026-10-09 | `v1.2` W4 | 169 passed, 1 failed (`test_ou_process`, pre-existing); invariants 7/7 in 32 s |
 
 ### Pre-existing failures (not caused by our code)
 
@@ -50,5 +52,29 @@ agents, three news items) once per session and checks the payload against it.
 
 ## Invariants
 
-Added in milestone W4 (`abides-markets/tests/test_invariants.py`). This section lists each
-invariant, what it guarantees and its run time once they exist.
+`abides-markets/tests/test_invariants.py` (spec v1.2 Part 5). Each runs a short real
+simulation through `api.jobs.build_run_config` (the dashboard path): seed 42, 09:30–10:30,
+5 fundamentalists, 4 momentum agents, the default background population. Run alone:
+
+```bash
+python -m pytest abides-markets/tests/test_invariants.py -q
+```
+
+| # | Invariant | What it guarantees | How | Time* |
+|---|---|---|---|---|
+| I1 | Determinism | The same parameters give the same market, in any process | two fresh subprocesses, **with different `PYTHONHASHSEED`s** (so string set/dict ordering cannot hide); sha256 of every EXEC (time, price, quantity, agent_id, oppos_agent_id) and of every agent's final holdings must match | 9 s |
+| I2 | Oracle stability | The true value does not depend on the market | T-O1: default, + one news item, and 20 value agents with 0 fundamentalists give bit-identical paths | 12 s |
+| I3 | Conservation | Trading moves cash and shares between agents but never creates or destroys them | holdings snapshot from `config["agents"]` before `abides.run`; totals of CASH and of shares after the run equal, tolerance **0 cents** | 4 s |
+| I4 | Long-only safety | Our agents never short-sell or borrow | every `HOLDINGS_UPDATED` of every FundamentalistAgent and MomentumEKFAgent has shares ≥ 0 and CASH ≥ 0 | (shared) |
+| I5 | Book sanity | The book is never crossed; trades have real prices | bid < ask in every two-sided L1 snapshot of `book_log2`; every EXEC price > 0 | (shared) |
+| I6 | Runs without value agents | The market starts and trades with no value agents (needs ≥ 1 MM) | T-M6 | 3 s |
+| I7 | Market-maker liveness | No market maker dies silently | T-M7: wakes ≥ 90% of duration / mean wake and no 10-minute silence | 3 s |
+
+\*Measured 2026-10-09 on the development laptop; the whole file takes about 32 s.
+
+I1 found no non-determinism, so nothing needed fixing ([DECISIONS.md](DECISIONS.md)).
+
+Note on I7's "≥ 90%" criterion: wakes are Poisson, so for an arbitrary seed a 1-hour count
+falls below 90% of its mean (60) about 20% of the time without anything being wrong. The
+seed-42 market passes deterministically. The no-10-minute-silence check is the robust
+death detector (a false alarm has probability ≈ e⁻¹⁰ per gap).
