@@ -41,14 +41,14 @@ export function PopulationCard({ rows }: { rows: PopulationRow[] }) {
       ),
     },
     { key: 'count', header: 'Agents', align: 'right', sortValue: (r) => r.count, render: (r) => <span className="font-mono">{fmtInt(r.count)}</span> },
-    { key: 'cash', header: 'Start cash each', align: 'right', sortValue: (r) => r.starting_cash_each.min, render: (r) => <span className="whitespace-nowrap font-mono">{cash(r)}</span> },
+    { key: 'cash', header: 'Start cash', align: 'right', sortValue: (r) => r.starting_cash_each.min, render: (r) => <span className="font-mono">{cash(r)}</span> },
     { key: 'shares0', header: 'Start shares', align: 'right', sortValue: (r) => r.starting_shares_total, render: (r) => <span className="font-mono">{fmtInt(r.starting_shares_total)}</span> },
-    { key: 'wake', header: 'Wakes up', render: (r) => <span className="whitespace-nowrap text-muted">{r.wake_desc}</span> },
-    { key: 'orders', header: 'Orders sent', align: 'right', sortValue: (r) => r.orders_sent, render: (r) => <span className="font-mono">{fmtInt(r.orders_sent)}</span> },
-    { key: 'traded', header: 'Shares traded', align: 'right', sortValue: (r) => r.shares_traded, render: (r) => <span className="font-mono">{fmtInt(r.shares_traded)}</span> },
+    { key: 'wake', header: 'Wakes up', render: (r) => <span className="text-muted">{r.wake_desc}</span> },
+    { key: 'orders', header: 'Orders', align: 'right', sortValue: (r) => r.orders_sent, render: (r) => <span className="font-mono">{fmtInt(r.orders_sent)}</span> },
+    { key: 'traded', header: 'Traded', align: 'right', sortValue: (r) => r.shares_traded, render: (r) => <span className="font-mono">{fmtInt(r.shares_traded)}</span> },
     {
       key: 'share',
-      header: 'Volume share',
+      header: 'Vol. share',
       headerHint: 'Shares this group bought or sold, as a share of all traded shares counted on both sides (the column sums to 100%).',
       align: 'right',
       sortValue: (r) => r.volume_share_pct,
@@ -102,7 +102,7 @@ export function PopulationCard({ rows }: { rows: PopulationRow[] }) {
           ))}
         </div>
       </div>
-      <DataTable caption="Market population by agent class" rows={rows} columns={columns} rowKey={(r) => r.class_name} initialSort={{ key: 'share', dir: 'desc' }} />
+      <DataTable compact caption="Market population by agent class" rows={rows} columns={columns} rowKey={(r) => r.class_name} initialSort={{ key: 'share', dir: 'desc' }} />
     </Card>
   );
 }

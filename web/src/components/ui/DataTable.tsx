@@ -23,6 +23,7 @@ export function DataTable<T>({
   selectedKey,
   expand,
   caption,
+  compact = false,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -32,6 +33,8 @@ export function DataTable<T>({
   selectedKey?: string | number;
   expand?: (row: T) => ReactNode;
   caption: string;
+  /** tighter cells and wrapping headers, so wide tables fit their card */
+  compact?: boolean;
 }) {
   const [sort, setSort] = useState(initialSort);
   const [open, setOpen] = useState<Set<string | number>>(new Set());
@@ -76,14 +79,14 @@ export function DataTable<T>({
                 <th
                   key={c.key}
                   scope="col"
-                  className={cn('px-3 py-2 font-semibold whitespace-nowrap', c.align === 'right' ? 'text-right' : 'text-left')}
+                  className={cn('py-2 font-semibold', compact ? 'px-2 align-bottom' : 'px-3 whitespace-nowrap', c.align === 'right' ? 'text-right' : 'text-left')}
                   aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined}
                 >
                   {c.sortValue ? (
                     <button
                       type="button"
                       onClick={() => setSort({ key: c.key, dir: active && sort!.dir === 'desc' ? 'asc' : 'desc' })}
-                      className="micro inline-flex items-center gap-1 hover:text-text"
+                      className={cn('micro inline-flex items-center gap-1 hover:text-text', compact && 'text-left')}
                     >
                       {label}
                       {active && (sort!.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
@@ -134,7 +137,7 @@ export function DataTable<T>({
                     </td>
                   )}
                   {columns.map((c) => (
-                    <td key={c.key} className={cn('px-3 py-2.5', c.align === 'right' ? 'text-right' : 'text-left', c.className)}>
+                    <td key={c.key} className={cn(compact ? 'px-2 py-2' : 'px-3 py-2.5', c.align === 'right' ? 'text-right' : 'text-left', c.className)}>
                       {c.render(row)}
                     </td>
                   ))}

@@ -55,7 +55,7 @@ export function PriceVsValue({ payload }: { payload: SimPayload }) {
       <SectionHeader
         icon={Scale}
         title="Price vs true value"
-        caption="How fast the market corrects mispricing. Seed-42 reference: std $0.37, half-life about 7.5 min."
+        caption="How far, and for how long, the traded price strays from the hidden true value in this run."
         iconClass="text-oracle"
       />
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
