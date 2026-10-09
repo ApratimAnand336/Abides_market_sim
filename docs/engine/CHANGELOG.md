@@ -12,6 +12,7 @@ Spec: [`docs/specs/spec_v1.2.txt`](../specs/spec_v1.2.txt). Filled in as each mi
 | W0 | `docs/engine/`, `docs/specs/` | Living documentation skeleton; specs stored with the code |
 | W1 | `agents/fundamental.py`, `tests/test_fundamental.py` | Edge z = (x̂ − mid)/√(P + R_last) (`R_last` stored each update); `z_den` in FUND_DECISION; T-F8 … T-F10 |
 | W2 | `oracles/pregenerated_oracle.py` (new), `oracles/__init__.py`, `configs/rmsc04_ekf.py`, `api/export.py`, `tests/test_oracle.py` | `PregeneratedOracle`: the whole true-value path generated at construction from one dedicated RNG (`generate_path` / `PATH_SOURCES`, source `synthetic_ou`); `rmsc04_ekf` uses it for 09:30–16:00 on a 1 s grid; T-O1 … T-O4. Export: market statistics rounded to 8 significant figures instead of 6 (half-cent closes were rounded away) |
+| W3 | `agents/market_makers/adaptive_market_maker_agent.py`, `configs/rmsc04_ekf.py`, `order_book.py`, `agents/utils.py`, `agents/fundamental.py`, `agents/momentum_ekf.py`, `tests/test_market_maker.py`, `tests/sim_helpers.py` | MM `cold_start_price` (= r̄) and always rescheduling the next wake (fixes MM death and the market not starting without value agents); MM `max_spread` cap (100¢) against the self-referential spread runaway; no quotes ≤ 0; EXEC history records the fill price; numerically stable caution sigmoid in both of our agents; T-M6, T-M7 |
 
 ## v1.1 — fundamentalist and momentum fixes, dashboard additions (2026-10-08)
 

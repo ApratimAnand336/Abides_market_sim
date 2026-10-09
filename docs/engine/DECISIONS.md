@@ -106,3 +106,28 @@ them, with the evidence that led to them.
 - **Decision:** `api/export._round_tree` rounds statistics to 8 significant figures (was 6).
 - **Reason:** at $1000, 6 figures cannot hold a half-cent mid: a close of $1000.705 was exported as $1000.71, so `stats.close` (and P&L vs holding computed from it) disagreed with the quotes. The new seed-42 path produced such a close and three export tests caught it.
 - **Alternatives:** —  **Evidence:** `test_close_is_last_mid`, `test_payload_v1_1_fields`, `test_population_volume_shares`.
+
+### 2026-10-09 (W3) — Cap on the market maker's adaptive spread
+- **Decision:** `AdaptiveMarketMakerAgent(max_spread=…)`, set to 100 cents in `rmsc04_ekf`; the spread estimate is clamped and `MM_SPREAD_CAP` is logged the first time it binds.
+- **Reason:** without value agents the market maker mostly observes its own ladder, so its spread estimate fed on itself: 1.6¢ at 10:05 → $46.50 at 10:15 (seed 42, 0 value agents, 5 + 4 of our agents). The ladder spread to levels $15–$232 apart, the price fell through the gaps toward 0 and the simulation stalled. Run Z (spec v1.2 §7.2) could not complete.
+- **Alternatives:** inventory limits or skew for the market maker (that is R4, out of scope); leaving Run Z unrun.
+- **Evidence:** with the cap a 1-hour run without value agents finishes in 2.5 s. With value agents the cap never binds (test `test_spread_cap_does_not_bind_in_default_market`); observed spreads there have a median of 1¢ and a maximum of 53¢ (v1.1 report).
+
+### 2026-10-09 (W3) — Only the first market maker cold-starts
+- **Decision:** keep spec §4.1's rule (cold start only without any mid). Test T-M6 checks "at most one MM_COLD_START per MM and at least one in the market" instead of "one per MM".
+- **Reason:** the second market maker to wake already sees the first one's ladder, so it has a mid.
+- **Evidence:** probe 2026-10-09: one cold start per run with 0 or 3 value agents.
+
+### 2026-10-09 (W3) — Numerically stable caution sigmoid
+- **Decision:** both of our agents compute C = 1/(1 + e^(−k·E)) with `agents.utils.stable_sigmoid` (identical values).
+- **Reason:** in a market without value agents, −k·E exceeded 709 and `math.exp` raised OverflowError, crashing the simulation.
+- **Alternatives:** clipping E. **Evidence:** crash reproduced with 0 and 3 value agents before the fix.
+
+### 2026-10-09 (W3) — Exchange history records every fill price
+- **Decision:** `OrderBook` EXEC history entries carry `price` = the resting order's limit price (upstream set it only for price-to-comply fills, else `None`).
+- **Reason:** invariants I1 (hash of every execution) and I5 (every EXEC price > 0) need the price; nothing read the field before.
+- **Alternatives:** reconstructing prices from agents' ORDER_EXECUTED logs (not all agents log orders).
+
+### 2026-10-09 (W3) — Market makers never quote at or below zero
+- **Decision:** buy levels below 1 cent are dropped from the ladder.
+- **Reason:** a safety guard for crashing markets; it never matters with value agents present.

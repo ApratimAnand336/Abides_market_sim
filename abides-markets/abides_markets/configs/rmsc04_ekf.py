@@ -81,6 +81,7 @@ def build_config(
     mm_spread_alpha=0.75,
     mm_backstop_quantity=0,
     mm_cancel_limit_delay=50,
+    mm_max_spread=100,  # cents; normal runs: median 1c, max 53c (v1.1 run B)
     # 5) Momentum Agents
     num_momentum_agents=12,  # total momentum slots (stock + EKF momentum)
     # 6) EKF Fundamentalist Agents
@@ -279,6 +280,10 @@ def build_config(
                 level_spacing=mm_level_spacing,
                 spread_alpha=mm_spread_alpha,
                 backstop_quantity=mm_backstop_quantity,
+                # spec v1.2 Part 4: quote around r_bar until a book exists
+                cold_start_price=r_bar,
+                # v1.2: stop the self-referential spread runaway (see agent)
+                max_spread=mm_max_spread,
                 log_orders=log_orders,
                 random_state=np.random.RandomState(
                     seed=np.random.randint(low=0, high=2**31, dtype="uint32")

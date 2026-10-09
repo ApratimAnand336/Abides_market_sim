@@ -35,6 +35,7 @@ from ..messages.news import NewsSentimentMsg
 from ..messages.query import QuerySpreadResponseMsg
 from ..orders import Side
 from .trading_agent import TradingAgent
+from .utils import stable_sigmoid
 
 
 logger = logging.getLogger(__name__)
@@ -712,7 +713,7 @@ class MomentumEKFAgent(TradingAgent):
         if self.D_prev != 0.0:
             W = self.D_prev * (p - self.price_log[-2])
             self.E_t = self.gamma * self.E_t + (1.0 - self.gamma) * W
-            self.C_t = 1.0 / (1.0 + exp(-self.k_c * self.E_t))
+            self.C_t = stable_sigmoid(self.k_c * self.E_t)
         self.logEvent(
             "CAUTION_UPDATE",
             {"D_prev": self.D_prev, "E_t": round(self.E_t, 2), "C_t": round(self.C_t, 4)},

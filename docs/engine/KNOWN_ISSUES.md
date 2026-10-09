@@ -31,11 +31,14 @@ They are refreshed from the v1.2 acceptance runs in milestone W6.
 | # | Issue | Fix | Status |
 |---|---|---|---|
 | P2 | True value not reproducible (lazy oracle; global RNG for megashocks) | pre-generated, seed-stable path ([ORACLE.md](ORACLE.md)) | to verify |
-| P3 | Market makers die when the book is empty at their first wake | cold start + guaranteed rescheduling ([AGENTS_ABIDES.md](AGENTS_ABIDES.md)) | to verify |
-| P4 | The market cannot start without value agents (when at least one MM exists) | follows from P3 | to verify |
+| P3 | Market makers die when the book is empty at their first wake | cold start + guaranteed rescheduling ([AGENTS_ABIDES.md](AGENTS_ABIDES.md)) | fixed in W3 (T-M6, T-M7); full-day check in W6 |
+| P4 | The market cannot start without value agents (when at least one MM exists) | follows from P3, plus the MM spread cap | fixed in W3 for 1 hour (T-M6); full-day Run Z in W6 |
 | P1 | Fundamentalist overtrading and herding | z = gap / √(P + R) ([AGENT_FUNDAMENTALIST.md](AGENT_FUNDAMENTALIST.md)) | to verify |
 
 ## Known limitation kept on purpose
 
 - With `num_mm = 0` **and** `num_value = 0` the market still cannot start: no agent is
   willing to quote into an empty book. R3 gives our fundamentalist that ability.
+- Without value agents nothing anchors the price. With market makers the market now runs, but
+  on seed 42 (5 + 4 of our agents) the price slid from $999.75 to about $589 within the first hour
+  (2026-10-09). This is the baseline R3 starts from, not a v1.2 target.

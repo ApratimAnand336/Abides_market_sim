@@ -67,6 +67,8 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         backstop_quantity: int = 0,
         log_orders: bool = False,
         min_imbalance=0.9,
+        cold_start_price: Optional[int] = None,
+        max_spread: Optional[float] = None,
     ) -> None:
 
         super().__init__(id, name, type, random_state, starting_cash, log_orders)
@@ -116,6 +118,18 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         self.log_orders: float = log_orders
 
         self.has_subscribed = False
+
+        # FinVerse spec v1.2 Part 4: the price (cents) to anchor to before any
+        # two-sided book exists ("yesterday's close"). Used only while the
+        # agent has neither a current nor a last mid.
+        self.cold_start_price: Optional[int] = cold_start_price
+        self.cold_start_used: bool = False
+        # FinVerse v1.2: upper bound (cents) on the adaptive spread estimate.
+        # Without other liquidity the agent mostly observes its OWN quotes, so
+        # spread -> wider ladder -> wider observed spread grows geometrically
+        # (1.6c -> $46 in 10 minutes with no value agents). None = no cap.
+        self.max_spread: Optional[float] = max_spread
+        self.spread_cap_hits: int = 0
 
         ## Internal variables
 
@@ -190,6 +204,11 @@ class AdaptiveMarketMakerAgent(TradingAgent):
 
     def kernel_starting(self, start_time: NanosecondTime) -> None:
         super().kernel_starting(start_time)
+
+    def kernel_stopping(self) -> None:
+        super().kernel_stopping()
+        if self.max_spread is not None:
+            self.logEvent("MM_SPREAD_CAP_SUMMARY", {"hits": self.spread_cap_hits, "cap": self.max_spread})
 
     def wakeup(self, current_time: NanosecondTime):
         """Agent wakeup is determined by self.wake_up_freq."""
@@ -284,10 +303,14 @@ class AdaptiveMarketMakerAgent(TradingAgent):
             if (
                 self.state["AWAITING_SPREAD"] is False
                 and self.state["AWAITING_TRANSACTED_VOLUME"] is False
-                and mid is not None
             ):
-                self.place_orders(mid)
+                mid = self._mid_or_cold_start(mid)
+                if mid is not None:
+                    self.place_orders(mid)
                 self.state = self.initialise_state()
+                # always reschedule (spec v1.2 Part 4): upstream ABIDES only did
+                # this when a mid existed, so one wake on an empty book stopped
+                # the market maker for the rest of the day
                 self.set_wakeup(current_time + self.get_wake_frequency())
 
         else:  # subscription mode
@@ -321,8 +344,20 @@ class AdaptiveMarketMakerAgent(TradingAgent):
                 self.state["MARKET_DATA"] is False
                 and self.state["AWAITING_TRANSACTED_VOLUME"] is False
             ):
-                self.place_orders(mid)
+                self.place_orders(self._mid_or_cold_start(mid))
                 self.state = self.initialise_state()
+
+    def _mid_or_cold_start(self, mid: Optional[int]) -> Optional[int]:
+        """mid if known, else the last mid, else cold_start_price (logging
+        MM_COLD_START the first time it is used), else None."""
+        if mid is None:
+            mid = self.last_mid
+        if mid is None and self.cold_start_price is not None:
+            mid = int(self.cold_start_price)
+            if not self.cold_start_used:
+                self.cold_start_used = True
+                self.logEvent("MM_COLD_START", {"price": mid})
+        return mid
 
     def _adaptive_update_spread(self, spread) -> None:
         """Update internal spread estimate with exponentially weighted moving average.
@@ -334,6 +369,11 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         spread_ewma = (
             self.spread_alpha * spread + (1 - self.spread_alpha) * self.last_spread
         )
+        if self.max_spread is not None and spread_ewma > self.max_spread:
+            if self.spread_cap_hits == 0:
+                self.logEvent("MM_SPREAD_CAP", {"estimate": spread_ewma, "cap": self.max_spread})
+            self.spread_cap_hits += 1
+            spread_ewma = self.max_spread
         self.window_size = spread_ewma
         self.last_spread = spread_ewma
 
@@ -412,9 +452,13 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         lowest_bid = highest_bid - ((self.num_ticks - 1) * self.tick_size)
         highest_ask = lowest_ask + ((self.num_ticks - 1) * self.tick_size)
 
+        # FinVerse v1.2: never quote at or below zero cents (in a crashing
+        # market with no informed traders the ladder otherwise reaches 0 and
+        # the order book degenerates)
         bids_to_place = [
             price
             for price in range(lowest_bid, highest_bid + self.tick_size, self.tick_size)
+            if price >= 1
         ]
         asks_to_place = [
             price

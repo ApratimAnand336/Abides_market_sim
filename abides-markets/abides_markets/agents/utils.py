@@ -211,3 +211,16 @@ def get_imbalance(
         return bid_vol / (bid_vol + ask_vol)
     else:
         return ask_vol / (bid_vol + ask_vol)
+
+
+def stable_sigmoid(x: float) -> float:
+    """1 / (1 + exp(-x)) without overflow for large |x|.
+
+    math.exp overflows above ~709; the caution modulators of our agents hit
+    that in illiquid markets (spec v1.2 Run Z), where -k * E_t can be large."""
+    from math import exp
+
+    if x >= 0:
+        return 1.0 / (1.0 + exp(-x))
+    e = exp(x)
+    return e / (1.0 + e)

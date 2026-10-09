@@ -293,7 +293,10 @@ class OrderBook:
                     if order.side.is_bid()
                     else "BUY",  # by def exec if from point of view of passive order being exec
                     quantity=matched_order.quantity,
-                    price=matched_order.limit_price if is_ptc_exec else None,
+                    # FinVerse v1.2: always record the fill price (upstream left
+                    # it None except for price-to-comply fills); the invariant
+                    # tests hash and check it
+                    price=matched_order.limit_price,
                 )
             )
 

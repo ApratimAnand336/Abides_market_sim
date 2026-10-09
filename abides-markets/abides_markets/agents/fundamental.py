@@ -34,6 +34,7 @@ from ..messages.query import QuerySpreadResponseMsg
 from ..messages.news import NewsSentimentMsg
 from ..orders import Side
 from .trading_agent import TradingAgent
+from .utils import stable_sigmoid
 
 
 logger = logging.getLogger(__name__)
@@ -353,7 +354,7 @@ class FundamentalistAgent(TradingAgent):
         # 3. Confidence Multiplier (Sigmoid)
         # We use a logistic curve to compress E_t into [0, 1]
         # Adding a small constant shift if needed, but standard sigmoid works:
-        self.C_t = 1.0 / (1.0 + exp(-self.k * self.E_t))
+        self.C_t = stable_sigmoid(self.k * self.E_t)
 
         return self.C_t
 
