@@ -3,9 +3,10 @@
 Sources: the git log of this repository and the specs in [`docs/specs/`](../specs/).
 Upstream ABIDES history (2021–2023, J.P. Morgan) is not repeated here.
 
-## v1.2 — R1: foundation fixes and living documentation (in progress, branch `v1.2`)
+## v1.2 — R1: foundation fixes and living documentation (2026-10-09, branch `v1.2`)
 
-Spec: [`docs/specs/spec_v1.2.txt`](../specs/spec_v1.2.txt). Filled in as each milestone lands.
+Spec: [`docs/specs/spec_v1.2.txt`](../specs/spec_v1.2.txt). Report and acceptance numbers:
+[`docs/v1.2/REPORT.md`](../v1.2/REPORT.md).
 
 | Milestone | Files | Change |
 |---|---|---|
@@ -15,6 +16,7 @@ Spec: [`docs/specs/spec_v1.2.txt`](../specs/spec_v1.2.txt). Filled in as each mi
 | W3 | `agents/market_makers/adaptive_market_maker_agent.py`, `configs/rmsc04_ekf.py`, `order_book.py`, `agents/utils.py`, `agents/fundamental.py`, `agents/momentum_ekf.py`, `tests/test_market_maker.py`, `tests/sim_helpers.py` | MM `cold_start_price` (= r̄) and always rescheduling the next wake (fixes MM death and the market not starting without value agents); MM `max_spread` cap (100¢) against the self-referential spread runaway; no quotes ≤ 0; EXEC history records the fill price; numerically stable caution sigmoid in both of our agents; T-M6, T-M7 |
 | W4 | `tests/test_invariants.py` | Invariants I1–I7: cross-process determinism (with different hash seeds), oracle stability, conservation of cash and shares, long-only safety, book sanity, market without value agents, MM liveness. No non-determinism found |
 | W5 | `api/__init__.py`, `web/src/components/health/PriceVsValue.tsx`, `web/src/components/health/PopulationCard.tsx`, `web/src/components/ui/DataTable.tsx`, `docs/engine/AGENT_MOMENTUM.md` | `ENGINE_VERSION` 1.2 (cached v1.1 runs are not reused or listed); U1 the price-vs-value caption shows no hard-coded seed-42 reference; U2 a compact DataTable mode (tighter cells, wrapping headers) so the population table fits its card; payload schema unchanged (1.1). AGENT_MOMENTUM.md written (documentation only) |
+| W6 | `scripts/acceptance_v1_2.py`, `docs/v1.2/`, `web/src/components/health/PopulationCard.tsx`, `web/src/components/ui/DataTable.tsx`, `docs/engine/*` | Acceptance runs A, B, C, Z (all targets met); report and screenshots; the population table uses compact dollars and a 12 px compact mode so it fits at 1280 px; KNOWN_ISSUES synced with the measured numbers |
 
 ## v1.1 — fundamentalist and momentum fixes, dashboard additions (2026-10-08)
 

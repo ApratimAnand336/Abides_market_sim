@@ -61,7 +61,7 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[13px]">
+      <table className={cn('w-full border-collapse', compact ? 'text-[12px]' : 'text-[13px]')}>
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr className="border-b border-border">
@@ -79,7 +79,7 @@ export function DataTable<T>({
                 <th
                   key={c.key}
                   scope="col"
-                  className={cn('py-2 font-semibold', compact ? 'px-2 align-bottom' : 'px-3 whitespace-nowrap', c.align === 'right' ? 'text-right' : 'text-left')}
+                  className={cn('py-2 font-semibold', compact ? 'px-1.5 align-bottom' : 'px-3 whitespace-nowrap', c.align === 'right' ? 'text-right' : 'text-left')}
                   aria-sort={active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined}
                 >
                   {c.sortValue ? (
@@ -137,7 +137,7 @@ export function DataTable<T>({
                     </td>
                   )}
                   {columns.map((c) => (
-                    <td key={c.key} className={cn(compact ? 'px-2 py-2' : 'px-3 py-2.5', c.align === 'right' ? 'text-right' : 'text-left', c.className)}>
+                    <td key={c.key} className={cn(compact ? 'px-1.5 py-2' : 'px-3 py-2.5', c.align === 'right' ? 'text-right' : 'text-left', c.className)}>
                       {c.render(row)}
                     </td>
                   ))}

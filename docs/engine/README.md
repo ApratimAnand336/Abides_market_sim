@@ -60,7 +60,8 @@ twice loads it instantly.
 
 ```bash
 python -m pytest abides-markets/tests api/tests -q --ignore=abides-markets/tests/test_gym_runner.py
-python scripts/acceptance_v1_1.py          # full-day acceptance runs (about 1 minute)
+python scripts/acceptance_v1_2.py --run A  # one full-day acceptance run (~25 s); also B, C, Z
+python scripts/acceptance_v1_2.py --report # the acceptance table
 ```
 
 ## Glossary

@@ -16,9 +16,10 @@ python -m pytest abides-markets/tests api/tests -q --ignore=abides-markets/tests
 python -m pytest abides-markets/tests/test_fundamental.py -q
 python -m pytest api/tests -q
 
-# acceptance (v1.1 targets)
-python scripts/acceptance_v1_1.py                # runs A and B, full day
-python scripts/acceptance_v1_1.py --end 11:00:00 --runs A   # quick smoke run
+# acceptance (v1.2 targets): one full-day simulation per call (~25 s), then the table
+python scripts/acceptance_v1_2.py --run A        # also B, C, Z
+python scripts/acceptance_v1_2.py --report
+python scripts/acceptance_v1_1.py --end 11:00:00 --runs A   # v1.1 script, quick smoke run
 ```
 
 `api/tests/test_export.py` builds one real 30-minute simulation (seed 42, 3 + 3 of our
@@ -43,6 +44,7 @@ agents, three news items) once per session and checks the payload against it.
 |---|---|---|
 | 2026-10-09 | `v1.2` at 3c0b859 (v1.1 code) | 147 passed, 1 failed (`test_ou_process`, pre-existing, see below) |
 | 2026-10-09 | `v1.2` W4 | 169 passed, 1 failed (`test_ou_process`, pre-existing); invariants 7/7 in 32 s |
+| 2026-10-09 | `v1.2` W6 | 169 passed, 1 failed (`test_ou_process`, pre-existing); acceptance A, B, C, Z: all targets met (`docs/v1.2/REPORT.md`) |
 
 ### Pre-existing failures (not caused by our code)
 

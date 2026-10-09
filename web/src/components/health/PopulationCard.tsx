@@ -17,6 +17,11 @@ const CLASS_COLORS: Record<string, string> = {
 };
 const colorOf = (r: PopulationRow) => CLASS_COLORS[r.class_name] ?? C.muted;
 
+// compact dollars so the 11-column table fits its card; exact value on hover
+const compact = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 2 });
+const usdC = (v: number) => compact.format(v);
+const usdCSigned = (v: number) => (v > 0 ? `+${usdC(v)}` : v < 0 ? `−${usdC(-v)}` : usdC(0));
+
 const VALUE_HINT =
   'Value agents look at the hidden true value (with noise) and trade toward it. They place most of the orders, so they decide how tightly the price follows true value.';
 
@@ -25,8 +30,8 @@ export function PopulationCard({ rows }: { rows: PopulationRow[] }) {
   const tone = (v: number) => (v > 0 ? 'text-up' : v < 0 ? 'text-down' : 'text-muted');
   const cash = (r: PopulationRow) =>
     r.starting_cash_each.min === r.starting_cash_each.max
-      ? fmtPrice(r.starting_cash_each.min)
-      : `${fmtPrice(r.starting_cash_each.min)} – ${fmtPrice(r.starting_cash_each.max)}`;
+      ? usdC(r.starting_cash_each.min)
+      : `${usdC(r.starting_cash_each.min)} – ${usdC(r.starting_cash_each.max)}`;
 
   const columns: Column<PopulationRow>[] = [
     {
@@ -54,15 +59,15 @@ export function PopulationCard({ rows }: { rows: PopulationRow[] }) {
       sortValue: (r) => r.volume_share_pct,
       render: (r) => <span className="font-mono">{fmtPct(r.volume_share_pct, 1)}</span>,
     },
-    { key: 'value', header: 'Final value', align: 'right', sortValue: (r) => r.final_value_total, render: (r) => <span className="whitespace-nowrap font-mono">{fmtPrice(r.final_value_total)}</span> },
-    { key: 'pnl', header: 'P&L', align: 'right', sortValue: (r) => r.pnl_total, render: (r) => <span className={`whitespace-nowrap font-mono ${tone(r.pnl_total)}`}>{fmtUsdSigned(r.pnl_total)}</span> },
+    { key: 'value', header: 'Final value', align: 'right', sortValue: (r) => r.final_value_total, render: (r) => <span className="whitespace-nowrap font-mono" title={fmtPrice(r.final_value_total)}>{usdC(r.final_value_total)}</span> },
+    { key: 'pnl', header: 'P&L', align: 'right', sortValue: (r) => r.pnl_total, render: (r) => <span className={`whitespace-nowrap font-mono ${tone(r.pnl_total)}`} title={fmtUsdSigned(r.pnl_total)}>{usdCSigned(r.pnl_total)}</span> },
     {
       key: 'vs_hold',
       header: 'vs holding',
       headerHint: 'Final value minus what the group’s starting cash and shares would be worth at the close.',
       align: 'right',
       sortValue: (r) => r.pnl_vs_hold_total,
-      render: (r) => <span className={`whitespace-nowrap font-mono ${tone(r.pnl_vs_hold_total)}`}>{fmtUsdSigned(r.pnl_vs_hold_total)}</span>,
+      render: (r) => <span className={`whitespace-nowrap font-mono ${tone(r.pnl_vs_hold_total)}`} title={fmtUsdSigned(r.pnl_vs_hold_total)}>{usdCSigned(r.pnl_vs_hold_total)}</span>,
     },
   ];
 
