@@ -1,7 +1,7 @@
 FINVERSE: SPEC v1.1
 Fundamentalist fixes + Momentum EKF fixes + Dashboard additions
 =====================================================================
-Date: 2026-10-08.  Owner: Apratim Anand (with Sarthak Agrawal), IIT Bombay.
+Date: 2026-10-08.  Owner: Apratim Anand, IIT Bombay.
 Audience: Claude Code (implementation) and any new Claude chat picking this up.
 Status: every item in Parts 2-4 is APPROVED by the owner. Part 5 lists deferred items;
 do NOT implement them.

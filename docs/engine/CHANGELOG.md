@@ -3,6 +3,16 @@
 Sources: the git log of this repository and the specs in [`docs/specs/`](../specs/).
 Upstream ABIDES history (2021–2023, J.P. Morgan) is not repeated here.
 
+## v1.3 — R2: the realism lab, measurement only (in progress, branch `v1.3`)
+
+Spec: [`docs/specs/spec_v1.3.txt`](../specs/spec_v1.3.txt). Every change is measurement or
+scenario tooling whose default is inert; invariant I8 checks that default runs are
+bit-identical to v1.2 (aa5f606).
+
+| Milestone | Files | Change |
+|---|---|---|
+| L0 | `docs/specs/`, `docs/engine/REALISM_LAB.md`, `docs/engine/DECISIONS.md`, `docs/engine/TESTING.md`, `abides-markets/tests/test_invariants.py`, `docs/v1.3/lab/reference_hashes.json` | Spec v1.3 stored; **owner correction (2026-10-11): the "Owner:" line of `spec_v1.1.txt` and `spec_v1.2.txt` now reads "Owner: Apratim Anand, IIT Bombay."** (nothing else changed in those files); invariant I8 "no drift" with the hash recorded from aa5f606; run A reference hash; decision entries D-R2-1 … D-R2-5; REALISM_LAB.md skeleton |
+
 ## v1.2 — R1: foundation fixes and living documentation (2026-10-09, branch `v1.2`)
 
 Spec: [`docs/specs/spec_v1.2.txt`](../specs/spec_v1.2.txt). Report and acceptance numbers:

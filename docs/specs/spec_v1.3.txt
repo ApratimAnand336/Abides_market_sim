@@ -1,0 +1,793 @@
+FINVERSE: SPEC v1.3 ("R2: the realism lab, a measurement-only release")
+=========================================================================
+Date: 2026-10-11.  Owner: Apratim Anand, IIT Bombay.
+Audience: Claude Code (implementation) and any new Claude chat picking this up.
+Status: APPROVED by the owner on 2026-10-11 (bands, scope and order of work, Part 1).
+Build on branch v1.3, created from origin/v1.2 (aa5f606). Commit once per milestone
+(Part 11). Do not push; the owner reviews and pushes. Do not delete tracked files.
+
+The document is self-contained. Part 0 is the background. Part 1 records the owner's
+decisions. Part 2 is the one rule that governs everything else: R2 MEASURES the market,
+it does not change it.
+
+
+=========================================================================
+PART 0. CONTEXT
+=========================================================================
+0.1 Project
+  FinVerse (startup + IIT Bombay ITSP 2026 project) is a realistic simulated stock
+  market where students trade against AI investors and learn the theory alongside.
+  The engine is a fork of ABIDES (J.P. Morgan's discrete-event market simulator).
+  Repository: ApratimAnand336/Abides_market_sim. Latest branch: v1.2 (aa5f606).
+  Prices are integer CENTS internally; variances are cents^2; engine time is ns.
+  Price is about $1000 (r_bar = 100,000 cents). 1 tick = 1 cent.
+
+  Read first: docs/engine/README.md (index), ARCHITECTURE.md, ORACLE.md,
+  AGENTS_ABIDES.md, AGENT_FUNDAMENTALIST.md, AGENT_MOMENTUM.md, KNOWN_ISSUES.md,
+  TESTING.md, and docs/v1.2/REPORT.md.
+
+0.2 The market we measure (rmsc04_ekf.build_config, called through
+    api.jobs.build_run_config)
+  1000 NoiseAgent, 97 ValueAgent, 2 AdaptiveMarketMakerAgent (cold start, spread cap
+  100 c), 20 FundamentalistAgent and 12 MomentumEKFAgent (ours; the "20 + 12" setup of
+  every acceptance run), 1 ExchangeAgent, 1 NewsOracleAgent. Full day 09:30-16:00.
+  True value: PregeneratedOracle, OU on a 1 s grid, generated once per seed before any
+  agent, identical across agent mixes, news and session length (v1.2).
+
+0.3 Where we stand (v1.2 acceptance, 2026-10-09; single runs A/B/C = seeds 42/42/7)
+  Works: our agents track the price, trade moderately, react to news sensibly; the
+  true value is seed-stable; the market starts without value agents; invariants I1-I7
+  guard determinism, conservation and book sanity.
+  Not realistic (KNOWN_ISSUES K1-K12):
+      1-min return std        0.62-0.70 bps            (a large-cap: ~5-10 bps)
+      lag-1 autocorrelation   +0.33 to +0.40           (real: ~0)
+      |r| lag-1 autocorr      0.05-0.20                (real: clearly positive)
+      excess kurtosis         1.8-3.2
+      gap std / half-life     $0.13-0.14 / 1.3-1.4 min (price pinned to value)
+      regime contrast         2-3x (spec v1.2 App. B; not re-measured in v1.2)
+      price impact            never measured
+  All of these are single-seed numbers. The kurtosis expectation moved from 6.7-8.0 to
+  1.8-3.2 between two true-value paths of the same seed, so single runs are not
+  evidence. R2 replaces them with 20-seed distributions.
+
+0.4 Measured on 2026-10-11 (seed 42, full day, 20 + 12, v1.2 code; independent run):
+      shares executed in the day (each trade counted once):   608,106
+      share of executed volume by class (both sides counted, sums to 100%):
+          ValueAgent 87.58%, NoiseAgent 6.85%, AdaptiveMarketMaker 4.75%,
+          FundamentalistAgent 0.42%, MomentumEKFAgent 0.41%
+      the one heavy fundamentalist (id 1109): 1,433 shares, 0.12% of volume.
+      Its draw is the aggressive corner of most ranges (delta 0.0009, lambda_er 0.59,
+      a_max 0.99, z0 1.48, b_f 0.012, k 2.49). It is a personality, not a bug.
+  These numbers set the order sizes of the impact test (Part 5.4) and show that R2's
+  market-level statistics are driven by the value agents.
+
+0.5 A diagnostic observation that R2 must confirm or reject (back-of-envelope, not a
+    measurement): the true value's 1-min change std is about 11-12 c (ORACLE.md; about
+    1.1-1.2 bps of $1000), but the PRICE's 1-min return std is only 0.62-0.70 bps. The
+    price looks SMOOTHER than the value it follows. A price that trails a moving target
+    step by step has positive return autocorrelation and lower short-horizon volatility,
+    which is exactly what we see. If R2 confirms it (price/value volatility ratio < 1,
+    variance ratio VR(5) > 1), then even perfect tracking of today's value would give
+    only ~1.2 bps: the 5-10 bps target needs a more volatile value process AND
+    endogenous volatility, not only looser tracking. This is the central hypothesis R2
+    tests; it decides how R3 and R4 are designed.
+
+0.6 Roadmap position
+  R1 = v1.2 (done). R2 = this spec (realism lab, measurement only). R3 informed
+  fundamentalists (research channel, quoting into an empty book, budget limits for the
+  ABIDES agents, value-agent replacement 97 -> 50 -> 20 -> 0). R4 value dynamics (two
+  news types, calm/stressed periods, market-maker inventory management). R5
+  calibration against the bands of Part 4. R6 user trading.
+
+
+=========================================================================
+PART 1. OWNER DECISIONS (2026-10-11) THAT THIS SPEC IMPLEMENTS
+=========================================================================
+  D-R2-1 Reference stock: a liquid large-cap that moves about 1-2% in a day. All bands
+         in Part 4 derive from it. They are PROVISIONAL: they grade the baseline now
+         and are revisited before R5.
+  D-R2-2 Information first, then changes. R2 changes nothing an agent decides and no
+         default of the market. Scenario TOOLING (a scripted true-value path, a test
+         order agent, scenario-only switches whose defaults are inert) is allowed
+         because it only sets up experiments (Part 2).
+  D-R2-3 Run as many scenarios as the tooling allows: S1-S8 are all in scope. S4
+         (hype news) needs no new code. S3 (information news) is defined in R2 as
+         "the true value jumps AND a headline arrives at the same moment"; agents still
+         read the headline as ordinary news. The R4 feature (agents treating
+         information and hype differently) is NOT part of R2.
+  D-R2-4 The heavy-trader fundamentalist stays (it is 0.12% of volume and cannot move
+         market statistics). Fundamentalist group statistics are reported as medians
+         and quantiles, never means, and the lab watches its volume share (Part 3.10).
+  D-R2-5 Budget limits for the ABIDES agents stay in R3. R2's impact numbers are
+         therefore the "before" picture, measured while value agents can short
+         without limit; they are re-measured after R3.
+
+
+=========================================================================
+PART 2. THE RULE: MEASUREMENT ONLY, ENFORCED BY A NO-DRIFT TEST
+=========================================================================
+2.1 With every new parameter at its default, a simulation must be BIT-IDENTICAL to v1.2
+    (aa5f606): same sha256 of every EXEC (time, price, quantity, agent_id,
+    oppos_agent_id) and of every agent's final holdings, computed exactly as invariant
+    I1 does.
+2.2 New invariant I8 "No drift" (abides-markets/tests/test_invariants.py):
+      seed 42, 09:30-10:30, 5 fundamentalists + 4 momentum (the invariant setup), built
+      through api.jobs.build_run_config with default RunParams. The expected hash is a
+      constant in the test file, recorded ONCE from a checkout of aa5f606 with
+      PYTHONHASHSEED=0. Document in TESTING.md how it was recorded and when it may be
+      re-recorded (only when an approved spec changes behaviour, e.g. R3, and the
+      DECISIONS.md entry says so).
+    Also record the full-day seed-42 20 + 12 hash (run A) in
+    docs/v1.3/lab/reference_hashes.json; the regression set (Part 7.6) checks it.
+2.3 If any change in this spec cannot be made without breaking I8, stop and report it in
+    the milestone report instead of re-recording the hash.
+2.4 Nothing is tuned. Every number is reported as measured. If a result looks wrong,
+    investigate and report; do not change parameters to make it look right.
+
+
+=========================================================================
+PART 3. METRICS (exact definitions; single source: api/realism.py)
+=========================================================================
+All metrics are pure functions of numpy arrays in a new module api/realism.py, reused
+by the lab (Part 7) and the dashboard (Part 9). Reuse api/stats.py where it already
+computes the same thing (acf, returns_1m, gap_half_life); do not change those
+functions' current outputs (the dashboard depends on them). Add new functions instead.
+
+Common inputs, per run (built by one helper, realism.series_from_end_state or from an
+existing payload's full-resolution arrays before downsampling):
+  grid      1 s grid over the session, t = 0 .. duration (s since 09:30)
+  mid_1s    L1 mid in dollars on the grid (last value at or before t; forward-filled)
+  val_1s    true value in dollars on the grid (oracle.value_at / 100, exact float)
+  spr_1s    L1 spread in cents on the grid (forward-filled; one-sided book -> NaN,
+            excluded from spread statistics, counted in a "one_sided_share" field)
+  close_1m  mid at the end of each 1-min bar (390 bars for a full day)
+  r1        1-min log returns of close_1m (389 values for a full day)
+  vol_1m    shares executed per 1-min bar (each EXEC counted once)
+  execs     list of (t, price, qty, agent_id, oppos_agent_id)
+
+3.1 Volatility
+  sigma_1m_bps  = 1e4 * std(r1, ddof=1)
+  sigma_day_implied = sigma_1m_bps * sqrt(389) / 100        (percent per day)
+  day_return    = ln(mid at 16:00 / mid at 09:30)
+  Across seeds (lab only): sigma_day_xseed = std over seeds of day_return (percent).
+  Derivation for the band: volatility scales like sqrt(time); 1% a day over 389
+  1-min returns is 1% / sqrt(389) = 5.07 bps per minute; 2% is 10.1 bps.
+
+3.2 Predictability
+  ac1          = lag-1 autocorrelation of r1 (api.stats.acf)
+  ac_2_5       = autocorrelations at lags 2..5, and n_out = how many of lags 1..5 lie
+                 outside +/- 2/sqrt(n) (= +/-0.101 for n = 389)
+  VR(k)        = Var(ln mid(t+k min) - ln mid(t)) / (k * Var(r1)), overlapping k-min
+                 returns from close_1m, k in {5, 30}. Random walk: VR = 1. Positive
+                 autocorrelation (price trailing a target): VR > 1.
+
+3.3 Volatility clustering
+  acf_abs      = autocorrelation of |r1| at lags 1..30 (api.stats.acf with n_lags = 30)
+  CS           = mean(acf_abs[1..5])     (clustering strength)
+  PS           = mean(acf_abs[10..30])   (persistence)
+
+3.4 Fat tails
+  kurt         = excess kurtosis of r1 (Fisher; scipy.stats.kurtosis)
+  skew         = skewness of r1 (reported only)
+
+3.5 Volume and volatility
+  5-min buckets b = 1..78: RV_b = sqrt(sum of r1^2 in the bucket), V_b = shares
+  executed in the bucket.
+  vv_corr      = Spearman rank correlation of (RV_b, V_b)
+  u_ratio      = (volume 09:30-10:00 + volume 15:30-16:00) / (2 * mean 30-min volume
+                 over 10:00-15:30)    (intraday U-shape, K7; report only)
+
+3.6 Spread
+  spread_med_ticks, spread_p95_ticks, spread_max_ticks from spr_1s (two-sided only);
+  one_sided_share = share of grid seconds with an empty side.
+
+3.7 Price vs true value
+  gap = mid_1s - val_1s (dollars).
+  gap_std, gap_mean_abs, corr_mid_value (Pearson of mid_1s and val_1s).
+  gap_half_life_min = api.stats.gap_half_life(gap, lags_s = LAB_GAP_LAGS) with
+      LAB_GAP_LAGS = (60, 120, 300, 600, 1200, 1800, 3600)
+  (The dashboard keeps its own (60, 120, 300, 600). The lab needs the longer lags
+  because the target band is 30-90 min: at a 90-min half-life rho(600 s) = 0.926 and
+  rho(60 s) = 0.992, which the 0.98 cut excludes. Record both lag sets' results.)
+  vol_ratio_price_value = std(1-min log returns of mid) / std(1-min log returns of the
+      true value sampled at the same bar ends)        (the Part 0.5 hypothesis)
+
+3.8 Regimes
+  regime_contrast = max_w RV_w / min_w RV_w over the 13 non-overlapping 30-min windows
+      of the day, RV_w = std of the 1-min returns inside window w.
+      Note for the report: with constant volatility and 29 returns per window, sampling
+      noise alone gives a ratio of about 1.55 (10th-90th percentile 1.38-1.84;
+      simulated 2026-10-11, 500 normal days), so 2-3x means "no regimes".
+  trend_share = share of 1-min-stepped rolling 30-min windows whose |30-min return|
+      exceeds 2x the median |30-min return| of the day (report only).
+
+3.9 Accounting and agent sanity (per run; P&L at the closing mid)
+  pnl_vs_hold per agent (api.export.pnl_vs_hold) and per class: total, median, p10, p90.
+  zero_sum = sum of pnl_vs_hold over EVERY agent (including the probe of Part 5.4) in
+      cents. Must be exactly 0. A non-zero value is a hard failure of the run.
+  per class: orders sent, shares traded (both sides), volume share (rows sum to 100),
+      and for our agents turnover per agent (median, p90, max) and holdings p10-p90
+      (sampled every 10 s from HOLDINGS_UPDATED, pooled).
+
+3.10 Heavy-trader watch (D-R2-4)
+  top_fund_volume_share = largest single fundamentalist's share of executed volume (%).
+  top_fund_turnover     = its shares traded; and its drawn parameters.
+  Report its distribution over seeds. No band; flag in the report if any seed exceeds
+  1% of total volume.
+
+
+=========================================================================
+PART 4. BANDS AND GRADING (provisional, owner-approved 2026-10-11)
+=========================================================================
+4.1 One table, one place: api/realism.py:BANDS (a list of dicts: key, label, unit, pass
+    range(s), warn range(s), note, source). Sent to the dashboard in the payload
+    (Part 9). Each band records source = "owner D-R2-1, 2026-10-11, large-cap reference".
+
+4.2 Graded metrics (the scorecard)
+  #   metric                    PASS                       WARN                          FAIL
+  G1  sigma_1m_bps              5 .. 10                    2.5 .. 5  or  10 .. 20        otherwise
+  G2  sigma_day_xseed (lab)     1% .. 2%                   0.5% .. 1%  or  2% .. 4%      otherwise
+  G3  |ac1|                     <= 0.10                    0.10 .. 0.20                  > 0.20
+  G4  VR(5)                     0.80 .. 1.25               0.60 .. 0.80  or 1.25 .. 1.60 otherwise
+  G5  clustering                CS >= 0.10 and PS > 0.03   CS 0.05..0.10, or CS >= 0.10  CS < 0.05
+                                                           with PS <= 0.03
+  G6  kurt                      >= 3                       1 .. 3                        < 1
+  G7  vv_corr                   >= 0.30                    0.10 .. 0.30                  < 0.10
+  G8  spread                    median <= 1 tick and       p95 <= 10 ticks               otherwise
+                                p95 <= 5 ticks
+  G9  gap_std                   $1 .. $3                   $0.50 .. $1  or  $3 .. $5     otherwise
+  G10 gap_half_life_min         30 .. 90                   10 .. 30  or  90 .. 180       otherwise, or None
+  G11 regime_contrast           >= 5                       3 .. 5                        < 3
+  G12 impact exponent beta      0.40 .. 0.70               0.25 .. 0.40  or 0.70 .. 0.90 otherwise
+      (lab, Part 5.4)
+  G13 impact recovery           0.1 <= I_perm/I_peak <= 0.8   0 < ratio < 0.1  or       <= 0 or > 1
+      (lab, Part 5.4)                                      0.8 < ratio <= 1
+  Boundaries: a value exactly on a boundary takes the better grade.
+  Reported, not graded: VR(30), ac lags 2..5 and n_out, skew, u_ratio, corr_mid_value,
+  vol_ratio_price_value, trend_share, sigma_day_implied, spread max and one_sided_share,
+  all agent sanity numbers.
+
+4.3 Aggregation over seeds (lab)
+  For every metric: median, p10, p90, min, max over seeds, and n_seeds.
+  The grade is computed on the MEDIAN. Also report pass_share = share of seeds whose
+  own value is in the PASS band. A metric with fewer than 15 valid seeds is "INCOMPLETE".
+4.4 Single-run grading (dashboard): the same bands applied to one run, labelled
+  "single run - the 20-seed lab report is authoritative". G2, G12, G13 are not shown
+  for a single run.
+
+
+=========================================================================
+PART 5. CONFIGURATIONS AND SCENARIOS (the run matrix)
+=========================================================================
+5.0 Seeds and timing
+  SEEDS = [42, 7, 1, 2, 3, ..., 18]   (20 seeds; 42 and 7 keep continuity with v1.1/v1.2)
+  Every run: full day 09:30-16:00, 20 fundamentalists + 12 momentum EKF unless stated.
+  Event time t0 = 11:00:00 (offset 01:30:00) for S2-S5 and S8, so the windows
+  [t0 - 30 min, t0 + 90 min] lie inside the session and away from the open.
+  Baselines: because the true value is seed-stable and every new switch is inert by
+  default (Part 2), the baseline of a scenario on seed s is C-DEF on seed s (unless
+  stated). The comparison treated - baseline on the SAME seed isolates the trigger.
+
+5.1 Scorecard configurations (Campaign 1; NO new code needed)
+  C-DEF   default market (0.2). This is also S1 ("quiet day").
+  C-V20   as C-DEF with num_value = 20. Answers: how much of the pinning comes from the
+          value agents? (Changing a count shifts every later agent seed, so this is a
+          different market with the same true value; compare distributions, not seeds.)
+
+5.2 News scenarios (Campaign 1; NO new code needed: existing news events)
+  S4      headline "Company announces record quarterly earnings", sentiment +0.9, at t0.
+          Today's news moves beliefs only; this is "hype" news.
+  S4n     headline "Regulator opens probe into company accounts", sentiment -0.9, at t0.
+          (Long-only agents and unlimited-short value agents may react asymmetrically.)
+
+5.3 True-value scenarios (Campaign 2; needs the oracle "scenario" source, Part 6.1)
+  S2      true value jumps by +2% of r_bar (+$20.00 = +2,000 c) at t0.
+  S2n     true value jumps by -2% of r_bar at t0.
+  S3      S2 plus the S4 headline (+0.9) delivered at t0 (same second).
+  S5      true-value volatility x3 from 11:00 to 12:00 (innovations scaled by 3 in that
+          window only; the path before 11:00 is identical to the baseline).
+
+5.4 Price impact (Campaign 3; needs the probe agent, Part 6.2)
+  Reference daily volume V_REF = 600,000 shares (0.4: 608,106 measured).
+  Each probe executes a parent order of Q shares from t0 over D = 300 s as 30 market
+  orders, one every 10 s, of size floor(Q/30) (the remainder added to the last child).
+      IMP-0     placebo, BUY Q = 100           (noise floor; ~0.017% of V_REF)
+      IMP-0.1   BUY  Q = 600                   (0.1% of V_REF)
+      IMP-0.5   BUY  Q = 3,000                 (0.5%)
+      IMP-1     BUY  Q = 6,000                 (1%)
+      IMP-5     BUY  Q = 30,000                (5%) = S8 "big external order"
+      IMP-1s    SELL Q = 6,000                 (1%, side asymmetry)
+  The probe starts with cash 10^12 cents (BUY) or Q shares and no cash (SELL), trades
+  with ignore_risk = True, and is excluded from class tables but included in zero_sum.
+  q for each run = Q / (shares executed in that seed's baseline day).
+  Baseline: C-DEF on the same seed IF the null-probe neutrality test passes (T-L6);
+  otherwise C-NULL (the probe present with Q = 0) on every seed, and the report says so.
+
+5.5 Liquidity and population scenarios (Campaign 4; needs the switches of Part 6.3/6.4)
+  S6      both market makers paused 13:00-13:30 (orders pulled at 13:00, no quotes until
+          13:30, normal from their first wake after 13:30).
+  S7a     our 12 momentum agents' starting wealth x3 ($300,000 each; endowment 150
+          shares).
+  S7b     x10 ($1,000,000 each; endowment 500 shares).
+  S7c     S7b plus the S2 jump. Baseline for the jump metrics: S7b on the same seed
+          (and C-DEF for the scorecard deltas). Question: do more trend-following
+          dollars create an overshoot after a value jump?
+  Note: momentum agents are 0.41% of volume today, so x3 is expected to change little;
+  x10 is the exploratory point.
+
+5.6 Run count (Appendix C has the full matrix)
+  2 scorecard configs + 10 scenario configs + 6 impact configs = 18 configs x 20 seeds
+  = 360 runs (+20 if C-NULL is needed). About 25 s per full day -> about 2.5 CPU-hours;
+  with 6-8 workers, 20-30 minutes wall time per full campaign set.
+
+
+=========================================================================
+PART 6. SCENARIO TOOLING (new code; every default is inert, Part 2)
+=========================================================================
+6.1 Oracle path source "scenario" (abides-markets/abides_markets/oracles/
+    pregenerated_oracle.py)
+  Register PATH_SOURCES["scenario"] = generate_scenario_ou. It takes the same params as
+  synthetic_ou plus params["events"], a list of dicts:
+      {"type": "jump", "t_ns": int, "cents": float}           value step
+      {"type": "vol",  "t0_ns": int, "t1_ns": int, "mult": float}  innovation scaling
+  Algorithm (no extra random draws, same draw order as synthetic_ou):
+    1. Draw exactly what generate_synthetic_ou draws, in the same order (refactor the
+       shared part into one helper so the two cannot diverge).
+    2. innov[1:] = sd * eps; for each vol event, multiply innov[k] by mult for every k
+       with t0_ns <= times[k] < t1_ns.
+    3. Add megashocks exactly as now.
+    4. For each jump event: innov[k] += cents at the first grid index k with
+       times[k] >= t_ns.
+    5. x = lfilter([1], [1, -a], innov); return r_bar + x.
+  Consequences: with events = [] the path is bit-identical to synthetic_ou (T-L1); a
+  jump of J adds J * a^(k - k0) at k >= k0 (a = exp(-kappa*1 s); over 5 hours the jump
+  decays by less than 0.0003%, so it is permanent in practice).
+  The oracle keeps self.events = the list as applied (with the grid time actually used)
+  and logs it; api/export adds payload.oracle_events (schema change, Part 9).
+  build_config gains oracle_events=None (list of dicts with offsets as "HH:MM:SS" and
+  "pct" of r_bar for jumps; converted to the ns/cents form above). None -> path_source
+  stays "synthetic_ou" (the default path is untouched).
+
+6.2 Probe agent (new file abides-markets/abides_markets/agents/impact_probe_agent.py)
+  class ImpactProbeAgent(TradingAgent): a test instrument, not a market participant.
+  Constructor: symbol, side ("BUY"/"SELL"), quantity, start_time (ns), duration_s=300,
+      child_interval_s=10, starting_cash, starting_shares, random_state.
+  Behaviour: if quantity == 0 it never requests a wakeup beyond what TradingAgent
+      requires and never sends an order. Otherwise at start_time + i*child_interval
+      (i = 0..n-1) it places a MARKET order (place_market_order) for the child size.
+      It logs PROBE_CHILD (i, planned qty, time) and ORDER_EXECUTED as usual, and at
+      kernel stop PROBE_SUMMARY (planned, filled, unfilled, vwap_cents, arrival_mid).
+      It uses no random numbers.
+  Seeding and placement (to keep every other agent's RNG identical):
+      appended as the LAST agent in build_config, after the NewsOracleAgent and BEFORE
+      the kernel random state and the latency model are drawn;
+      its random_state = np.random.RandomState(0), NOT drawn from the global np.random.
+      generate_latency_model draws one uniform coordinate per agent in agent order, so
+      the first n coordinates (all existing agents) are unchanged by one more agent.
+  build_config gains probe=None (dict: side, quantity, start "HH:MM:SS", duration_s,
+      child_interval_s). None -> no probe agent (default unchanged).
+  The probe is excluded from the population table's classes but listed separately
+  ("Impact probe (test)") and included in zero_sum.
+
+6.3 Market-maker pause windows (adaptive_market_maker_agent.py)
+  New constructor parameter pause_windows: Optional[List[Tuple[int, int]]] = None
+  (absolute ns, [start, end)). Default None: no code path changes (I8).
+  If given: kernel_starting schedules one extra wakeup at each window start; at a wake
+  inside a window the agent calls cancel_all_orders(), logs MM_PAUSED once per window,
+  does not request the spread, and schedules its next wake as usual; at its first wake
+  at or after the window end it resumes normally and logs MM_RESUMED.
+  build_config gains mm_pause_windows=None (list of ("HH:MM:SS", "HH:MM:SS") pairs),
+  passed to both market makers.
+
+6.4 Momentum capital multiplier (rmsc04_ekf.py)
+  build_config gains mom_capital_mult=1.0. Our MomentumEKFAgents get
+  starting_cash = starting_cash * mom_capital_mult (the endowment rule then gives
+  floor(0.5 * cash / r_bar) shares). At 1.0 nothing changes (I8). No random draws.
+
+6.5 Lab entry point for configs
+  New module api/lab.py: lab_config(config_id, seed) -> the build_config(...) dict for
+  one entry of the run matrix (Appendix C), built through the same arguments as
+  api.jobs.build_run_config plus the new keyword arguments. RunParams and the dashboard
+  sidebar do NOT gain these switches in R2 (scenario controls for students are later
+  product work).
+
+
+=========================================================================
+PART 7. THE LAB RUNNER (scripts/realism_lab.py)
+=========================================================================
+7.1 CLI
+    python scripts/realism_lab.py --campaign c1|c2|c3|c4|all|regression
+                                   [--seeds 42,7,...] [--workers N] [--force]
+                                   [--configs C-DEF,S2,...] [--report-only]
+                                   [--rebaseline]
+  Default workers = min(os.cpu_count() - 1, 6). One simulation per process
+  (multiprocessing Pool with maxtasksperchild=1), per-run timeout 15 min.
+  Resumable: a run whose result exists with the same engine_version and config hash is
+  skipped unless --force.
+
+7.2 Per-run outputs (runs/_lab/<config_id>/<seed>/; runs/ is already git-ignored)
+  metrics.json  every Part 3 metric, the config dict (minus objects), seed,
+                engine_version (api.jobs.engine_version()), config sha256, wall time,
+                zero_sum, invariant flags, oracle events applied, probe summary.
+  series.npz    float32 arrays: mid_1s, val_1s, spr_1s, close_1m, vol_1m, and for our
+                agents per-agent x_hat (fundamentalists) and MOM_STATE transitions
+                (momentum) on a 10 s grid; per-class signed net shares per 1-min bar.
+                (~0.3 MB per run; needed for the treated - baseline comparisons.)
+  Do NOT store full payloads (8 MB each).
+
+7.3 Scenario analysis (api/realism.py, functions taking treated and baseline series)
+  All differences are treated minus baseline on the same seed, on the 1 s grid,
+  smoothed with a centred 30 s rolling mean where stated. Times in minutes after t0.
+
+  Value-jump scenarios (S2, S2n, S3, S7c); J = signed jump in dollars:
+    f(t)          = (mid_T(t) - mid_B(t)) / J              (share of the jump priced in)
+    t50, t90      = first t >= t0 where smoothed f >= 0.5 / 0.9 (None if not within
+                    90 min)
+    overshoot     = max(0, max over [t0, t0+60] of smoothed f - 1)   (fraction of J)
+    settle        = mean f over [t0+60, t0+90]
+    belief_5, belief_30 = median over fundamentalists of (x_hat_T - x_hat_B)/J at
+                    t0+5 and t0+30 min
+    mom_entries   = entries (BREAKOUT + REENTRY) in the jump's direction in
+                    [t0, t0+30], treated minus baseline, summed over our momentum agents
+    net_flow[c]   = net shares bought by class c in [t0, t0+60], treated minus baseline
+                    (who bought the move, who sold it)
+    vol_uplift    = sigma_1m in [t0, t0+30] treated / baseline
+    volume_uplift = shares executed in [t0, t0+30] treated / baseline
+  News-only scenarios (S4, S4n); s = sign of the sentiment:
+    R(t)          = s * 1e4 * ln(mid_T(t) / mid_B(t))      (bps, positive = expected
+                    direction)
+    R_peak, t_peak = max of smoothed R over [t0, t0+30] and its time
+    t_half_rev    = first t > t_peak where smoothed R <= R_peak / 2 (None within 90 min)
+    R_60          = mean R over [t0+55, t0+65]
+    belief_shift  = median fundamentalist NEWS_RECEIVED shift ($), median momentum
+                    change in v_hat
+  Volatility burst (S5):
+    in_ratio      = sigma_1m over [11:00, 12:00] treated / baseline
+    after_ratio   = sigma_1m over [12:00, 13:00] treated / baseline  (clustering: > 1.2
+                    would mean volatility persists after its cause ends)
+    spread_ratio, volume_ratio, gap_std in [11:00, 12:00] treated / baseline
+  Market-maker pause (S6), window W = [13:00, 13:30]:
+    spread mean, p95, max and one_sided_share in W, treated vs baseline;
+    sigma_1m in W treated / baseline; shares executed in W treated / baseline;
+    max |mid_T - mid_B| in W ($); recovery_min = minutes after 13:30 until the 5-min
+    rolling mean spread first falls to <= 1.2x the baseline's over the same 5 min.
+  Momentum capital (S7a, S7b): scorecard deltas (G1-G11 metrics) vs C-DEF on the same
+    seed; momentum volume share; entries per agent per day; momentum P&L vs hold.
+  Price impact (IMP-*), s = +1 for BUY, -1 for SELL:
+    I(t)          = s * 1e4 * ln(mid_T(t) / mid_B(t))      (bps)
+    I_end         = mean I over [t0+D-10 s, t0+D]          (end of execution)
+    I_peak        = max over [t0, t0+D+120 s] of the 30 s rolling mean of I
+    I_perm        = mean I over [t0+D+25 min, t0+D+35 min]
+    shortfall     = s * 1e4 * (VWAP of the probe's fills / arrival mid - 1)  (bps; what
+                    the trader paid), arrival mid = mid_B(t0) (= mid_T(t0))
+    fill_rate     = filled / Q
+    absorbed[c]   = shares the probe traded against each class (who was on the other
+                    side)
+    Noise floor   = p90 over seeds of |I_end| and |I_perm| for IMP-0. A size whose
+                    median |I_end| is below 2x the floor is reported as "not resolved".
+    Exponent beta = OLS slope of ln(median I_end) on ln(median q) over the four BUY
+                    sizes; 90% CI by bootstrap over seeds (2000 resamples, fixed RNG
+                    seed 0 for the bootstrap). Graded as G12. Also report beta for
+                    I_peak.
+    Recovery      = median over seeds of I_perm / I_peak for IMP-1 and IMP-5; graded as
+                    G13 on IMP-1.
+    Side asymmetry = IMP-1s versus IMP-1 (I_end, I_perm, shortfall).
+
+7.4 Summary outputs (committed; small)
+  docs/v1.3/lab/summary.json      every aggregated metric (Part 4.3), every scenario
+                                   result (median, p10, p90, n), bands, grades,
+                                   seeds, engine_version, date.
+  docs/v1.3/lab/BASELINE.md       the human report (Part 11.4).
+  docs/v1.3/lab/figures/*.png     (matplotlib; add it to requirements-dev.txt; if it is
+                                   not installed the lab skips figures with a warning):
+      scorecard.png         one row per graded metric: seed values as dots, median as a
+                            bar, PASS/WARN zones shaded; C-DEF and C-V20 side by side
+      jump_response.png     median f(t) with p10-p90 band for S2, S2n, S3 (and S7c)
+      news_response.png     median R(t) with band for S4, S4n
+      impact_curve.png      log-log I_end and I_peak vs q with p10-p90 whiskers, the
+                            noise floor as a line, and a reference slope 0.5
+      impact_path.png       median I(t) for each size from t0-5 to t0+40 min
+      vol_burst.png         rolling 10-min sigma treated vs baseline (S5)
+      mm_pause.png          rolling spread treated vs baseline (S6)
+  docs/v1.3/lab/reference_hashes.json   Part 2.2.
+
+7.5 Campaigns (run in this order; commit the summary after each)
+  c1  C-DEF, C-V20, S4, S4n                      (no new market code; data first)
+  c2  S2, S2n, S3, S5                            (after 6.1)
+  c3  IMP-0 .. IMP-1s (+ C-NULL if needed)       (after 6.2)
+  c4  S6, S7a, S7b, S7c                          (after 6.3, 6.4)
+
+7.6 Regression set (--campaign regression)
+  Seeds 42, 7, 1; configs C-DEF, S2, IMP-1 (9 runs, about 1-2 min with 3+ workers).
+  Checks: (a) seed-42 C-DEF full-day EXEC hash equals reference_hashes.json (any
+  behaviour change breaks it; that is intended); (b) for each graded metric, the 3-seed
+  median lies within the stored 20-seed [p10, p90]; otherwise "DRIFT" with the metric
+  and both numbers. Exit code 1 on (a) or any DRIFT. --rebaseline rewrites the stored
+  numbers and is only used when an approved spec changes behaviour.
+  Also a pytest wrapper marked @pytest.mark.slow (excluded from the default run).
+
+
+=========================================================================
+PART 8. EXPECTATIONS WRITTEN DOWN BEFORE THE RUNS (pre-registered)
+=========================================================================
+Record these in BASELINE.md next to the measured results, with a one-line verdict each
+(confirmed / rejected / partly). They are hypotheses from v1.2 single runs and theory;
+they are NOT targets, and nothing is tuned toward them.
+  E1  C-DEF fails G1, G2, G3, G4, G9, G10, G11; WARN on G6; PASS on G8. G5, G7 unknown.
+  E2  vol_ratio_price_value < 1 and VR(5) > 1.25: the price is smoother than the value
+      and trails it (Part 0.5).
+  E3  C-V20: gap std ~$0.2-0.3, half-life ~4 min (still FAIL), activity ~60% lower.
+  E4  S2/S3: price discovery is fast (t90 within a few minutes) and driven by value
+      agents (net_flow); no overshoot; few extra momentum entries. S3 is not faster
+      than S2 by more than a minute (only 32 agents read news).
+  E5  S4/S4n: R_peak of a few bps or less, reverting within ~10-20 min; belief shifts
+      $0.3-1.8 as in v1.2 run B.
+  E6  S5: in_ratio rises toward the value's own volatility increase; after_ratio ~1
+      (no clustering mechanism exists).
+  E7  S6: spreads widen in the window; value agents' passive orders keep the book from
+      emptying; recovery within one or two market-maker wakes.
+  E8  S7a/S7b: small effects (momentum is 0.41% of volume); S7c overshoot remains small.
+  E9  Impact: the buying is absorbed mainly by value agents (unlimited shorting) and
+      market makers; I_perm close to 0 because the true value does not change; beta is
+      unknown (no prior).
+
+
+=========================================================================
+PART 9. DASHBOARD: REALISM TAB
+=========================================================================
+9.1 Payload: schema_version 1.1 -> 1.2 (api/__init__.py SCHEMA_VERSION; api/schema.py;
+    web/src/types/payload.ts). ENGINE_VERSION 1.2 -> 1.3 (new payload content; cached
+    runs must not be reused). Add:
+      payload.realism = {bands: [...BANDS], metrics: {...single-run Part 3 values},
+                         grades: {...G1, G3-G11}}
+      payload.oracle_events = [] (always present; empty in normal dashboard runs)
+    Compute realism from the full-resolution arrays inside build_payload. Payload growth
+    must stay under 50 KB (report the size; K12 stays open).
+9.2 New 5th tab "Realism" (web/src/tabs/Realism.tsx; App.tsx TAB_DEFS):
+    - Card "This run": one row per graded metric: label, value with unit, band text,
+      grade chip (PASS / WARN / FAIL as words, not colour alone), a one-line "what it
+      means" tooltip (from the band's note). Header note: "Single run - the 20-seed lab
+      report is the authoritative grade."
+    - Card "Lab baseline (20 seeds)": shown only when GET /api/lab/summary returns 200.
+      Same rows with median [p10-p90], grade and pass_share, plus date and
+      engine_version of the lab run.
+    - Card "Diagnostics": vol_ratio_price_value, VR(5), VR(30), ac lags 1-5 with the
+      +/- band, acf_abs lags 1-30 as a small bar chart, u_ratio.
+9.3 API: GET /api/lab/summary serves docs/v1.3/lab/summary.json if present (404
+    otherwise). Server test for both cases.
+9.4 No other dashboard changes. No scenario controls in the sidebar in R2.
+
+
+=========================================================================
+PART 10. DOCUMENTATION (living docs; a milestone is not done until its docs are)
+=========================================================================
+  docs/specs/spec_v1.3.txt          this spec, copied verbatim.
+  docs/specs/spec_v1.1.txt, spec_v1.2.txt   owner correction (2026-10-11): change the
+                                    "Owner:" line of each to "Owner: Apratim Anand,
+                                    IIT Bombay." Change nothing else in those files;
+                                    record the correction in CHANGELOG.md.
+  docs/engine/REALISM_LAB.md (new)  what the lab is for; every metric with its formula
+                                    (Part 3), the bands and their source (Part 4), the
+                                    scenarios (Part 5), the analysis definitions (7.3),
+                                    how to run, how to read the outputs, the
+                                    measurement-only rule and I8, known limits (single
+                                    stock, one session length, 20 seeds, estimator
+                                    limits of the half-life).
+  docs/engine/ORACLE.md             the "scenario" path source, events, guarantees.
+  docs/engine/AGENTS_ABIDES.md      pause_windows switch (default inert).
+  docs/engine/ARCHITECTURE.md       ImpactProbeAgent; RNG table row (constant RNG, not
+                                    from the global stream); lab data flow.
+  docs/engine/TESTING.md            I8, T-L*, T-R*, the regression set, run times.
+  docs/engine/KNOWN_ISSUES.md       replace single-run numbers with 20-seed medians
+                                    [p10-p90]; K11 becomes "measured" with the impact
+                                    numbers; keep each issue's plan.
+  docs/engine/DECISIONS.md          entries D-R2-1 .. D-R2-5 (Part 1) and every
+                                    implementation decision made while building (e.g.
+                                    whether C-NULL was needed).
+  docs/engine/CHANGELOG.md          v1.3.
+  docs/engine/README.md             glossary: PASS/WARN/FAIL, band, variance ratio,
+                                    noise floor, price impact, implementation
+                                    shortfall, treated vs baseline.
+  docs/v1.3/REPORT.md               the implementation report (11.4).
+  docs/v1.3/lab/BASELINE.md         the findings report (11.4).
+
+
+=========================================================================
+PART 11. MILESTONES, TESTS, ACCEPTANCE, REPORT
+=========================================================================
+11.1 Milestones (one commit each, on branch v1.3, docs included)
+  L0  docs: spec copy, owner-line correction, REALISM_LAB.md skeleton, DECISIONS
+      entries; I8 hash recorded from aa5f606; reference_hashes.json (run A).
+  L1  api/realism.py (Part 3 metrics, 7.3 analysis functions, BANDS, grading,
+      aggregation) + unit tests T-R1..T-R12. No simulation code touched.
+  L2  scripts/realism_lab.py + api/lab.py; Campaign c1 run on all 20 seeds;
+      docs/v1.3/lab/BASELINE_c1.md (interim: scorecard for C-DEF and C-V20, S4/S4n,
+      verdicts on E1-E3, E5). Commit the data summary before writing any new market
+      tooling, so the owner has the first numbers early.
+  L3  oracle "scenario" source + T-L1..T-L4; Campaign c2; interim summary update.
+  L4  ImpactProbeAgent + T-L5..T-L7; Campaign c3; impact figures.
+  L5  MM pause + momentum capital switches + T-L8, T-L9; Campaign c4.
+  L6  payload realism + Realism tab + /api/lab/summary + server/export tests; npm build.
+  L7  regression set; final BASELINE.md and REPORT.md; KNOWN_ISSUES, CHANGELOG, TESTING
+      synced.
+
+11.2 Unit tests (pytest; abides-markets/tests/ for engine code, api/tests/ for metrics)
+  Metrics (synthetic inputs with known answers; api/tests/test_realism.py)
+    T-R1  sigma_1m_bps on i.i.d. normal returns with std 7 bps (n = 389, 2000 draws):
+          median estimate within +/-2%.
+    T-R2  ac1 of an AR(1) with phi = 0.3 (n = 10,000): within +/-0.03; of white noise:
+          |ac1| < 0.05.
+    T-R3  VR(5) of a random walk ~1 (+/-0.05, n = 20,000); of an AR(1) in returns with
+          phi = 0.3: within 5% of the theoretical 1 + 2*sum_{j=1..4}(1 - j/5) phi^j.
+    T-R4  CS/PS: GARCH(1,1) returns (omega 0.05, alpha 0.15, beta 0.80, n = 50,000)
+          give CS >= 0.15 and PS > 0.05 (simulated 2026-10-11: CS 0.20-0.22, PS
+          0.08-0.09 over 5 seeds); i.i.d. normal returns give CS < 0.05.
+    T-R5  kurt of Laplace returns (n = 100,000): within +/-0.3 of 3 (Laplace has all
+          moments finite, so the estimate is stable; Student-t(5) is not).
+    T-R6  vv_corr: synthetic buckets with volume = 1000 * RV + noise -> > 0.8;
+          independent -> |corr| < 0.25.
+    T-R7  regime_contrast: constant-volatility series -> median over 500 days of the
+          ratio between 1.35 and 1.85 (documents the ~1.55 sampling floor); a day whose
+          middle hour has 5x volatility -> > 4.
+    T-R8  gap half-life with LAB_GAP_LAGS on synthetic AR(1) gaps with half-lives of
+          1, 10, 45 and 90 min (1 s steps, 6.5 h): within +/-25% for 1-45 min; for
+          90 min report the error (expected noisier) and assert within +/-50%.
+    T-R9  jump analysis: f(t) = 1 - exp(-t/tau) with tau = 4 min plus noise ->
+          t90 = tau*ln(10) within +/-10%; overshoot = 0; an overshooting response
+          1 + 0.3*exp(-t/10) * (1 - exp(-t)) -> overshoot within +/-0.03.
+    T-R10 impact: synthetic I_end = 20 * q^0.5 with lognormal noise over 20 seeds ->
+          beta within 0.5 +/- 0.05 and the 90% CI contains 0.5; noise-floor rule marks a
+          size below 2x the floor as "not resolved".
+    T-R11 grading: every boundary of every band takes the better grade; a metric with
+          14 valid seeds is INCOMPLETE; aggregation returns median/p10/p90 exactly as
+          numpy.percentile (linear interpolation).
+    T-R12 zero_sum helper: a constructed set of agents with offsetting trades sums to 0;
+          a one-cent imbalance is reported as a failure.
+  Tooling (abides-markets/tests/test_scenarios.py)
+    T-L1  generate_path with path_source "scenario" and events = [] equals
+          "synthetic_ou" bit for bit, for 20 seeds.
+    T-L2  a jump of +2000 c at 11:00: path difference is 0 before the jump grid point
+          and equals 2000 * a^(k - k0) after it (abs tolerance 1e-6 c); the oracle's
+          events list records the grid time used.
+    T-L3  vol event x3 over 11:00-12:00: the path is identical before 11:00; over 200
+          seeds the std of 1 s increments inside the window is 3x the outside std
+          (+/-5%).
+    T-L4  build_config(oracle_events=None) yields path_source "synthetic_ou" and the I8
+          hash; build_config with a jump yields the same path as the baseline before
+          the jump and the same agent hyperparameters (the global stream is unchanged).
+    T-L5  probe BUY Q = 600 over 300 s in a 1-hour market: exactly 30 PROBE_CHILD events
+          10 s apart, filled + unfilled = 600, invariants I3 (conservation) and I5 (book
+          sanity) hold with the probe present, zero_sum = 0.
+    T-L6  null-probe neutrality: the 1-hour I8 market with probe = {quantity: 0} gives
+          the same EXEC hash as without the probe. If this cannot be made to pass,
+          mark the test xfail with the reason, use C-NULL baselines (5.4) and record the
+          decision in DECISIONS.md.
+    T-L7  probe uses no global RNG: a run with probe Q = 600 and a run without it have
+          identical agent hyperparameters and identical EXEC sequences up to t0.
+    T-L8  MM pause 10:00-10:15 in a 1-hour market: no MM order rests in the book and no
+          MM order is placed inside the window; each MM logs one MM_PAUSED and one
+          MM_RESUMED; the EXEC sequence before 10:00 equals the baseline's; outside the
+          scenario (pause_windows None) the I8 hash holds.
+    T-L9  mom_capital_mult = 3: each momentum agent starts with 3x cash-equivalent wealth
+          and floor(0.5 * cash / r_bar) shares; at 1.0 the I8 hash holds.
+  Invariants: I1-I7 unchanged and passing; I8 new (Part 2.2).
+  All existing tests must still pass (the two pre-existing upstream failures excepted:
+  test_ou_process, test_gym_runner).
+
+11.3 Acceptance for R2 (completeness and correctness of the MEASUREMENT; there are no
+     market targets in R2 and the scorecard is expected to show many FAILs)
+  A1  Every run of Appendix C completed, or is listed with its error; every config has
+      >= 19 valid seeds (else that config's results are INCOMPLETE and explained).
+  A2  zero_sum = 0 exactly in every run.
+  A3  I1-I8 pass; T-L6 result reported (pass, or xfail with C-NULL baselines used).
+  A4  The impact noise floor is reported, and every impact number says whether it is
+      resolved (Part 7.3).
+  A5  BASELINE.md contains: the scorecard tables for C-DEF and C-V20 with grades; every
+      scenario table; all figures; verdicts on E1-E9; the heavy-trader watch; and the
+      answer to the Part 0.5 hypothesis.
+  A6  Payload growth from Part 9 < 50 KB (report the full-day 20 + 12 size); npm run
+      build passes; the Realism tab screenshot for seed 42 is in docs/v1.3/screenshots/.
+  A7  The regression set passes against the stored baseline.
+
+11.4 Reports
+  docs/v1.3/REPORT.md (implementation): what changed (files, functions), test results,
+      run times, every deviation from this spec with the reason, open questions. Same
+      style as docs/v1.2/REPORT.md.
+  docs/v1.3/lab/BASELINE.md (findings), in this order:
+      1. One paragraph: what the market is like today, in numbers (20-seed medians).
+      2. Scorecard tables C-DEF and C-V20 (metric, band, median [p10-p90], grade,
+         pass_share), then the reported-only diagnostics.
+      3. The Part 0.5 hypothesis: vol_ratio_price_value and VR(5), and what follows.
+      4. Scenario results S2-S7 (one table each, Part 7.3 metrics, median [p10-p90]).
+      5. Price impact: curve, beta with CI, recovery, shortfall, absorption by class,
+         side asymmetry, noise floor. Plain-language line: "what a student's order of
+         X% of daily volume does to the price".
+      6. E1-E9 verdicts.
+      7. What the numbers imply for R3/R4 (observations only; no design decisions; the
+         owner decides).
+      8. Open questions.
+  Every number states its config, seeds, engine_version and date.
+
+
+=========================================================================
+APPENDIX A. WHY THESE MEASURES (short theory)
+=========================================================================
+A1 Volatility scales with sqrt(time) for a random walk: sigma_k = sigma_1 * sqrt(k).
+   Hence 1-2% a day = 5.1-10.1 bps per minute over 389 one-minute returns.
+A2 Under the null of no predictability, sample autocorrelations of n returns have a
+   standard error of about 1/sqrt(n): with n = 389 the 95% band is +/-0.101.
+A3 Variance ratio (Lo-MacKinlay): VR(k) = 1 + 2 * sum_{j=1}^{k-1} (1 - j/k) rho_j.
+   A price that trails a smoothly moving target has rho_j > 0 for small j, so VR > 1
+   and short-horizon volatility is understated relative to long-horizon volatility.
+A4 Volatility clustering shows as positive autocorrelation of |r| decaying slowly
+   (stylized fact; R. Cont, Quantitative Finance, 2001). A constant-volatility process
+   has acf(|r|) ~ 0.
+A5 Gap half-life: treat the mispricing as a spring, dg = -k g dt + noise, so
+   rho(L) = exp(-k L) and t_1/2 = ln 2 / k (spec v1.1 Appendix A5).
+A6 Square-root impact law: the price impact of a metaorder of size Q executed over a
+   short time scales roughly like sigma_day * sqrt(Q / V_day) across many markets
+   (e.g. Toth et al., Physical Review X, 2011; Bouchaud et al., "Trades, Quotes and
+   Prices", 2018). Impact then partly decays after the execution ends. beta is the
+   measured exponent; 0.5 is the reference.
+A7 Implementation shortfall (Perold, 1988): the cost of executing relative to the price
+   when the decision was made. For a student, this is what "my order moved the price
+   against me" costs in bps.
+A8 Why treated minus baseline on the same seed: the true value, every agent's
+   parameters and every RNG stream are identical until the trigger, so any later
+   difference is caused by the trigger and the market's response to it. Divergence
+   grows after the trigger (agents' random draws are consumed differently once their
+   decisions differ); the placebo IMP-0 measures that divergence, which is why
+   impact numbers are judged against its noise floor.
+
+
+=========================================================================
+APPENDIX B. DECISION LOG ENTRIES (for docs/engine/DECISIONS.md)
+=========================================================================
+  2026-10-11 (v1.3, R2)  Realism lab, measurement only: no change to agent decisions or
+      market defaults; enforced by invariant I8 (bit-identical to v1.2 with defaults).
+      Reason: the owner wants information first, then changes; every later change is
+      then judged against a 20-seed baseline.
+  2026-10-11 (v1.3)  Provisional bands from a large-cap reference (1-2% daily moves):
+      5-10 bps per minute, |ac1| <= 0.10, kurtosis >= 3, gap std $1-3, half-life
+      30-90 min, regime contrast >= 5, spread median 1 tick / p95 <= 5, impact exponent
+      0.4-0.7. Reason: owner decision D-R2-1. Alternative: a volatile mid-cap (2-4%);
+      not chosen.
+  2026-10-11 (v1.3)  S3 in R2 = true-value jump + an ordinary headline at the same time;
+      agents do not distinguish news types until R4. S4 = today's news (beliefs only).
+  2026-10-11 (v1.3)  The heavy-trader fundamentalist stays (0.12% of volume, seed 42,
+      measured 2026-10-11). Group statistics use medians and quantiles.
+  2026-10-11 (v1.3)  Budget limits for the ABIDES agents stay in R3; R2's impact numbers
+      are the "before" picture.
+  2026-10-11  Owner correction: the owner line of the specs is "Apratim Anand, IIT
+      Bombay"; spec_v1.1.txt and spec_v1.2.txt corrected in docs/specs/.
+
+
+=========================================================================
+APPENDIX C. RUN MATRIX
+=========================================================================
+  id       campaign  build_config differences from C-DEF                     baseline
+  C-DEF    c1        none (= S1 quiet day)                                   -
+  C-V20    c1        num_value_agents = 20                                   -
+  S4       c1        news_events = [("01:30:00", ABM, +0.9, "Company announces record
+                     quarterly earnings")]                                   C-DEF
+  S4n      c1        news_events = [("01:30:00", ABM, -0.9, "Regulator opens probe
+                     into company accounts")]                                C-DEF
+  S2       c2        oracle_events = [jump +2% of r_bar at 01:30:00]         C-DEF
+  S2n      c2        oracle_events = [jump -2% at 01:30:00]                  C-DEF
+  S3       c2        S2 + the S4 news at 01:30:00                            C-DEF (and S2)
+  S5       c2        oracle_events = [vol x3 from 01:30:00 to 02:30:00]      C-DEF
+  IMP-0    c3        probe BUY 100 from 01:30:00, 300 s, 10 s children       C-DEF*
+  IMP-0.1  c3        probe BUY 600                                           C-DEF*
+  IMP-0.5  c3        probe BUY 3,000                                         C-DEF*
+  IMP-1    c3        probe BUY 6,000                                         C-DEF*
+  IMP-5    c3        probe BUY 30,000 (= S8)                                 C-DEF*
+  IMP-1s   c3        probe SELL 6,000                                        C-DEF*
+  S6       c4        mm_pause_windows = [("13:00:00", "13:30:00")]           C-DEF
+  S7a      c4        mom_capital_mult = 3                                    C-DEF
+  S7b      c4        mom_capital_mult = 10                                   C-DEF
+  S7c      c4        mom_capital_mult = 10 + S2 jump                         S7b (jump),
+                                                                             C-DEF (deltas)
+  (* C-NULL = probe with quantity 0, if T-L6 fails.)
+  Every config x SEEDS (20): 18 x 20 = 360 runs, +20 for C-NULL if needed.
+  Common to all: end_time 16:00:00, num_fund 20, num_mom 12, num_noise 1000, num_mm 2,
+  num_value 97 (except C-V20).

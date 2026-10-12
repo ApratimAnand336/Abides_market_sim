@@ -1,0 +1,21 @@
+{
+  "description": "sha256 of every EXEC (time, price, quantity, agent_id, oppos_agent_id) and of every agent's final holdings, computed as invariant I1 does (spec v1.3 Part 2.2)",
+  "recorded": "2026-10-12",
+  "recorded_from": "v1.2 checkout aa5f606, PYTHONHASHSEED=0",
+  "runs": {
+    "I8": {
+      "config": "seed 42, 09:30-10:30, 5 fundamentalists + 4 momentum, default RunParams (api.jobs.build_run_config)",
+      "execs": "5cfff6b231fc079fe3a3fb2c3bad354564d2d5dbbfc73b3b5721cbe0033bc1f5",
+      "holdings": "34ec92b2a3763b3b1f32d455a042f2865e0b2f20a98fcdad7b2ceae9605032db",
+      "n_execs": 2448,
+      "shares_executed": 121622
+    },
+    "A": {
+      "config": "seed 42, 09:30-16:00, 20 fundamentalists + 12 momentum, default population (C-DEF seed 42)",
+      "execs": "747582086aad311ddddd6ad27294da90bb4855bdcb5031964c7c05902fb89e88",
+      "holdings": "a032c2a38ae58c9a6b28f3385a2f6470498805013e9664d81c8df0e4b0b1218a",
+      "n_execs": 13759,
+      "shares_executed": 608106
+    }
+  }
+}

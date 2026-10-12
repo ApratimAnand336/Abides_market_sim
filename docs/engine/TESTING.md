@@ -71,10 +71,26 @@ python -m pytest abides-markets/tests/test_invariants.py -q
 | I5 | Book sanity | The book is never crossed; trades have real prices | bid < ask in every two-sided L1 snapshot of `book_log2`; every EXEC price > 0 | (shared) |
 | I6 | Runs without value agents | The market starts and trades with no value agents (needs ≥ 1 MM) | T-M6 | 3 s |
 | I7 | Market-maker liveness | No market maker dies silently | T-M7: wakes ≥ 90% of duration / mean wake and no 10-minute silence | 3 s |
+| I8 | No drift (v1.3) | With every new (v1.3+) parameter at its default, the market is bit-identical to v1.2 | the I1 fingerprint in a fresh process with `PYTHONHASHSEED=0` must equal constants recorded from aa5f606 | 13 s |
 
 \*Measured 2026-10-09 on the development laptop; the whole file takes about 32 s.
 
 I1 found no non-determinism, so nothing needed fixing ([DECISIONS.md](DECISIONS.md)).
+
+### I8: how the expected hash was recorded, and when it may change
+
+Spec v1.3 Part 2 makes R2 a measurement-only release: every new switch (oracle scenario
+events, the impact probe, market-maker pause windows, the momentum capital multiplier) must
+be inert at its default. I8 enforces it. The constants `I8_EXPECTED` in
+`test_invariants.py` were recorded **once**, on 2026-10-12, from a checkout of `v1.2`
+(aa5f606), by running I1's fingerprint script with `PYTHONHASHSEED=0` (seed 42,
+09:30–10:30, 5 + 4 of our agents, default `RunParams`): 2,448 executions, 121,622 shares.
+The full-day run A (seed 42, 20 + 12) hash is stored in `docs/v1.3/lab/reference_hashes.json`
+and checked by the lab's regression set (`scripts/realism_lab.py --campaign regression`).
+
+The hash may be re-recorded **only** when an approved spec changes market behaviour (for
+example R3) and that spec's DECISIONS.md entry says so. If a change cannot be made
+without breaking I8, the milestone report says so instead (spec v1.3 §2.3).
 
 Note on I7's "≥ 90%" criterion: wakes are Poisson, so for an arbitrary seed a 1-hour count
 falls below 90% of its mean (60) about 20% of the time without anything being wrong. The

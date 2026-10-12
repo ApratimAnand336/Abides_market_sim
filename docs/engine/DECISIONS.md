@@ -136,3 +136,48 @@ them, with the evidence that led to them.
 - **Decision:** I1 runs the two processes with `PYTHONHASHSEED` 1 and 2.
 - **Reason:** the most likely hidden source of non-determinism is iteration over sets or dicts of strings, which Python randomises per process; equal hash seeds would hide it.
 - **Evidence:** I1 passes: the same sha256 of all executions and final holdings (seed 42, 09:30–10:30). No fix was needed.
+
+---
+
+## v1.3 (R2): the realism lab (spec v1.3, approved 2026-10-11)
+
+Entries D-R2-1 … D-R2-5 are the owner's decisions recorded in spec v1.3 Part 1 and
+Appendix B. Implementation decisions follow under "Decisions made while implementing v1.3".
+
+### 2026-10-11 (v1.3, R2) — Realism lab, measurement only
+- **Decision:** R2 changes no agent decision and no market default. New code is scenario tooling only (a scripted true-value path, a test order agent, switches whose defaults are inert). Enforced by invariant I8: with defaults the market is bit-identical to v1.2 (aa5f606).
+- **Reason:** the owner wants information first, then changes; every later change is then judged against a 20-seed baseline (D-R2-2).
+- **Alternatives:** fixing the known issues while measuring them (rejected: no clean "before" picture).
+- **Evidence:** I8 hash recorded 2026-10-12 from aa5f606 (`docs/v1.3/lab/reference_hashes.json`).
+
+### 2026-10-11 (v1.3) — D-R2-1: provisional bands from a large-cap reference
+- **Decision:** a liquid large-cap moving about 1–2% a day: 5–10 bps per minute, |ac1| ≤ 0.10, kurtosis ≥ 3, gap std $1–3, gap half-life 30–90 min, regime contrast ≥ 5, spread median 1 tick / p95 ≤ 5, impact exponent 0.4–0.7. Provisional: revisited before R5.
+- **Reason:** owner decision D-R2-1.
+- **Alternatives:** a volatile mid-cap (2–4% a day); not chosen.  **Evidence:** —
+
+### 2026-10-11 (v1.3) — D-R2-3: scenarios S1–S8 in scope; S3 = value jump + ordinary headline
+- **Decision:** every scenario the tooling allows is run. S3 is a true-value jump plus an ordinary headline at the same second; agents do not distinguish news types until R4. S4 is today's news (beliefs only, "hype").
+- **Reason:** owner decision D-R2-3.  **Alternatives:** —  **Evidence:** —
+
+### 2026-10-11 (v1.3) — D-R2-4: the heavy-trader fundamentalist stays
+- **Decision:** keep it; fundamentalist group statistics are medians and quantiles, never means; the lab watches the largest fundamentalist's volume share (flag if > 1% on any seed).
+- **Reason:** 1,433 shares, 0.12% of volume (seed 42, measured 2026-10-11); its draw is the aggressive corner of most ranges, a personality, not a bug.
+- **Alternatives:** a floor on R (v1.2 open question 2); deferred.  **Evidence:** spec v1.3 §0.4.
+
+### 2026-10-11 (v1.3) — D-R2-5: budget limits for the ABIDES agents stay in R3
+- **Decision:** R2 measures price impact while value agents can short without limit; the numbers are the "before" picture and are re-measured after R3.
+- **Reason:** owner decision D-R2-5.  **Alternatives:** —  **Evidence:** —
+
+### 2026-10-11 — Owner correction of the spec owner line
+- **Decision:** the owner line of the specs is "Owner: Apratim Anand, IIT Bombay."; `docs/specs/spec_v1.1.txt` and `spec_v1.2.txt` corrected (that line only).
+- **Reason:** owner correction.  **Evidence:** —
+
+---
+
+## Decisions made while implementing v1.3
+
+(Added by milestone; each with its evidence.)
+
+### 2026-10-12 (L0) — I8 recorded from aa5f606 with PYTHONHASHSEED=0
+- **Decision:** I8 reuses I1's fingerprint script (same EXEC and holdings hashes) in a fresh process with `PYTHONHASHSEED=0`; the expected values are constants in `test_invariants.py`. The full-day run A hash is stored in `docs/v1.3/lab/reference_hashes.json`.
+- **Evidence:** I8: 2,448 executions, 121,622 shares. Run A: 13,759 executions, 608,106 shares (equal to spec §0.4's independent measurement).

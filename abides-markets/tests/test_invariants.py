@@ -11,6 +11,8 @@ I4 long-only safety       our agents never hold < 0 shares or < 0 cash
 I5 book sanity            bid < ask in every two-sided L1 snapshot; every fill price > 0
 I6 no value agents        = T-M6 (test_market_maker.py)
 I7 market-maker liveness  = T-M7 (test_market_maker.py)
+I8 no drift               (spec v1.3 Part 2) default parameters reproduce v1.2 (aa5f606)
+                          bit for bit
 """
 
 import hashlib
@@ -76,6 +78,26 @@ def test_i1_determinism_across_processes(tmp_path):
     b = _fingerprint(tmp_path, "2")
     assert a["n_execs"] > 0
     assert a == b
+
+
+# ── I8 no drift (spec v1.3 Part 2.2) ───────────────────────────────────────
+
+# Recorded ONCE on 2026-10-12 from a checkout of v1.2 (aa5f606) with
+# PYTHONHASHSEED=0, using the I1 fingerprint above (seed 42, 09:30-10:30,
+# 5 fundamentalists + 4 momentum, default RunParams). Re-record only when an
+# approved spec changes behaviour and its DECISIONS.md entry says so
+# (see docs/engine/TESTING.md, "I8").
+I8_EXPECTED = {
+    "execs": "5cfff6b231fc079fe3a3fb2c3bad354564d2d5dbbfc73b3b5721cbe0033bc1f5",
+    "holdings": "34ec92b2a3763b3b1f32d455a042f2865e0b2f20a98fcdad7b2ceae9605032db",
+    "n_execs": 2448,
+}
+
+
+def test_i8_no_drift(tmp_path):
+    """With every new parameter at its default the market is bit-identical to
+    v1.2: same sha256 of every EXEC and of every agent's final holdings."""
+    assert _fingerprint(tmp_path, "0") == I8_EXPECTED
 
 
 # ── shared 1-hour market for I3-I5 ─────────────────────────────────────────

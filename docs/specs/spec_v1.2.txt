@@ -1,6 +1,6 @@
 FINVERSE: SPEC v1.2 ("R1: foundation fixes + living documentation")
 ====================================================================
-Date: 2026-10-09.  Owner: Apratim Anand (with Sarthak Agrawal), IIT Bombay.
+Date: 2026-10-09.  Owner: Apratim Anand, IIT Bombay.
 Audience: Claude Code (implementation) and any new Claude chat picking this up.
 Status: APPROVED by the owner. Build on branch v1.2, created from origin/v1.1 (3c0b859).
 Commit once per milestone (Part 7). Do not push; the owner reviews and pushes.

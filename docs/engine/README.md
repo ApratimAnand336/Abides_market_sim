@@ -23,8 +23,9 @@ updates them in the same commit as the code (spec v1.2, Part 1).
 | [CHANGELOG.md](CHANGELOG.md) | What changed in v1.0, v1.1 and v1.2, by file |
 | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Where the simulated market is still unrealistic, with status and plan |
 | [TESTING.md](TESTING.md) | Unit, invariant and acceptance tests: how to run them, what they guarantee |
+| [REALISM_LAB.md](REALISM_LAB.md) | The realism lab (v1.3): metrics, bands, scenarios, the 20-seed runner and how to read its reports |
 
-The specifications live in [`docs/specs/`](../specs/) (`spec_v1.1.txt`, `spec_v1.2.txt`).
+The specifications live in [`docs/specs/`](../specs/) (`spec_v1.1.txt`, `spec_v1.2.txt`, `spec_v1.3.txt`).
 Per-release reports with acceptance numbers and screenshots are in `docs/v1.1/` and `docs/v1.2/`.
 
 ## Running things
