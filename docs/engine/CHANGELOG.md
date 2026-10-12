@@ -3,9 +3,10 @@
 Sources: the git log of this repository and the specs in [`docs/specs/`](../specs/).
 Upstream ABIDES history (2021–2023, J.P. Morgan) is not repeated here.
 
-## v1.3 — R2: the realism lab, measurement only (in progress, branch `v1.3`)
+## v1.3 — R2: the realism lab, measurement only (2026-10-12, branch `v1.3`)
 
-Spec: [`docs/specs/spec_v1.3.txt`](../specs/spec_v1.3.txt). Every change is measurement or
+Spec: [`docs/specs/spec_v1.3.txt`](../specs/spec_v1.3.txt). Reports: [`docs/v1.3/REPORT.md`](../v1.3/REPORT.md),
+[`docs/v1.3/lab/BASELINE.md`](../v1.3/lab/BASELINE.md). Every change is measurement or
 scenario tooling whose default is inert; invariant I8 checks that default runs are
 bit-identical to v1.2 (aa5f606).
 
@@ -18,6 +19,7 @@ bit-identical to v1.2 (aa5f606).
 | L4 | `agents/impact_probe_agent.py` (new), `configs/rmsc04_ekf.py` (`probe`), `api/export.py` (probe row label "Impact probe (test)", probe start position), `tests/test_scenarios.py`, `docs/engine/ARCHITECTURE.md` | `ImpactProbeAgent` (a parent order as 30 market orders over 5 minutes; constant RNG, appended last); T-L5 … T-L7 (the null probe is neutral, so no C-NULL); Campaign c3 (IMP-0 … IMP-1s, 120 runs); impact figures |
 | L5 | `agents/market_makers/adaptive_market_maker_agent.py` (`pause_windows`), `configs/rmsc04_ekf.py` (`mm_pause_windows`, `mom_capital_mult`), `tests/test_scenarios.py`, `docs/engine/AGENTS_ABIDES.md` | Market-maker pause windows and the momentum capital multiplier (both inert by default); T-L8, T-L9; Campaign c4 (S6, S7a, S7b, S7c, 80 runs). All 360 runs of Appendix C complete |
 | L6 | `api/__init__.py` (SCHEMA_VERSION 1.2, ENGINE_VERSION 1.3), `api/export.py`, `api/schema.py`, `api/server.py` (`GET /api/lab/summary`), `api/tests/`, `web/src/tabs/Realism.tsx` (new), `web/src/App.tsx`, `web/src/types/payload.ts`, `web/src/lib/` (api.ts, urlState.ts), `.gitignore` | Payload `realism` (bands, single-run Part 3 metrics, grades G1, G3–G11; +6.4 KB on a full 20 + 12 day) and `oracle_events`; fifth dashboard tab "Realism" (this run, lab baseline, diagnostics); the lab summary endpoint. **`web/src/lib/` was never committed** (the root `.gitignore` rule `lib/` matched it); an exception `!web/src/lib/` adds the five files so a fresh clone can build the dashboard |
+| L7 | `scripts/realism_lab.py` (compact summary.json), `api/tests/conftest.py` (`slow` marker), `api/tests/test_lab_regression.py`, `docs/v1.3/lab/BASELINE.md`, `docs/v1.3/REPORT.md`, `docs/engine/*` | Regression set passes; final findings report and implementation report; KNOWN_ISSUES on 20-seed medians (K11 measured, K13 new), REALISM_LAB, TESTING, README glossary synced |
 
 ## v1.2 — R1: foundation fixes and living documentation (2026-10-09, branch `v1.2`)
 

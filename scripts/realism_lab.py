@@ -859,7 +859,7 @@ def main(argv=None) -> int:
     if a.campaign == "regression":
         if a.rebaseline:
             s = build_summary(LAB_DIR, lab.SEEDS)
-            (DOC_DIR / "summary.json").write_text(json.dumps(_jsonable(s), indent=1), encoding="utf-8")
+            (DOC_DIR / "summary.json").write_text(json.dumps(_jsonable(s), separators=(",", ":")), encoding="utf-8")
             print("stored 20-seed summary rewritten from runs/_lab (--rebaseline)")
             ref_path = DOC_DIR / "reference_hashes.json"
             m42 = load_metrics(LAB_DIR, "C-DEF", 42)
@@ -895,7 +895,7 @@ def main(argv=None) -> int:
     summary["failed_runs"] = [{"config": k[0], "seed": k[1], "error": m} for k, m in failed]
     if not a.no_summary:
         DOC_DIR.mkdir(parents=True, exist_ok=True)
-        (DOC_DIR / "summary.json").write_text(json.dumps(_jsonable(summary), indent=1), encoding="utf-8")
+        (DOC_DIR / "summary.json").write_text(json.dumps(_jsonable(summary), separators=(",", ":")), encoding="utf-8")
     md = tables(summary)
     (LAB_DIR / "tables.md").write_text(md, encoding="utf-8")
     made = figures(summary, FIG_DIR)

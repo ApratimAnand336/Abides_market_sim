@@ -207,6 +207,35 @@ over seeds of a *treated − baseline* difference on the same seed.
 
 (to be completed with the runner, L2)
 
+## The regression set (spec §7.6)
+
+`python scripts/realism_lab.py --campaign regression` re-runs C-DEF, S2 and IMP-1 on seeds 42, 7, 1
+(9 runs into `runs/_lab_regression/`, about 1.5 minutes with 4 workers) and checks:
+
+- **(a)** the seed-42 C-DEF full-day EXEC and holdings hash equals run A in
+  `docs/v1.3/lab/reference_hashes.json`. Any behaviour change breaks it, as intended;
+- **(b)** for every graded metric (and S2's t50, t90, settle and IMP-1's I_end, I_peak, I_perm) the
+  3-seed median lies inside the stored 20-seed [p10, p90]; otherwise it prints `DRIFT` with both numbers.
+
+Exit code 1 on (a) or any DRIFT. `--rebaseline` rewrites the stored summary and run A hash from
+`runs/_lab` and is only for after an approved spec has changed behaviour. The same check runs as
+`pytest api/tests -m slow` (`test_lab_regression.py`; skipped by default). Passed on 2026-10-12
+(42 metric checks).
+
 ## Known limits
 
-(to be completed in L7)
+- **One stock, one session length, one reference.** Every run is a full 09:30–16:00 day of one
+  stock at ≈ $1000. The bands come from one reference (a liquid large-cap moving 1–2% a day) and
+  are provisional (D-R2-1).
+- **20 seeds.** A p10/p90 over 20 values rests on 2 values each side; pass_share moves in steps of
+  5%. Metrics near a boundary (G6 today: median 3.02) can change grade with the seed set.
+- **Single-day estimators.** Every metric is computed per day and then aggregated. The gap
+  half-life estimator is strongly biased for long half-lives (table above). The 1-minute statistics
+  rest on 389 returns, so |ac| < 0.10 is the noise level (±2/√n) and kurtosis is noisy (C-DEF p10–p90
+  2.0–7.5).
+- **Divergence after a trigger.** Treated and baseline runs drift apart after any change, because
+  agents' random draws are consumed differently. Small responses (below ≈ 0.4 bps, the IMP-0
+  placebo's p90) cannot be told from that drift. The news scenarios S4/S4n are in this regime.
+- **Impact while value agents can short without limit** (D-R2-5): the impact numbers are a "before"
+  picture for R3.
+- **Memory.** About 470 MB per full-day process: size `--workers` by free memory.

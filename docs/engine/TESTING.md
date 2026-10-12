@@ -47,12 +47,25 @@ agents, three news items) once per session and checks the payload against it.
 | 2026-10-09 | `v1.2` at 3c0b859 (v1.1 code) | 147 passed, 1 failed (`test_ou_process`, pre-existing, see below) |
 | 2026-10-09 | `v1.2` W4 | 169 passed, 1 failed (`test_ou_process`, pre-existing); invariants 7/7 in 32 s |
 | 2026-10-09 | `v1.2` W6 | 169 passed, 1 failed (`test_ou_process`, pre-existing); acceptance A, B, C, Z: all targets met (`docs/v1.2/REPORT.md`) |
+| 2026-10-12 | `v1.3` L7 | 261 passed, 1 skipped (the slow regression wrapper), 2 xfailed (T-R8 45/90 min, strict), 1 failed (`test_ou_process`, pre-existing) in 85 s; invariants I1–I8 pass; lab regression set PASSED (1.4 min); `npm run build` passes |
 
 ### Pre-existing failures (not caused by our code)
 
 - `test_gym_runner.py`: needs the `gym` package, which is not installed. Excluded with `--ignore`.
 - `test_ou_process.py::test_ou_process`: a pandas/`datetime` incompatibility inside the upstream
   `MeanRevertingOracle` (not used by our market). It fails identically on `origin/dashboard`.
+
+## Realism-lab regression set (v1.3)
+
+```bash
+python scripts/realism_lab.py --campaign regression   # ~1.5 min with 4 workers
+python -m pytest api/tests -m slow                    # the same, as a test
+```
+
+9 full days (C-DEF, S2, IMP-1 × seeds 42, 7, 1): the seed-42 C-DEF hash must equal reference run A,
+and every graded metric's 3-seed median must lie inside the stored 20-seed [p10, p90]. See
+[REALISM_LAB.md](REALISM_LAB.md). Run times (2026-10-12, development laptop): one full day ≈ 25 s
+and ≈ 470 MB; Campaign c1 (80 runs) 9 min with 4 workers; all 360 runs ≈ 45 min of wall time.
 
 ## Invariants
 

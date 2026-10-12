@@ -26,7 +26,7 @@ updates them in the same commit as the code (spec v1.2, Part 1).
 | [REALISM_LAB.md](REALISM_LAB.md) | The realism lab (v1.3): metrics, bands, scenarios, the 20-seed runner and how to read its reports |
 
 The specifications live in [`docs/specs/`](../specs/) (`spec_v1.1.txt`, `spec_v1.2.txt`, `spec_v1.3.txt`).
-Per-release reports with acceptance numbers and screenshots are in `docs/v1.1/` and `docs/v1.2/`.
+Per-release reports with acceptance numbers and screenshots are in `docs/v1.1/`, `docs/v1.2/` and `docs/v1.3/` (with the realism lab's baseline in `docs/v1.3/lab/`).
 
 ## Running things
 
@@ -57,6 +57,13 @@ Open http://localhost:5173, choose the parameters in the sidebar and press *Run 
 Runs are cached by their parameters and the engine version, so asking for the same run
 twice loads it instantly.
 
+**The realism lab** (20-seed measurement of the market; see [REALISM_LAB.md](REALISM_LAB.md)):
+
+```bash
+python scripts/realism_lab.py --campaign all --workers 4   # 360 full days, ~45 min
+python scripts/realism_lab.py --campaign regression        # 9 runs vs the stored baseline
+```
+
 **Tests** (see [TESTING.md](TESTING.md)):
 
 ```bash
@@ -86,3 +93,10 @@ python scripts/acceptance_v1_2.py --report # the acceptance table
 | **P&L vs holding** | Final value − what the starting cash and shares would be worth at the close. It removes the endowment's price move, so it measures trading skill only. Summed over every agent in the market it is exactly $0 (every trade has two sides). |
 | **ER (Kaufman efficiency ratio)** | \|net price change\| / sum of \|individual changes\| over a window: 1 = a clean straight move, 0 = pure back-and-forth chop. |
 | **tick** | The smallest price step, one cent. |
+| **PASS / WARN / FAIL** | The realism lab's grades (v1.3): inside the band taken from a real large-cap stock, near it, or far from it. A value exactly on a boundary takes the better grade. See [REALISM_LAB.md](REALISM_LAB.md). |
+| **band** | The range of a realism metric that a real liquid large-cap stock (moving about 1–2% a day) would show, e.g. 5–10 bps per minute for volatility. Provisional (owner decision D-R2-1). |
+| **variance ratio VR(k)** | Variance of k-minute returns divided by k times the variance of 1-minute returns. 1 for a random walk; above 1 when the price trails a moving target (returns positively autocorrelated); below 1 when it overshoots and corrects. |
+| **noise floor** | The size of a "response" that appears with no real cause: after any change, two runs of the same seed slowly drift apart (their random draws get used differently). The lab measures it with a 100-share placebo order; smaller effects are "not resolved". |
+| **price impact** | How far an order moves the price against the trader, in bps: during the order (I_end, I_peak) and 25–35 minutes after it (I_perm, the permanent part). Real markets: roughly proportional to √(order size / daily volume). |
+| **implementation shortfall** | What executing cost compared with the price when the decision was made: (average fill price / arrival mid − 1) in bps, signed so that positive is a cost (Perold, 1988). |
+| **treated vs baseline** | A scenario run ("treated") compared with the same seed without the trigger ("baseline"). Until the trigger the two runs are identical, so any later difference is caused by it. |
