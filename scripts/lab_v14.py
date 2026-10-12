@@ -243,7 +243,9 @@ def select_design(summaries: List[Dict[str, Any]]):
             P.append(f"  {s['design']}: kept")
             kept.append(s)
     if not kept:
-        P.append("No design passes the limits: no winner by the rule.")
+        P.append("No design passes the limits L1, L2, L4, L5: step 1 rejects every design, so the rule "
+                 "names no winner and round 2 (defined from a round-1 winner) cannot start. "
+                 "§7.4 does not cover this case: the owner decides.")
         return None, P
     P += ["", "Step 2 — number of targets passed among T1–T4, T5 (S2 only), T6 (S2 only), T7:"]
     for s in kept:
@@ -331,13 +333,15 @@ def main_effects(summaries: List[Dict[str, Any]]) -> str:
 
 def report_s1(engine: str, seeds) -> str:
     sums1 = [design_summary(d, seeds) for d in lab.ROUND1_DESIGNS]
+    run_engines = sorted({r["engine_version"] for c in lab.CAMPAIGNS["s1"] for r in runs(ROOT, c, seeds)})
+    run_dates = sorted({r["date"] for c in lab.CAMPAIGNS["s1"] for r in runs(ROOT, c, seeds)})
     win1, P1 = select_design([dict(s) for s in sums1])
     sel = {"generated": date.today().isoformat(), "engine": engine, "seeds": list(seeds),
            "round1": {"winner": win1, "printout": P1}}
     L = ["# Campaign s1 — design sweep, screening (spec v1.4 §7.3, §7.4)", "",
          f"Final population: 0 ValueAgents, informed fundamentalists (design dials below), budget L=2 on Noise/ABIDES "
-         f"Momentum, 1000 noise, 2 MMs, 12 momentum EKF. Seeds {list(seeds)}; full day; engine {engine}; "
-         f"generated {date.today().isoformat()}. Each design: D-x (no trigger) and D-x-S2 (+2% value jump at 11:00, "
+         f"Momentum, 1000 noise, 2 MMs, 12 momentum EKF. Seeds {list(seeds)}; full day; runs: engine {run_engines}, "
+         f"dates {run_dates}, 2 workers on an i7-13620H (16 threads, 15.6 GB); report generated {date.today().isoformat()}. Each design: D-x (no trigger) and D-x-S2 (+2% value jump at 11:00, "
          f"baseline D-x). Values are 5-seed medians; ✓/✗ = target met/missed in screening (T5, T6 on S2 only).", "",
          "## Round 1: the 16 designs", "", design_table(sums1, win1), "",
          "## Selection printout (round 1)", "", "```", *P1, "```", ""]
@@ -364,7 +368,13 @@ def report_s1(engine: str, seeds) -> str:
     elif win1 is not None:
         L += [f"The round-1 winner {win1} passes every screening target and limit: no round 2 (§7.4).", ""]
     sel["selected"] = win_final
-    L += ["## Selected design", "", f"**{win_final}**" if win_final else "pending (round 2)", ""]
+    if win_final:
+        sel_txt = f"**{win_final}**"
+    elif win1 is None:
+        sel_txt = "**none** — every round-1 design fails at least one limit (see step 1); §7.4 has no rule for this case."
+    else:
+        sel_txt = "pending (round 2)"
+    L += ["## Selected design", "", sel_txt, ""]
     if win_final:
         dd = lab.design_extra(win_final)
         L += [f"N = {dd['num_ekf_agents']}, T_r ∈ {dd['informed_design']['T_r_range_s']} s, "

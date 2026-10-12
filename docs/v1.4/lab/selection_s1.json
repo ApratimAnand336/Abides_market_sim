@@ -1,0 +1,37 @@
+{
+ "generated": "2026-10-12",
+ "engine": "v1.3-344fcbf+dirty",
+ "seeds": [
+  42,
+  7,
+  1,
+  2,
+  3
+ ],
+ "round1": {
+  "winner": null,
+  "printout": [
+   "Selection rule (spec v1.4 \u00a77.4), applied to 5-seed medians.",
+   "",
+   "Step 1 \u2014 reject designs failing any limit L1, L2, L4, L5:",
+   "  D-60fl500k: REJECTED (L2: shares_executed=146,245 >= 295500 FAIL)",
+   "  D-60fl2M: REJECTED (L1: spread_med_ticks=3 <= 2 FAIL, spread_p95_ticks=10 <= 10 PASS)",
+   "  D-60fh500k: REJECTED (L1: spread_med_ticks=3 <= 2 FAIL, spread_p95_ticks=12 <= 10 FAIL; L2: shares_executed=127,385 >= 295500 FAIL)",
+   "  D-60fh2M: REJECTED (L1: spread_med_ticks=4 <= 2 FAIL, spread_p95_ticks=15 <= 10 FAIL)",
+   "  D-60sl500k: REJECTED (L1: spread_med_ticks=3 <= 2 FAIL, spread_p95_ticks=14 <= 10 FAIL; L2: shares_executed=139,698 >= 295500 FAIL)",
+   "  D-60sl2M: REJECTED (L1: spread_med_ticks=4 <= 2 FAIL, spread_p95_ticks=16 <= 10 FAIL)",
+   "  D-60sh500k: REJECTED (L1: spread_med_ticks=3 <= 2 FAIL, spread_p95_ticks=15 <= 10 FAIL; L2: shares_executed=117,960 >= 295500 FAIL)",
+   "  D-60sh2M: REJECTED (L1: spread_med_ticks=5 <= 2 FAIL, spread_p95_ticks=19 <= 10 FAIL)",
+   "  D-120fl500k: REJECTED (L2: shares_executed=266,907 >= 295500 FAIL)",
+   "  D-120fl2M: REJECTED (L1: spread_med_ticks=3 <= 2 FAIL, spread_p95_ticks=9 <= 10 PASS)",
+   "  D-120fh500k: REJECTED (L1: spread_med_ticks=3 <= 2 FAIL, spread_p95_ticks=11 <= 10 FAIL; L2: shares_executed=219,676 >= 295500 FAIL)",
+   "  D-120fh2M: REJECTED (L1: spread_med_ticks=4 <= 2 FAIL, spread_p95_ticks=13 <= 10 FAIL)",
+   "  D-120sl500k: REJECTED (L1: spread_med_ticks=3 <= 2 FAIL, spread_p95_ticks=13 <= 10 FAIL; L2: shares_executed=252,936 >= 295500 FAIL)",
+   "  D-120sl2M: REJECTED (L1: spread_med_ticks=4 <= 2 FAIL, spread_p95_ticks=15 <= 10 FAIL)",
+   "  D-120sh500k: REJECTED (L1: spread_med_ticks=4 <= 2 FAIL, spread_p95_ticks=15 <= 10 FAIL; L2: shares_executed=183,795 >= 295500 FAIL)",
+   "  D-120sh2M: REJECTED (L1: spread_med_ticks=4 <= 2 FAIL, spread_p95_ticks=16 <= 10 FAIL)",
+   "No design passes the limits L1, L2, L4, L5: step 1 rejects every design, so the rule names no winner and round 2 (defined from a round-1 winner) cannot start. \u00a77.4 does not cover this case: the owner decides."
+  ]
+ },
+ "selected": null
+}

@@ -282,3 +282,16 @@ Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt) (Part 1, Appendix B).
 - **Unchanged type.** The agent type string stays "EKF_Fundamentalist" and the class is unchanged, so the lab and the payload classify informed agents as FundamentalistAgent. The label "Fundamentalist (informed)" is a dashboard change (N6).
 - **Payload export deferred.** `INFORMED_RANGES` is defined but not yet in `ranges_for_export()`: the payload schema only accepts "fundamental" and "momentum" (13 export tests failed when it was added). Spec Part 6 changes the payload, schema and dashboard together in N6.
 - **Budget arithmetic is shared** with the ABIDES gross limit (`utils/budget.allowed_qty_wealth`); B and S count only this cycle's orders, as §4.5 says.
+
+### 2026-10-12 (N4) Campaign s1: no design passes L1/L2/L4/L5 — §7.4 names no winner; stopped for the owner
+- **Finding:** step 1 of the pre-registered rule rejects all 16 round-1 designs: L1 (median spread ≤ 2 ticks) fails in 14 and L2 (volume ≥ 295,500) in 7. Round 2 is defined from a round-1 winner, so it cannot start. No parameter was tuned, and the selection code was not changed to produce a winner. The full printout and table are in `docs/v1.4/lab/RESULTS_s1.md`.
+- **Gap in the spec:** §7.4 and §2.4 have no rule for "no design passes the limits". Possible ways forward include choosing among the closest designs (D-60fl2M misses only the L1 median by 1 tick; D-120fl500k misses only L2 by 10%), running round 2 around one of them, or revisiting L1 for a market without ValueAgents. Any of these is the owner's decision.
+
+### 2026-10-12 (N4) Lab flag `long_only` split like I4
+- **Decision:** `series_from_end_state`'s `long_only` flag now covers only price-only fundamentalists and momentum EKF agents. A new `informed_bounds` flag checks informed agents within [−0.5, 1.5] × wealth at each fill price (one-share tolerance), from ORDER_EXECUTED + HOLDINGS_UPDATED.
+- **Reason:** I4 was split in N3 (spec §10.4), but the lab flag still applied the long-only rule to informed agents, which short and borrow by design. Every s1 run therefore recorded `long_only: false`.
+- **Evidence:** D-60fl2M seed 42 was re-run with the fixed flag: book_sanity, long_only, informed_bounds and conservation are all true, and the executions are bit-identical to the campaign run. The stored s1 metrics keep the old flag values; the momentum agents' long-only property in those runs is covered by this re-run and by the tests (I4, T-N5).
+
+### 2026-10-12 (N4) L5 timing: probe vs campaign
+- The single-run probe of D-120fl2M took 101 s (seed 42). Its 5-seed campaign median under 2 workers is 74 s, and every design's median is ≤ 76 s, so L5 passes everywhere. The variation is machine load (the probe ran while other applications were using memory: 2.5 GB free).
+- Profile (1.5 h of D-120fl2M): 40% of the time is in `OrderBook.get_imbalance`, which sums every price level on each book event for the market makers' imbalance subscriptions. An exactly equivalent faster version is possible, but it would change ABIDES core code, so it is left for the owner to decide (not needed for L5 now).

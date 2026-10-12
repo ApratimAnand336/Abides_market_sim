@@ -342,6 +342,8 @@ RunParams' num_fund bound (20) stays until N6 (§4.7). The `params.num_fund = 20
 a design run's metrics.json is therefore overridden by `extra.num_ekf_agents`; the config hash
 covers both.
 
+Run flags (v1.4): `long_only` covers price-only fundamentalists and momentum EKF; `informed_bounds` (present when informed agents exist) checks [−0.5, 1.5] × wealth at every fill (I4 split).
+
 The selection (§7.4) is `lab_v14.select_design`, and it is printed in full. Screening uses
 `r3_scorecard(..., screening=True)`, in which T5 and T6 are judged on S2 only. L4's run part
 is zero_sum over every run of the design; L5 is the median wall time over every run of the

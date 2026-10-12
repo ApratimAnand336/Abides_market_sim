@@ -46,3 +46,44 @@ The full tables are in [CAMPAIGN_b.md](CAMPAIGN_b.md) (generated from `summary_b
 **E1 verdict (interim).** Small effects on the scorecard: yes. Noise orders clipped: yes.
 Value agents block often: yes. "Late in the day": only mildly; the blocks are nearly uniform
 through the day. Not anticipated: the 28% volume loss.
+
+## 3. The design sweep, round 1 (N4, interim; full tables in [RESULTS_s1.md](RESULTS_s1.md))
+
+Campaign s1:
+- 16 designs × {no trigger, S2} × seeds 42, 7, 1, 2, 3 = 160 runs, on engine v1.3-344fcbf,
+  2026-10-12.
+- 0 failed; 5/5 seeds in every config; zero_sum = 0 in every run.
+- 80 min with 2 workers (the 120-agent runs use about 1 GB each).
+
+**Selection result: no design passes the limits, so the §7.4 rule names no winner.**
+- Step 1 rejects all 16 designs: 14 on L1 (median spread 3–5 ticks, p95 up to 19), 7 on L2
+  (volume below 295,500 at $500k wealth), some on both.
+- The two designs that miss only one limit:
+  - D-60fl2M fails L1 on the median alone (3 ticks; p95 = 10 passes) and has 5/7 targets;
+  - D-120fl500k fails L2 alone (266,907 shares) and has 4/7 targets.
+- D-60fl500k fails only L2 (146,245) and has 5/7 targets.
+- L5 passes everywhere: 34–76 s median. The single-run probe of D-120fl2M took 101 s.
+
+**Across designs:**
+- **T4, T5 and T7 pass in all 16 designs.** vv_corr is +0.32 to +0.66 (it was −0.25), the
+  volume uplift after the jump is 2.3–5.3× (it was 0.75), and informed P&L is positive in
+  total and per agent.
+- **T3 fails in all 16.** The price/value volatility ratio is 0.45–0.74 (it was 0.58).
+- **T6 fails in all 16.** The book is never one-sided on the 1 s grid, but the spread p95 in
+  the 30 minutes after the jump is 92–516 ticks.
+- **T1 and T2 pass only with fast, low-noise research** (D-60fl*: ac1 −0.04/−0.05, VR(5)
+  1.18/1.19). The N = 120 fl designs pass T1 but miss T2 (VR(5) 1.30/1.40). Slow or noisy
+  research gives negative autocorrelation (ac1 −0.19 to −0.40) and VR(5) 0.29–0.63, which is
+  overshooting and mean reversion rather than book-creep.
+
+The main effects (median change over the 8 matched pairs) are tabulated in RESULTS_s1.md.
+- Slower or noisier research makes ac1 more negative and lowers VR(5); it raises the spread
+  in the jump window and the gap half-life.
+- More wealth raises volume (+398k shares) but also the median spread.
+- More agents raise volume (+192k) and wall time (+36 s).
+
+**What the spec does not cover.** §7.4 round 2 is defined from a round-1 winner, and §2.4
+from "the best design by the selection rule". Neither exists when step 1 rejects every
+design. Per the owner's instruction, I stop here after N4: the owner decides how to proceed.
+The selection itself is mechanical and has not been changed.
+

@@ -381,12 +381,32 @@ def series_from_end_state(
 
     # ── invariant flags ──
     book_ok = bool(np.all(snap_bid[two] < snap_ask[two])) and bool(np.all(ex_p > 0)) if len(ex_p) else True
-    long_only_ok = True
+    # I4 split (spec v1.4 §10.4): price-only fundamentalists and momentum EKF
+    # are long-only; informed fundamentalists stay within [w_min, w_max] x
+    # wealth at the fill price (one-share tolerance), checked after each fill
+    long_only_ok, informed_ok, n_informed = True, True, 0
     for i in fund_ids + mom_ids:
-        for _, typ, ev in agents[i].log:
+        a = agents[i]
+        if getattr(a, "mode", "price_only") == "informed":
+            n_informed += 1
+            from abides_markets.agents.fundamental import INFORMED_W_MAX, INFORMED_W_MIN
+
+            p_fill = None
+            for _, typ, ev in a.log:
+                if typ == "ORDER_EXECUTED":
+                    p_fill = float(ev.get("fill_price") or 0) or None
+                elif typ == "HOLDINGS_UPDATED" and p_fill:
+                    n, W = ev.get(ticker, 0), ev.get("CASH", 0) + ev.get(ticker, 0) * p_fill
+                    if n * p_fill > INFORMED_W_MAX * W + p_fill + 1e-6 or n * p_fill < INFORMED_W_MIN * W - p_fill - 1e-6:
+                        informed_ok = False
+                    p_fill = None
+            continue
+        for _, typ, ev in a.log:
             if typ == "HOLDINGS_UPDATED" and (ev.get(ticker, 0) < 0 or ev.get("CASH", 0) < 0):
                 long_only_ok = False
     flags = {"book_sanity": book_ok, "long_only": long_only_ok}
+    if n_informed:
+        flags["informed_bounds"] = informed_ok
     if start_holdings is not None:
         flags["conservation"] = (
             sum(r["cash1"] for r in records) == sum(r["cash0"] for r in records)
