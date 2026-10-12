@@ -29,6 +29,7 @@ from abides_markets.agents import (
     MomentumAgent,
 )
 from abides_markets.agents.fundamental import FundamentalistAgent
+from abides_markets.agents.impact_probe_agent import ImpactProbeAgent
 from abides_markets.agents.momentum_ekf import MomentumEKFAgent
 from abides_markets.agents.news_oracle_agent import NewsOracleAgent
 from abides_markets.configs.param_ranges import (
@@ -115,6 +116,10 @@ def build_config(
     #                     "mult": float}], offsets from the 09:30 open, jumps
     #                   in % of r_bar. None -> path source "synthetic_ou".
     oracle_events=None,
+    #    probe: {"side": "BUY"|"SELL", "quantity": int, "start": "HH:MM:SS"
+    #            (offset from the open), "duration_s": 300,
+    #            "child_interval_s": 10}. None -> no probe agent.
+    probe=None,
 ):
     np.random.seed(seed)
 
@@ -435,6 +440,35 @@ def build_config(
     agent_count += 1
     agent_types.extend(["NewsOracleAgent"])
 
+    # ── 8. Impact probe (spec v1.3 §6.2; realism lab only) ────────────────
+    #    The LAST agent, appended before the kernel RNG and the latency model
+    #    are drawn. Its RandomState is a constant, NOT drawn from the global
+    #    stream, and the latency model places one more coordinate after all
+    #    existing agents' ones, so every other agent is unchanged.
+    probe_id = None
+    if probe is not None:
+        probe_id = agent_count
+        side = str(probe["side"]).upper()
+        qty = int(probe["quantity"])
+        agents.append(
+            ImpactProbeAgent(
+                id=probe_id,
+                name="IMPACT_PROBE",
+                type="ImpactProbeAgent",
+                symbol=ticker,
+                side=side,
+                quantity=qty,
+                start_time=MKT_OPEN + str_to_ns(probe["start"]),
+                duration_s=int(probe.get("duration_s", 300)),
+                child_interval_s=int(probe.get("child_interval_s", 10)),
+                starting_cash=10**12 if side == "BUY" else 0,
+                starting_shares=qty if side == "SELL" else 0,
+                random_state=np.random.RandomState(0),
+            )
+        )
+        agent_count += 1
+        agent_types.extend(["ImpactProbeAgent"])
+
     # ── Kernel configuration ─────────────────────────────────────────────
     random_state_kernel = np.random.RandomState(
         seed=np.random.randint(low=0, high=2**31, dtype="uint32")
@@ -461,6 +495,7 @@ def build_config(
             range(mom_ekf_start_id, mom_ekf_start_id + num_mom_ekf_agents)
         ),
         "_news_oracle_id": news_oracle_id,
+        "_probe_id": probe_id,
         "_mkt_open_ns": MKT_OPEN,
         "_mkt_close_ns": MKT_CLOSE,
     }

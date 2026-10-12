@@ -178,6 +178,15 @@ Appendix B. Implementation decisions follow under "Decisions made while implemen
 
 (Added by milestone; each with its evidence.)
 
+### 2026-10-12 (L4) — C-NULL baselines are not needed
+- **Decision:** the impact runs use C-DEF on the same seed as their baseline (spec §5.4). C-NULL (probe with quantity 0) was not run.
+- **Reason:** T-L6 passes: the 1-hour I8 market with a null probe gives the I8 EXEC and holdings hashes exactly. The latency model is deterministic (no per-message random draws), the probe's coordinate is drawn after every existing agent's, its RandomState is a constant, and the exchange has zero computation delay, so the probe's start-up messages change nothing for the other agents. T-L7 adds that a 600-share probe leaves every other agent's parameters and RNG state, and every execution before its start, unchanged.
+- **Evidence:** `test_scenarios.py::test_l6_null_probe_is_neutral`, `test_l7_probe_uses_no_global_rng`.
+
+### 2026-10-12 (L4) — The probe records its own arrival mid
+- **Decision:** with its first child the probe sends a spread query just before the market order and logs PROBE_ARRIVAL_MID; PROBE_SUMMARY carries it. The lab's shortfall uses the spec's arrival mid, mid_B(t0) from the baseline series.
+- **Reason:** spec §6.2 asks PROBE_SUMMARY to include arrival_mid, but a probe that sends nothing cannot know the mid. The query is answered before the order (messages are delivered in send order) and only touches the treated run after t0.
+
 ### 2026-10-12 (L3) — A value jump decays 0.3% over 5 hours, not 0.0003%
 - **Decision:** T-L2 checks the exact decay J · a^(k − k0) (to 1e-6 ¢) and that the 16:00 value is ≥ 99.7% of the jump, instead of spec §6.1's "less than 0.0003% over 5 hours".
 - **Reason:** a = e^(−κ · 1 s) = e^(−1.67e-7); over 18,000 s that is e^(−0.003), a 0.30% decay ($20.00 → $19.94; measured 1993.997 ¢ of 2,000). The spec's number is a factor-1000 slip; "permanent in practice" stays true. Nothing in the generator changes.

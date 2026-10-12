@@ -492,6 +492,8 @@ POPULATION_LABELS = {
     "MomentumAgent": "Momentum (ABIDES MA)",
     "FundamentalistAgent": "Fundamentalist (ours)",
     "MomentumEKFAgent": "Momentum EKF (ours)",
+    # spec v1.3 §6.2: a test instrument of the realism lab, listed separately
+    "ImpactProbeAgent": "Impact probe (test)",
 }
 POPULATION_EXCLUDE = {"ExchangeAgent", "NewsOracleAgent"}
 
@@ -521,6 +523,8 @@ def _start_position(agent):
     if hasattr(agent, "initial_exposure") and hasattr(agent, "reference_price"):
         n0 = int(math.floor(agent.initial_exposure * w0 / agent.reference_price))
         return w0 - n0 * agent.reference_price, n0
+    if hasattr(agent, "starting_shares"):  # the impact probe (spec v1.3 §6.2)
+        return w0, int(agent.starting_shares)
     return w0, 0
 
 

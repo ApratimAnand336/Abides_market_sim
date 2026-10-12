@@ -65,6 +65,7 @@ Agent ids are assigned in this order.
 | MomentumAgent (ABIDES MA) | 12 − our momentum count | $100,000 cash | Poisson, mean 37 s | mid history | 20/50 moving-average crossover |
 | MomentumEKFAgent (ours) | 0–12 † | $50,000 + 50 shares | Poisson, mean `wake_mean` ∈ [10, 60] s | market mid only | Kalman trend follower |
 | NewsOracleAgent | 1 | – | at scheduled news times | the headlines | broadcasts news |
+| ImpactProbeAgent (v1.3, lab only) | 0 or 1 | $10¹⁰ cash (buy) or Q shares (sell) | at its child times only | best bid/ask at its first child | a **test instrument**: executes one parent order of Q shares as 30 market orders over 5 minutes (spec v1.3 §6.2). Built only when `build_config(probe=…)` is given; never in the dashboard |
 
 Details of the stock agents are in [AGENTS_ABIDES.md](AGENTS_ABIDES.md), and of ours in
 [AGENT_FUNDAMENTALIST.md](AGENT_FUNDAMENTALIST.md) and [AGENT_MOMENTUM.md](AGENT_MOMENTUM.md).
@@ -97,6 +98,7 @@ single `seed` in `build_config`:
 | each agent's `random_state` | `build_config` | `np.random.randint(0, 2³¹)`, in agent order | everything the agent randomises: wake gaps, order sizes and sides, noisy oracle looks |
 | latency model RNG | `generate_latency_model` | `np.random.randint(0, 2³¹)` | pairwise message latencies (fixed at config time) |
 | kernel `random_state` | `build_config` | `np.random.randint(0, 2³¹)` | kernel-level randomness |
+| impact probe `random_state` (v1.3, lab only) | `build_config(probe=…)` | the **constant** `RandomState(0)`, not drawn from the global stream | nothing (the probe uses no random numbers). The probe is appended as the last agent, after the news oracle and before the kernel RNG and the latency model are drawn; the latency model draws one more coordinate after the existing agents', so every existing agent's latencies, seeds and parameters are unchanged (tests T-L6, T-L7) |
 
 Consequences:
 
@@ -108,17 +110,38 @@ Consequences:
   depended on how often agents looked at it ([DECISIONS.md](DECISIONS.md), 2026-10-09).
 - Determinism across processes is tested by invariant I1 ([TESTING.md](TESTING.md)).
 
+## The realism lab (v1.3)
+
+```
+ api/lab.py: CONFIGS (run matrix), lab_config(id, seed)
+        │  = build_config(**run_config_kwargs(RunParams), oracle_events / probe /
+        │                  mm_pause_windows / mom_capital_mult)
+        ▼
+ scripts/realism_lab.py ── one spawned process per run ── abides.run
+        │      api/realism.py: series_from_end_state → run_metrics, agent_sanity
+        ▼
+ runs/_lab/<config>/<seed>/metrics.json + series.npz   (git-ignored)
+        ▼
+ report step: realism.scorecard (bands, grades), scenario analysis (treated − baseline
+        │      on the same seed), impact summary, figures
+        ▼
+ docs/v1.3/lab/summary.json, figures/, BASELINE.md   ──► GET /api/lab/summary ──► Realism tab
+```
+
+The same `api/realism.py` computes the single-run realism block of every dashboard payload.
+See [REALISM_LAB.md](REALISM_LAB.md).
+
 ## Code map
 
 | Path | Contents |
 |---|---|
 | `abides-core/abides_core/` | kernel, base `Agent`, message plumbing, time utilities |
-| `abides-markets/abides_markets/agents/` | exchange and trader agents; ours are `fundamental.py`, `momentum_ekf.py`, `news_oracle_agent.py` |
+| `abides-markets/abides_markets/agents/` | exchange and trader agents; ours are `fundamental.py`, `momentum_ekf.py`, `news_oracle_agent.py`, and the lab's `impact_probe_agent.py` |
 | `abides-markets/abides_markets/order_book.py` | matching, `history`, `book_log2` |
 | `abides-markets/abides_markets/oracles/` | true-value sources |
 | `abides-markets/abides_markets/configs/rmsc04_ekf.py` | the market we run (`build_config`) |
 | `abides-markets/abides_markets/configs/param_ranges.py` | ranges of every randomised hyperparameter (single source of truth, also sent to the dashboard) |
-| `api/` | `jobs.py` (run + cache), `export.py` (payload), `stats.py` (market statistics), `schema.py` (payload contract), `server.py` (HTTP) |
+| `api/` | `jobs.py` (run + cache), `export.py` (payload), `stats.py` (market statistics), `realism.py` (realism metrics, bands, scenario analysis), `lab.py` (lab run matrix), `schema.py` (payload contract), `server.py` (HTTP) |
 | `web/src/` | dashboard: `tabs/`, `components/`, `charts/`, `types/payload.ts` (TypeScript mirror of `api/schema.py`) |
 | `abides-markets/tests/`, `api/tests/` | unit and invariant tests |
-| `scripts/` | `dev.sh`, acceptance scripts |
+| `scripts/` | `dev.sh`, acceptance scripts, `realism_lab.py` (the lab runner) |

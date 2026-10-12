@@ -167,3 +167,93 @@ def fingerprint(tmp_path, extra: dict) -> dict:
 
 def test_l4_explicit_oracle_default_holds_i8(tmp_path):
     assert fingerprint(tmp_path, {"oracle_events": None}) == I8_EXPECTED
+
+# ── shared helpers for the 1-hour markets of T-L5 … T-L8 ──────────────────
+
+def _run(tmp, **extra):
+    """Build (with extra build_config kwargs) and run the 1-hour invariant
+    market. Returns (config, end_state, start holdings)."""
+    from abides_core import abides
+    from abides_markets.configs.rmsc04_ekf import build_config
+
+    config = build_config(**_lab_kwargs(**extra))
+    start = {a.id: (int(a.holdings.get("CASH", 0)), int(a.holdings.get("ABM", 0)))
+             for a in config["agents"] if hasattr(a, "holdings")}
+    cwd = os.getcwd()
+    os.chdir(tmp)
+    try:
+        end_state = abides.run(config)
+    finally:
+        os.chdir(cwd)
+    return config, end_state, start
+
+
+def _execs(end_state):
+    h = end_state["agents"][0].order_books["ABM"].history
+    return [(x["time"], x["price"], x["quantity"], x["agent_id"], x["oppos_agent_id"]) for x in h if x["type"] == "EXEC"]
+
+
+PROBE_600 = {"side": "BUY", "quantity": 600, "start": "00:15:00", "duration_s": 300, "child_interval_s": 10}
+T_PROBE = OPEN + str_to_ns("00:15:00")
+
+
+@pytest.fixture(scope="module")
+def probe_market(tmp_path_factory):
+    return _run(tmp_path_factory.mktemp("probe"), probe=PROBE_600)
+
+
+@pytest.fixture(scope="module")
+def plain_market(tmp_path_factory):
+    return _run(tmp_path_factory.mktemp("plain"))
+
+
+# ── T-L5 ───────────────────────────────────────────────────────────────────
+def test_l5_probe_executes_its_parent_order(probe_market):
+    from api import realism as R
+
+    config, es, start = probe_market
+    probe = es["agents"][config["_probe_id"]]
+    assert type(probe).__name__ == "ImpactProbeAgent"
+    children = [(t, ev) for t, typ, ev in probe.log if typ == "PROBE_CHILD"]
+    assert len(children) == 30
+    times = [t for t, _ in children]
+    assert times[0] == T_PROBE and all(b - a == 10_000_000_000 for a, b in zip(times, times[1:]))
+    assert sum(ev["planned"] for _, ev in children) == 600
+    (summ,) = [ev for _, typ, ev in probe.log if typ == "PROBE_SUMMARY"]
+    assert summ["filled"] + summ["unfilled"] == 600 and summ["filled"] > 0
+    assert summ["arrival_mid"] is not None and summ["vwap_cents"] > 0
+    assert probe.holdings.get("ABM", 0) == summ["filled"]
+
+    # I3 conservation with the probe present
+    after = {a.id: (int(a.holdings.get("CASH", 0)), int(a.holdings.get("ABM", 0)))
+             for a in es["agents"] if hasattr(a, "holdings")}
+    assert sum(c for c, _ in after.values()) == sum(c for c, _ in start.values())
+    assert sum(s for _, s in after.values()) == sum(s for _, s in start.values())
+    # I5 book sanity and zero_sum through the lab's own series builder
+    s = R.series_from_end_state(es, config, start_holdings=start)
+    assert s["flags"] == {"book_sanity": True, "long_only": True, "conservation": True}
+    zs = R.agent_sanity(s)
+    assert zs["ok"] and zs["zero_sum_cents"] == 0.0
+    assert s["probe"]["absorbed"] and sum(s["probe"]["absorbed"].values()) == summ["filled"]
+
+
+# ── T-L6 ───────────────────────────────────────────────────────────────────
+def test_l6_null_probe_is_neutral(tmp_path):
+    """A probe with quantity 0 leaves the market bit-identical (so C-DEF is
+    a valid baseline for the impact runs and C-NULL is not needed)."""
+    null = dict(PROBE_600, quantity=0)
+    assert fingerprint(tmp_path, {"probe": null}) == I8_EXPECTED
+
+
+# ── T-L7 ───────────────────────────────────────────────────────────────────
+def test_l7_probe_uses_no_global_rng(probe_market, plain_market):
+    from abides_markets.configs.rmsc04_ekf import build_config
+
+    with_probe = build_config(**_lab_kwargs(probe=PROBE_600))
+    without = build_config(**_lab_kwargs())
+    assert _agent_fingerprint(with_probe)[:-1] == _agent_fingerprint(without)
+    assert type(with_probe["agents"][-1]).__name__ == "ImpactProbeAgent"
+    a = [e for e in _execs(probe_market[1]) if e[0] < T_PROBE]
+    b = [e for e in _execs(plain_market[1]) if e[0] < T_PROBE]
+    assert a and a == b
+
