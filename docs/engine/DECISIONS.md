@@ -178,6 +178,16 @@ Appendix B. Implementation decisions follow under "Decisions made while implemen
 
 (Added by milestone; each with its evidence.)
 
+### 2026-10-12 (L1) — The half-life estimator is kept as specified; its bias is reported
+- **Decision:** `gap_half_life_min` is `api.stats.gap_half_life(gap, LAB_GAP_LAGS)` exactly as spec v1.3 §3.7 defines it. T-R8's 45-min and 90-min cases are strict xfails with the measured bias in the reason.
+- **Reason:** on one 6.5 h day the de-meaned sample ACF is biased low for long half-lives: a true 45 min reads as 20.8 min (−54%), 90 min as 27.1 min (−70%) (median of 20 synthetic AR(1) paths). This is the estimator's mean-removal bias, not a coding error. Changing the estimator would change what G10 grades, which is the owner's call (bands are revisited before R5).
+- **Alternatives:** not de-meaning (tested: 45 min → 31.5 min, 90 min → 51 min, but p10–p90 widens to 26–128 min); pooling seeds. Not adopted in R2.
+- **Evidence:** `api/tests/test_realism.py::test_r8_gap_half_life` (run with `-s`).
+
+### 2026-10-12 (L1) — Boundaries: one rule for every band
+- **Decision:** every band interval is closed and PASS is tested first, so every boundary takes the better grade (§4.2). This makes G5's "PS > 0.03" pass at exactly 0.03 and G13's ratio of exactly 0 a WARN although the table writes "≤ 0" under FAIL.
+- **Reason:** T-R11 requires every boundary of every band to take the better grade; a ratio of exactly 0 has probability zero with real data.
+
 ### 2026-10-12 (L0) — I8 recorded from aa5f606 with PYTHONHASHSEED=0
 - **Decision:** I8 reuses I1's fingerprint script (same EXEC and holdings hashes) in a fresh process with `PYTHONHASHSEED=0`; the expected values are constants in `test_invariants.py`. The full-day run A hash is stored in `docs/v1.3/lab/reference_hashes.json`.
 - **Evidence:** I8: 2,448 executions, 121,622 shares. Run A: 13,759 executions, 608,106 shares (equal to spec §0.4's independent measurement).

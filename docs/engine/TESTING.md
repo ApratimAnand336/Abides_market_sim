@@ -35,6 +35,7 @@ agents, three news items) once per session and checks the payload against it.
 | `abides-markets/tests/test_market_maker.py` | 4 | Market maker cold start and liveness: without value agents the market trades and each MM quotes in every 10-minute window (T-M6, invariant I6); each MM wakes ≥ 90% of duration/mean wake and is never silent for 10 minutes, with and without value agents (T-M7, invariant I7); the spread cap does not bind in the default market. Two 1-hour simulations, ≈8 s |
 | `abides-markets/tests/test_invariants.py` | 7 | Invariants I1–I7 (below) |
 | `api/tests/test_export.py` | 22 | payload validity (schema, no NaN), trade counts, close, mark-to-market, equal-length series, size budget, news records, candles, P&L vs holding, population (volume shares sum to 100), gap half-life on a synthetic AR(1) |
+| `api/tests/test_realism.py` | 79 | Realism metrics on synthetic inputs (spec v1.3 T-R1 … T-R12): σ_1m, ac1, VR(5), clustering, kurtosis, vv_corr, regime-contrast floor, gap half-life (45 and 90 min are strict xfails: the estimator's bias, see [REALISM_LAB.md](REALISM_LAB.md)), jump analysis, impact β and noise floor, every band boundary, aggregation, zero_sum. No simulation; about 2 s |
 | `api/tests/test_server.py` | 18 | HTTP validation (readable 400s, including population bounds), presets, 404s, run listing |
 | `abides-markets/tests/orderbook/*`, `test_orders.py`, `test_generators.py`, `test_sim.py`, `agent_utils_test.py` | 48 | upstream ABIDES order book and utilities |
 

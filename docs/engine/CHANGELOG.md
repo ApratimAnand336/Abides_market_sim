@@ -12,6 +12,7 @@ bit-identical to v1.2 (aa5f606).
 | Milestone | Files | Change |
 |---|---|---|
 | L0 | `docs/specs/`, `docs/engine/REALISM_LAB.md`, `docs/engine/DECISIONS.md`, `docs/engine/TESTING.md`, `abides-markets/tests/test_invariants.py`, `docs/v1.3/lab/reference_hashes.json` | Spec v1.3 stored; **owner correction (2026-10-11): the "Owner:" line of `spec_v1.1.txt` and `spec_v1.2.txt` now reads "Owner: Apratim Anand, IIT Bombay."** (nothing else changed in those files); invariant I8 "no drift" with the hash recorded from aa5f606; run A reference hash; decision entries D-R2-1 … D-R2-5; REALISM_LAB.md skeleton |
+| L1 | `api/realism.py` (new), `api/tests/test_realism.py` (new), `docs/engine/REALISM_LAB.md` | Every Part 3 metric, the bands (`BANDS`) and grading, aggregation over seeds, the §7.3 scenario analysis functions, zero_sum in exact integer half-cents; tests T-R1 … T-R12. No simulation code touched |
 
 ## v1.2 — R1: foundation fixes and living documentation (2026-10-09, branch `v1.2`)
 
