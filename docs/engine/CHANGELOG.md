@@ -3,6 +3,14 @@
 Sources: the git log of this repository and the specs in [`docs/specs/`](../specs/).
 Upstream ABIDES history (2021–2023, J.P. Morgan) is not repeated here.
 
+## v1.4 — R3: informed fundamentalists replace the value agents (in progress, branch `v1.4`)
+
+Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt).
+
+| Milestone | Files | Change |
+|---|---|---|
+| N0 | `docs/specs/spec_v1.4.txt`, `docs/engine/DECISIONS.md`, `docs/engine/AGENTS_ABIDES.md`, doc skeletons, `docs/HANDOFF.md` | Spec v1.4 stored; D-R3-1..6; ValueAgent mechanism finding (§0.3) and κ mismatch documented; sim_data.pkl confirmed clean by the owner |
+
 ## v1.3 — R2: the realism lab, measurement only (2026-10-12, branch `v1.3`)
 
 Spec: [`docs/specs/spec_v1.3.txt`](../specs/spec_v1.3.txt). Reports: [`docs/v1.3/REPORT.md`](../v1.3/REPORT.md),

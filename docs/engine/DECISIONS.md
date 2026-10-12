@@ -223,3 +223,33 @@ Appendix B. Implementation decisions follow under "Decisions made while implemen
 ### 2026-10-12 (L0) — I8 recorded from aa5f606 with PYTHONHASHSEED=0
 - **Decision:** I8 reuses I1's fingerprint script (same EXEC and holdings hashes) in a fresh process with `PYTHONHASHSEED=0`; the expected values are constants in `test_invariants.py`. The full-day run A hash is stored in `docs/v1.3/lab/reference_hashes.json`.
 - **Evidence:** I8: 2,448 executions, 121,622 shares. Run A: 13,759 executions, 608,106 shares (equal to spec §0.4's independent measurement).
+
+---
+
+## v1.4 (R3): informed fundamentalists replace the value agents
+
+Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt) (Part 1, Appendix B).
+
+### 2026-10-12 (v1.4, R3) D-R3-1: replace the ValueAgents with informed fundamentalists (ours)
+- **Decision:** the FundamentalistAgent gains an "informed" mode (research channel, belief-anchored pricing, quotes into an empty book, budget limits). It replaces the 97 ABIDES ValueAgents in the default market from N6. The ValueAgent code is not modified.
+- **Reason:** we should not depend on stock agents we do not control. R2 showed that their book-anchored pricing (buy at ask − U[0, 2·spread], whatever the mispricing) causes most failures (spec v1.4 §0.3).
+- **Alternatives:** patch the ValueAgent's pricing (rejected by the owner).
+
+### 2026-10-13 D-R3-2: R3 stays focused
+- **Decision:** no oracle changes, no market-maker inventory management and no new news types until R4. Volatility, clustering and regimes are not judged in R3.
+
+### 2026-10-13 D-R3-3: R3 graded on real-world-checkable measures
+- **Decision:** T1–T7 and L1–L5 (spec v1.4 Part 2). Gap size and gap half-life are simulator-only diagnostics.
+- **Reason:** no real market has an oracle. Real mispricing is measured indirectly, through autocorrelation, variance ratios and event studies.
+
+### 2026-10-13 D-R3-4: corrected half-life
+- **Decision:** no de-meaning, plus a synthetic correction table (spec v1.4 §3.1). G10 grades the corrected value, and the v1.3 estimator is still reported.
+- **Reason:** on one day, the v1.3 estimator reads a true 45 min as about 25 min and a true 90 min as about 29 min.
+
+### 2026-10-13 D-R3-5: ABIDES budget limits
+- **Decision:** gross limit 2× wealth on NoiseAgent, ValueAgent and the ABIDES MomentumAgent. Market makers are exempt until R4. The effect is measured alone first (config C-BL).
+
+### 2026-10-13 D-R3-6: multi-day sessions after R6.
+
+### 2026-10-12 (N0) sim_data.pkl: clean
+- **Decision:** the owner confirmed that the tracked `sim_data.pkl` is restored (`git status` shows it unmodified). v1.4 runs therefore carry no "+dirty" engine_version label. The spec's owner action before N0 is done.

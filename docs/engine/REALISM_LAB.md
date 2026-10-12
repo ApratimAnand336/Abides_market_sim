@@ -239,3 +239,12 @@ Exit code 1 on (a) or any DRIFT. `--rebaseline` rewrites the stored summary and 
 - **Impact while value agents can short without limit** (D-R2-5): the impact numbers are a "before"
   picture for R3.
 - **Memory.** About 470 MB per full-day process: size `--workers` by free memory.
+
+## v1.4 (R3) additions
+
+Spec v1.4 Parts 2, 3 and 7. Filled in milestone by milestone:
+- the corrected half-life and its table (N1);
+- the jump-window metrics (N1);
+- the R3 scorecard (N1);
+- campaigns b, s1, step and final (N2–N5).
+Lab outputs for v1.4 go to `runs/_lab_v14/` and `docs/v1.4/lab/`.

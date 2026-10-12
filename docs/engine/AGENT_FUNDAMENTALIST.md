@@ -139,6 +139,10 @@ Module constants (not randomised): `SIGMA_F_LAG_S` = 300 s, `SIGMA_F_PRIOR` = 3 
 
 Plus the standard TradingAgent events (`HOLDINGS_UPDATED`, `ORDER_SUBMITTED`, `ORDER_EXECUTED`, …).
 
+## Informed mode (v1.4, R3)
+
+Spec v1.4 Part 4. Filled in at milestone N3.
+
 ## History
 
 | Version | Change | Why |

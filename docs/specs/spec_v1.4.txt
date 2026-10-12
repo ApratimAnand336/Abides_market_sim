@@ -1,0 +1,590 @@
+FINVERSE: SPEC v1.4 ("R3: informed fundamentalists replace the value agents")
+==============================================================================
+Date: 2026-10-13.  Owner: Apratim Anand, IIT Bombay.
+Audience: Claude Code (implementation) and any new Claude chat picking this up.
+Status: APPROVED by the owner on 2026-10-12/13 (Part 1).
+Build on branch v1.4, created from origin/v1.3 (502b572). Commit once per milestone
+(Part 12). Do not push; the owner reviews and pushes. Do not delete tracked files.
+
+This document is self-contained. Part 0 is the background, Part 1 the owner's decisions,
+Part 2 how R3 is judged (decided BEFORE building), Parts 3-8 what to build, Parts 9-12
+how to run, test, document and report.
+
+Owner action before N0 (Claude Code: ask the owner to confirm it is done; do not do it
+yourself): the tracked file sim_data.pkl is modified in the owner's working tree, which
+marks every engine_version "+dirty". Either restore it (git checkout -- sim_data.pkl) or
+accept the "+dirty" label; the report states which.
+
+
+==============================================================================
+PART 0. CONTEXT
+==============================================================================
+0.1 Project
+  FinVerse (startup + IIT Bombay ITSP 2026 project) is a realistic simulated stock market
+  where students trade against AI investors and learn the theory alongside. The engine is
+  a fork of ABIDES. Repository: ApratimAnand336/Abides_market_sim. Latest branch: v1.3.
+  Prices are integer CENTS; variances cents^2; engine time ns. Price about $1000
+  (r_bar = 100,000 c). 1 tick = 1 cent.
+  Read first: docs/engine/README.md, ARCHITECTURE.md, AGENT_FUNDAMENTALIST.md,
+  AGENTS_ABIDES.md, ORACLE.md, REALISM_LAB.md, KNOWN_ISSUES.md, TESTING.md,
+  docs/v1.3/lab/BASELINE.md (the R2 findings) and docs/v1.3/REPORT.md.
+
+0.2 What R2 (v1.3) established, 20 seeds, default market C-DEF (97 ValueAgents, 1000
+    NoiseAgents, 2 market makers, 20 price-only fundamentalists, 12 momentum EKF)
+      1-min volatility 0.71 bps; lag-1 autocorrelation +0.37; VR(5) 1.90;
+      price vol / value vol 0.58; volume-volatility correlation -0.25;
+      gap std $0.145, half-life 1.5 min (estimator read); spread 1 tick (p95 3);
+      ValueAgents 86.7% of volume; +2% value jump: t90 about 12 min, priced through an
+      emptied book side, volume -25% in the next 30 min; impact linear (beta 0.90) and
+      fully transient; volume 591,000 shares/day (median).
+
+0.3 The mechanism R3 targets (verified independently 2026-10-12, S2 seed 42)
+  One minute after a +2% value jump the ValueAgents know the value is $1020.90 and 89%
+  of their orders are buys, but they bid $1000.86. ValueAgent.placeOrder prices from the
+  BOOK (buy at ask - U[0, 2*spread], 10% at the ask), not from its estimate: a $20
+  mispricing gives the same order as a 1-cent one. The agents that supply 87% of the
+  volume therefore never push the price toward value; it moves only when one side of the
+  book is exhausted. This single rule explains the smooth, positively autocorrelated
+  price, the stall-then-gap pricing of jumps, the negative volume-volatility correlation,
+  and the linear, transient impact.
+  Second finding: ValueAgents' own model uses kappa = 1.67e-15/ns, ten times the oracle's
+  1.67e-16, so they expect any deviation from r_bar to shrink by the close (97.0% kept at
+  11:00, 97.6% at 12:00). That is why a jump settles at 97.6%. It disappears with them.
+
+0.4 What R3 does NOT change (kept fixed so improvements can be attributed)
+  The oracle (true-value process, parameters, PregeneratedOracle) - changed in R4.
+  The MomentumEKFAgent, the AdaptiveMarketMakerAgent (cold start, spread cap stay; no
+  inventory limits - R4), NoiseAgent behaviour (only the budget rule of Part 5 applies),
+  the news system. No tuning of anything outside the pre-registered sweep of Part 7.
+
+0.5 Roadmap: R1 v1.2 done; R2 v1.3 done; R3 = this spec; R4 value dynamics (livelier
+  oracle, regimes, information news, MM inventory); R5 calibration; R6 user trading.
+  Multi-day sessions are parked until after R6 (owner, 2026-10-13).
+
+
+==============================================================================
+PART 1. OWNER DECISIONS THAT THIS SPEC IMPLEMENTS
+==============================================================================
+  D-R3-1 Replace the ABIDES ValueAgents with OUR agents: the FundamentalistAgent gains an
+         "informed" mode (research channel, belief-anchored pricing, quoting into an empty
+         book, budget limits). We must not depend on stock agents we do not control.
+         The ValueAgent code is not modified.
+  D-R3-2 R3 stays focused: no oracle changes, no market-maker inventory management, no
+         new news types. Volatility, clustering and regimes are NOT judged in R3.
+  D-R3-3 Grading (Part 2): R3 is graded on measures that can be checked against real
+         market data (autocorrelation, variance ratio, volume-volatility relation, event
+         response) plus engineering limits. Gap size and gap half-life are simulator-only
+         DIAGNOSTICS (no real market has an oracle); they are reported, not graded for R3.
+  D-R3-4 The half-life ruler is fixed (Part 3): no de-meaning, plus a synthetic
+         calibration table that maps the estimator's reading back to the true half-life.
+  D-R3-5 Budget limits for the stock ABIDES agents (K10) arrive in R3, measured on their
+         own first (Part 5, config C-BL) so their effect is not confused with the
+         replacement.
+  D-R3-6 Multi-day sessions: after R6.
+
+
+==============================================================================
+PART 2. HOW R3 IS JUDGED (pre-registered; do not change after seeing results)
+==============================================================================
+All numbers are 20-seed medians (api.lab.SEEDS: 42, 7, 1, 2, 3, 4, 5, 6, 8, 9, ..., 19)
+on the FINAL R3 market (0 ValueAgents, the selected design of Part 7), full day.
+
+2.1 R3 TARGETS (what the mechanism fix must achieve)
+  id   measure (definition)                                      R2 baseline   target
+  T1   |ac1|, lag-1 autocorrelation of 1-min returns (G3)        0.37          <= 0.10
+  T2   VR(5), variance ratio (G4)                                1.90          0.80 .. 1.25
+  T3   vol_ratio_price_value (REALISM_LAB.md 3.7)                0.58          >= 0.90
+  T4   vv_corr, volume-volatility Spearman (G7)                  -0.25         > 0
+  T5   volume_uplift in [t0, t0+30 min] after a +/-2% value      0.75          > 1.0 (both
+       jump (S2 and S2n), treated / baseline                                   S2 and S2n)
+  T6   no emptied book during a jump: in [t0, t0+30 min] of S2   (seed 42:     one_sided_share
+       and S2n (treated): one_sided_share_jump and               spread up to  <= 1% AND
+       spread_p95_jump_ticks (new metrics, Part 3.2)             156 ticks)    p95 <= 10 ticks
+  T7   informed fundamentalists earn their information:          -$112 group   group total > 0
+       pnl_vs_hold group total and per-agent median (C-DEF-like  (price-only)  AND median > 0
+       run, no scenario)
+  A target PASSES when its 20-seed median meets it (T5, T6: in BOTH S2 and S2n).
+
+2.2 R3 LIMITS (must not break; a design that fails any limit is rejected)
+  L1   spread: median <= 2 ticks and p95 <= 10 ticks (all seeds' medians)
+  L2   liquidity: shares executed per day >= 295,500 (50% of R2's 591,000), median
+  L3   the market starts and trades all day with num_value = 0 (and also with
+       num_value = 0 AND num_mm = 0: trades > 0; reported, not a design limit)
+  L4   zero_sum = 0 exactly in every run; invariants I1-I9 pass (Part 10)
+  L5   speed: median wall time of one full day <= 90 s on the development machine
+       (R6 user trading needs a fast engine; report the machine)
+
+2.3 REPORTED, NOT JUDGED IN R3
+  G1 1-min volatility, G2 daily volatility, G5 clustering, G6 kurtosis, G11 regimes
+  (R4 topics); G12/G13 impact (re-measured, D-R2-5); gap std and the CORRECTED gap
+  half-life (diagnostics, D-R3-3); spread max, one_sided_share all day; per-class volume
+  shares and P&L; news response (S4).
+  Expected: G1 still fails (the value process caps it near 1.2 bps; R2 finding). Do not
+  try to fix it in R3.
+
+2.4 Success
+  R3 is successful when the final market passes T1-T7 and L1-L5. If no design in the
+  pre-registered sweep achieves this, R3 ends with the best design by the selection rule
+  (Part 7.4) and a report of which targets failed and why. Nothing is tuned outside the
+  sweep. The owner then decides.
+
+
+==============================================================================
+PART 3. MEASUREMENT UPDATES (api/realism.py; do this first)
+==============================================================================
+3.1 Corrected gap half-life (D-R3-4)
+  Problem (owner explanation, 2026-10-13): the v1.3 estimator de-means the gap within one
+  6.5 h day. For slow mispricings the day's own mean absorbs part of each swing, so slow
+  swings read short (true 45 min -> about 21-25 min; 90 min -> 27-29 min). One day also
+  holds only a few slow swings, so readings are noisy.
+  New function gap_half_life_corrected(gap, dt=1.0, lags_s=LAB_GAP_LAGS) -> dict:
+    1. rho0(L) = sum_t g_t g_{t+L} / sum_t g_t^2     (NO de-meaning; gap mean is reported
+                                                      separately as gap_mean)
+    2. k_L = -ln(rho0(L)) / L for 0.05 < rho0 < 0.98; k = median(k_L);
+       h_read = ln 2 / k / 60 min (None if no lag qualifies)
+    3. Correction table (built once, cached in api/realism_halflife_table.json, committed):
+       for true half-lives H in {0.5, 1, 2, 3, 5, 7.5, 10, 15, 20, 30, 45, 60, 90, 120,
+       180, 240} min, simulate 200 AR(1) gaps on the 1 s grid of a 6.5 h session
+       (23,401 points, started from the stationary distribution, numpy default_rng(seed=0),
+       draws in the order H ascending, path by path), apply step 2, record the median
+       and p10/p90 of h_read. The median must be increasing in H; if not, smooth with an
+       isotonic fit and record that in DECISIONS.md.
+    4. h_corrected = monotone (log-log linear) interpolation of the inverse of
+       median(h_read | H). Below the table's first reading: h_corrected = h_read. Above the
+       last: report ">240 min".
+       h_range = the H values whose p10..p90 reading interval contains h_read (min, max).
+    Returns {"h_read": ..., "h_corrected": ..., "h_range": [lo, hi], "gap_mean": ...,
+             "rho0": [...], "lags_s": [...]}.
+  Across seeds: report the median of h_read and apply the correction to that median as
+  well as reporting the median of per-seed h_corrected.
+  Keep v1.3's gap_half_life (de-meaned) for continuity: report both, labelled
+  "v1.3 estimator (biased for slow mispricing)" and "corrected".
+  G10 uses h_corrected from now on (dashboard and lab). Band unchanged (30-90 min).
+
+3.2 New jump-window metrics (in jump_response; treated run only)
+  one_sided_share_jump   share of 1 s grid points in [t0, t0+30 min] with an empty side
+  spread_p95_jump_ticks  p95 of the two-sided spread in that window (ticks)
+  spread_max_jump_ticks  max in that window
+  price_path_steps       number of 1-min bars in [t0, t0+30 min] whose |return| exceeds
+                         25% of J (shows "one gap" vs "steady pricing"; reported)
+
+3.3 R3 scorecard (new function r3_scorecard(per_config_summaries) -> dict)
+  Evaluates T1-T7 and L1-L5 exactly as Part 2 defines, with value, threshold, PASS/FAIL.
+  Store the definitions in api/realism.py:R3_TARGETS and R3_LIMITS (single source).
+
+3.4 Tests (api/tests/test_realism.py)
+  T-N8  corrected half-life on fresh synthetic AR(1) gaps (default_rng(seed=1), 40 paths
+        per H) for H in {1.5, 10, 45, 90} min: median h_corrected within +/-25% of H;
+        the 1.5 and 10 min cases also within +/-25% for the uncorrected h_read.
+        (Replaces v1.3's strict xfail of T-R8 at 45/90 min; keep T-R8 as is for the old
+        estimator.)
+  T-N9  the correction table is reproducible (rebuilding gives identical numbers) and
+        monotone; h_range contains H for at least 80% of the T-N8 paths.
+  T-N10 jump-window metrics on a hand-built 1 s series with a known empty-side stretch
+        and known spreads.
+  T-N11 r3_scorecard on hand-built summaries: every boundary behaves as Part 2 says
+        (">", ">=", "<=" exactly as written).
+
+
+==============================================================================
+PART 4. THE INFORMED FUNDAMENTALIST (abides-markets/abides_markets/agents/fundamental.py)
+==============================================================================
+4.0 Principle and compatibility
+  New constructor parameter mode: str = "price_only". "price_only" is v1.3's agent,
+  byte-for-byte the same behaviour and the same random draws (I8). mode = "informed"
+  activates everything in this Part. Implement informed mode in new methods; do not
+  change the price_only code paths.
+
+4.1 What the informed agent is (plain language, for AGENT_FUNDAMENTALIST.md)
+  A fundamental investor with its own research. Every few minutes it gets a noisy reading
+  of the company's true value (its "research"), and it also learns, with less trust, from
+  the market price. It decides how much stock to HOLD from how mispriced the stock looks,
+  and - the key change - it prices every order from what it believes the stock is worth,
+  not from the current quotes. It also keeps a small two-sided quote around its belief,
+  so the market has liquidity at a price that reflects information, including when the
+  book is empty. It may short-sell and borrow within limits.
+
+4.2 Scheduling
+  Wakes: Poisson, gap = max(1 s, Exponential(wake_mean)) from the agent's random_state.
+  wake_mean per agent from INFORMED_RANGES["wake_mean"] = (30.0, 120.0, "log") seconds.
+  Each wake: cancel all own open orders, request the spread (as now).
+  Research clock: next_research = previous research time + Exponential(T_r), drawn from
+  the agent's random_state; T_r per agent from the sweep level (Part 7). First research
+  time = first wake time + Exponential(T_r).
+
+4.3 One decision cycle (on the spread response at time t)
+  Step 0 (first cycle only): x_hat = oracle.observe_price(symbol, t, random_state,
+    sigma_n = self.sigma_n); P = initial_uncertainty; t_last = t. Proceed to step 6 (no
+    early return: an informed agent always acts on its first wake, even with an empty book).
+  Step 1 Predict: dt = (t - t_last)/1e9; Q = q * sigma_f2_hat * dt; P = P + Q.
+  Step 2 Research (if next_research <= t): take ONE reading
+      y_r = oracle.observe_price(symbol, t, self.random_state, sigma_n = sigma_r^2)
+      K_r = P / (P + sigma_r^2);  x_hat = x_hat + K_r (y_r - x_hat);  P = (1 - K_r) P
+      next_research = t + Exponential(T_r)   (one reading per wake at most; a reading is
+      taken at the wake time, not at next_research itself - document this)
+      log RESEARCH_READING {y_r, sigma_r, K_r, x_hat_before, x_hat_after, P_after}
+  Step 3 Market reading (only if bid and ask both exist): mid = (bid + ask)/2;
+      append to price_log/time_log; update_sigma_f2(t, mid) (unchanged function);
+      R_noise = (delta * mid)^2 * exp(lambda_er * (1 - ER))     (the v1.2 R, unchanged)
+      R_m = rho * R_noise          (rho = price distrust, per agent, Part 4.6)
+      K_m = P / (P + R_m); x_hat += K_m (mid - x_hat); P = (1 - K_m) P
+      log EKF_UPDATE with the v1.3 keys plus "R_m", "rho", "K_m"
+      (Order: predict -> research -> market. Both are standard scalar Kalman updates of
+       the same state. A large rho makes the agent learn mainly from research; rho near 1
+       makes it follow the price like v1.3.)
+  Step 4 t_last = t. Caution update (unchanged update_caution) only if mid exists.
+  Step 5 Target position (only if mid exists):
+      z      = (x_hat - mid) / sqrt(P + R_noise)          (v1.2 t-statistic; uses R_noise,
+                                                            not R_m)
+      w_star = clip(w0 + a_max * C * tanh(z / z0), w_min, w_max)     w0 = 0.5
+      W      = cash + shares * mid       (cash may be negative, shares may be negative)
+      d_star = round((w_star * W - shares * mid) / mid); step cap floor(s_max W / mid);
+      dead band |d| * mid >= b_f * W and |d| >= 1  (unchanged rules)
+  Step 6 Prices from belief (THE key change; no reference to bid or ask):
+      m = m0 + kappa_m * sqrt(P)                             (required edge, cents)
+      h = m + h0                                             (quote half-width, cents)
+      target order: BUY  d shares at floor(x_hat - m);  SELL |d| shares at ceil(x_hat + m)
+      quotes: bid q_q shares at floor(x_hat - h); ask q_q shares at ceil(x_hat + h)
+              q_q = max(1, floor(theta_q * W_ref / x_hat)), W_ref = W if mid exists else
+              cash + shares * x_hat
+      every price is clamped to >= 1 cent.
+      A price that crosses the book executes against resting orders up to that price and
+      the remainder rests at it: an informed agent that sees a large mispricing buys
+      aggressively up to its reservation price and then becomes the best bid - liquidity
+      at the new, informed price. Without a two-sided book the agent posts quotes only
+      (this is how the market starts without ValueAgents).
+  Step 7 Budget check (Part 4.5) for each order, then send: target order first, then the
+      quotes. Log FUND_DECISION (v1.3 keys plus "mode", "m", "h", "x_hat") and
+      FUND_QUOTES {bid_price, bid_qty, ask_price, ask_qty, blocked_sides}.
+  News: apply_news unchanged (beliefs only) and the forced immediate cycle unchanged.
+
+4.4 Why this fixes the R2 mechanism (for the docs)
+  ValueAgents knew the value but quoted near the book, so price moved by book exhaustion.
+  Informed agents quote around their beliefs, so the book itself sits around the market's
+  consensus belief: when research moves beliefs, the quotes move and orders cross at once.
+  Disagreement between agents' beliefs (different research noise, timing and trust in
+  the price) makes them trade with each other: volume comes from information and
+  disagreement, so it should rise when information arrives.
+  For an optimal filter the belief is a martingale (its changes are unpredictable), which
+  is why price changes driven by beliefs should not be autocorrelated the way book-creep
+  was. Whether the CONSENSUS of many partially informed agents keeps that property is
+  exactly what T1/T2 test.
+
+4.5 Budget limits for the informed agent
+  Position limits as fractions of current wealth: w_min = -0.5, w_max = 1.5 (fixed,
+  module constants INFORMED_W_MIN / INFORMED_W_MAX): it may short up to half its wealth and
+  hold up to 150% of its wealth in stock (borrowing the rest).
+  Check per order, worst case: let n = shares held, B = total quantity of own open BUY
+  orders, S = total of own open SELL orders (orders placed earlier in this same cycle;
+  older orders were cancelled at the wake), p = the order's limit price,
+  W_p = cash + n * p. A BUY of q is allowed only if (n + B + q) * p <= w_max * W_p; a SELL
+  of q only if (n - S - q) * p >= w_min * W_p. Otherwise reduce q to the largest allowed
+  integer (possibly 0: then skip and add the side to blocked_sides). If W_p <= 0, only
+  orders that reduce |n| are allowed.
+
+4.6 New parameters (abides-markets/abides_markets/configs/param_ranges.py)
+  INFORMED_RANGES (new dict; also exported to the dashboard). All per agent, drawn in this
+  order, AFTER the existing FUNDAMENTAL_RANGES draws of the same agent:
+    "wake_mean"      (30.0, 120.0, "log")     s
+    "rho"            (3.0, 100.0, "log")       price distrust (R_m = rho * R_noise)
+    "m0"             (1.0, 3.0, "linear")      cents
+    "kappa_m"        (0.0, 0.5, "linear")
+    "h0"             (1.0, 5.0, "linear")      cents
+    "theta_q"        (0.005, 0.02, "linear")   quote size, fraction of wealth per side
+    "T_r"            sweep level (Part 7): per-agent log-uniform in the level's range, s
+    "sigma_r"        sweep level (Part 7): per-agent log-uniform in the level's range, cents
+  Unchanged ranges, also used in informed mode: er_window, delta, lambda_er, sigma_n,
+  initial_uncertainty, q, gamma, k, a_max, z0, s_max, b_f, k_news. "mu" is drawn as before
+  (keeps the draw order) but unused in informed mode.
+  Capital: starting wealth per informed agent from the sweep level (Part 7); endowment
+  floor(0.5 * wealth / r_bar) shares as now (initial_exposure 0.5).
+
+4.7 Config (rmsc04_ekf.build_config)
+  New keyword arguments, all inert at their defaults (I8):
+    fund_mode = "price_only"           "informed" builds informed fundamentalists
+    informed_design = None             dict: T_r_range_s, sigma_r_range_c, wealth_c
+                                       (Part 7 levels); required when fund_mode = "informed"
+    abides_budget = None               Part 5
+  The count stays num_ekf_agents. RunParams: num_fund upper bound 20 -> 200 in N6 only.
+  Fundamentalists stay in the same position of the agent list (so seeds of the agents
+  built before them are unchanged).
+
+
+==============================================================================
+PART 5. BUDGET LIMITS FOR THE STOCK ABIDES AGENTS (K10)
+==============================================================================
+5.1 New module abides-markets/abides_markets/utils/budget.py:
+    class GrossLimit: L (default 2.0). allowed_qty(side, q, price, holdings, symbol,
+    open_same_side_qty) -> int using the same worst-case rule as 4.5 with
+    w_max = L, w_min = -L (gross position value <= L x current wealth at the order price).
+5.2 TradingAgent gains attribute budget: Optional[GrossLimit] = None. In
+    place_limit_order and place_market_order: if budget is set, clip the quantity; if it
+    becomes 0, do not send, and log BUDGET_BLOCK {side, requested, allowed, price}. With
+    budget None nothing changes (I8). Our agents never set it (they have their own rules).
+5.3 build_config(abides_budget=None | {"L": 2.0}) sets GrossLimit on NoiseAgent,
+    ValueAgent and the ABIDES MomentumAgent. Market makers are EXEMPT in R3 (their
+    inventory management is R4; document this).
+    Effect to expect and report: noise orders above floor(2 * $100,000 / price) = about
+    200 shares are clipped; value agents stop accumulating unlimited positions.
+5.4 Measured on its own first (Part 7.2, config C-BL), so its effect is known before the
+    replacement.
+
+
+==============================================================================
+PART 6. POPULATION, PAYLOAD AND DASHBOARD (switch in N6)
+==============================================================================
+6.1 The new default market (after N6): num_value = 0; fund_mode = "informed" with the
+  selected design (Part 7.4) and its count N_inf; abides_budget = {"L": 2.0}; noise 1000,
+  market makers 2, 12 momentum EKF, unchanged.
+  Legacy market (v1.3 default) remains reproducible by explicit parameters:
+  num_value=97, num_fund=20, fund_mode="price_only", abides_budget=None. Test I8-legacy
+  (Part 10) keeps it bit-identical forever.
+6.2 RunParams (api/schema.py): num_fund 0..200; new fund_mode Literal["informed",
+  "price_only"]; num_value default 0 (range unchanged 0..150). Defaults = the new
+  default market. Server tests for the bounds.
+6.3 Payload: with up to 200 fundamentalists the payload must stay <= 9 MB for a full day.
+  Detailed per-agent series (EKF, caution, decisions) for at most 20 fundamentalists,
+  chosen deterministically as evenly spaced indices over the sorted ids; every agent
+  still appears in the leaderboard and population table. payload.agents_detail_note
+  says how many have detail. Research readings appear in the fundamental detail view
+  as markers (time, y_r). Report the payload size.
+6.4 Dashboard: population label "Fundamentalist (informed)"; agentParams.ts entries
+  (label + one-line description) for wake_mean, rho, m0, kappa_m, h0, theta_q, T_r,
+  sigma_r, w_min/w_max; the sidebar fundamentalist slider 0..200 and a mode toggle.
+  The Realism tab: G10 shows the corrected half-life with its range and the v1.3 reading
+  in the tooltip; a new card "R3 targets" (T1-T7, L1-L2 for the single run where
+  defined) when the lab summary has R3 data.
+  SCHEMA_VERSION 1.3, ENGINE_VERSION 1.4 (N6).
+
+
+==============================================================================
+PART 7. CAMPAIGNS: BUDGET, DESIGN SWEEP, STEP-DOWN, FINAL (api/lab.py, realism_lab.py)
+==============================================================================
+7.1 Common: full day, 12 momentum EKF, 1000 noise, 2 MMs unless stated; t0 = 11:00;
+  S2/S2n = +/-2% value jump at t0 (as v1.3). Baselines as in v1.3: treated minus the
+  same seed's no-trigger config of the SAME population. Lab outputs under
+  runs/_lab_v14/ and docs/v1.4/lab/.
+
+7.2 Campaign b (budget alone; v1.3 market + budget)
+  C-BL  = C-DEF + abides_budget {"L": 2}; S2-BL = S2 + budget. 20 seeds each (40 runs).
+  Report the v1.3 scorecard for C-BL vs C-DEF, BUDGET_BLOCK counts per class, and the
+  S2-BL jump metrics vs S2.
+
+7.3 Campaign s1 (design sweep, screening) at the FINAL population
+  Population: num_value = 0, fund_mode informed, abides_budget {"L": 2}.
+  Four dials, two levels each, full factorial = 16 designs (id D-<N><T><S><W>):
+    N   number of informed fundamentalists          60 | 120
+    T   research interval T_r per agent (log-U)     fast [60, 300] s | slow [300, 1800] s
+    S   research noise sigma_r per agent (log-U)    low [10, 50] c | high [50, 200] c
+    W   starting wealth per informed agent          $500,000 | $2,000,000
+  Seeds: 42, 7, 1, 2, 3 (5 seeds). Configs per design: D-x (no trigger) and D-x-S2.
+  16 x 2 x 5 = 160 runs.
+
+7.4 Selection rule (pre-registered; applied mechanically by the script, printed in full)
+  On 5-seed medians:
+    1. Reject designs failing any limit L1, L2, L4, L5.
+    2. Among the rest, maximise the number of targets passed among T1-T4, T6 (S2 only
+       in screening), T5 (S2 only in screening), T7.
+    3. Tie-break: minimise the sum over T1-T4 of the normalised miss
+       (distance outside the target / target scale; scales: T1 0.10, T2 0.45, T3 0.90,
+       T4 0.30), then maximise daily volume, then the lexically smallest design id.
+  Round 2 (only if the round-1 winner fails any target or limit): eight designs that
+  extend the winner one level further along each dial in both directions where a new
+  level exists: N {30, 240}, T_r very fast [15, 60] s / very slow [1800, 7200] s,
+  sigma_r very low [3, 10] c / very high [200, 600] c, W $250,000 / $5,000,000
+  (replace one dial at a time; 8 designs x 2 configs x 5 seeds = 160 runs). Apply the
+  same rule to round-1 winner + round-2 designs. At most two rounds. The winner is the
+  "selected design".
+
+7.5 Campaign step (step-down) with the selected design
+  For num_value in {97, 50, 20, 0}: configs P<k>-C (no trigger), P<k>-S2, P<k>-S2n;
+  20 seeds each: 4 x 3 x 20 = 240 runs. abides_budget on in all four.
+  (num_value 0's runs are the confirmation of the selected design on 20 seeds.)
+  Report the v1.3 scorecard, the R3 scorecard and the diagnostics per step, as a table and
+  as lines over num_value. Expected: monotone improvement as ValueAgents go.
+
+7.6 Campaign final (on the final market P0)
+  IMP-0, IMP-0.5, IMP-1, IMP-5 (as v1.3 §5.4, baseline P0-C), S4 (hype news +0.9),
+  S5 (value volatility x3, 11:00-12:00), and P0-MM0 (num_mm = 0: L3's second part,
+  trades > 0). 7 x 20 = 140 runs. Report impact beta, recovery, absorption by class, and
+  news/vol-burst responses vs v1.3.
+
+7.7 Totals: about 40 + 160 (+160) + 240 + 140 = 580-740 runs. Measure the wall time per
+  run in campaign s1 first; if the median exceeds 90 s, report it (L5) before continuing.
+  Use the v1.3 runner (resumable, one process per run, 15-min timeout).
+
+
+==============================================================================
+PART 8. PRE-REGISTERED EXPECTATIONS (write verdicts in RESULTS.md; not targets)
+==============================================================================
+  E1  C-BL: small effects on the scorecard; noise orders clipped; value agents block
+      often late in the day.
+  E2  Belief-anchored quoting removes book-creep: at P0, |ac1| < 0.15 and VR(5) < 1.4 for
+      most designs; T3 rises toward 1.
+  E3  vv_corr turns positive: information arrival triggers disagreement and trading.
+  E4  S2: volume rises after the jump (T5); the book does not empty (T6); t90 is set by
+      the research interval (fast designs < 5 min, slow 10-30 min).
+  E5  Gap std and the corrected half-life grow with slower and noisier research and with
+      higher price distrust (diagnostics); halving times of minutes to tens of minutes.
+  E6  Informed fundamentalists profit (T7); noise agents lose; market makers about even.
+  E7  G1 still FAILS (about 1-1.5 bps); G5 and G11 still fail. R4.
+  E8  Step-down: every T-measure improves monotonically from 97 to 0 ValueAgents.
+  E9  Impact: a permanent part may appear only where the order changes beliefs; with an
+      unchanged true value, I_perm stays near 0. beta re-measured; no prior.
+  E10 Wall time grows roughly linearly with N (about 0.2 s per informed agent per day).
+
+
+==============================================================================
+PART 9. DOCUMENTATION (a milestone is not done until its docs are)
+==============================================================================
+  docs/specs/spec_v1.4.txt          this spec, verbatim.
+  docs/engine/AGENT_FUNDAMENTALIST.md  informed mode: plain language (4.1), the cycle
+                                    (4.3) with every formula, why it fixes the mechanism
+                                    (4.4), budget (4.5), parameters (4.6), log events, and
+                                    the history row v1.4.
+  docs/engine/AGENTS_ABIDES.md      the ValueAgent mechanism finding (0.3) and the kappa
+                                    mismatch; budget limits (Part 5); MMs exempt in R3.
+  docs/engine/ARCHITECTURE.md       new default population table, legacy market, RNG
+                                    notes (research clock draws from the agent's RNG).
+  docs/engine/REALISM_LAB.md        corrected half-life (3.1) with the table; jump-window
+                                    metrics; the R3 scorecard; campaigns of Part 7.
+  docs/engine/KNOWN_ISSUES.md       update K4 (pinning), K9 (no information edge), K10
+                                    (budget), K13 (vv_corr) with R3 numbers; add new issues
+                                    found.
+  docs/engine/DECISIONS.md          D-R3-1 .. D-R3-6; the selected design and the full
+                                    selection printout; the default switch in N6 (new I8
+                                    hash) with its reason.
+  docs/engine/TESTING.md, CHANGELOG.md, README.md (glossary: research reading, price
+                                    distrust, reservation price, quote layer, gross limit).
+  docs/v1.4/REPORT.md               implementation report (v1.3 style).
+  docs/v1.4/lab/RESULTS.md          findings report (Part 12.3).
+
+
+==============================================================================
+PART 10. TESTS
+==============================================================================
+10.1 Informed agent (abides-markets/tests/test_fundamental_informed.py)
+  T-N1  research update: P = 900, sigma_r = 50 c, x_hat = 100,000, y_r = 100,300 ->
+        K_r = 900/3400, x_hat and P exactly as 4.3 step 2 (1e-9).
+  T-N2  research clock: 50 agents, T_r = 120 s, 2 simulated hours with forced wakes every
+        10 s: readings per agent within +/-10% of 60 on average; never more than one per
+        wake; RESEARCH_READING logged each time.
+  T-N3  belief-anchored prices: for fixed x_hat, P, m0, kappa_m, h0, the target and quote
+        prices are identical for two different books (bid/ask 99,900/99,901 and
+        100,500/100,520): prices do not depend on the book.
+  T-N4  empty book: an informed agent whose first wake sees no bid/ask posts a two-sided
+        quote around its initial belief; a 1-hour market with num_value = 0, num_mm = 0,
+        5 informed + 0 momentum + 100 noise agents has trades > 0.
+  T-N5  budget (4.5): with worst-case open orders the post-fill position stays within
+        [w_min, w_max] x W at the fill price, over a 1-hour market with 20 informed agents
+        (check every HOLDINGS_UPDATED; tolerance one share).
+  T-N6  mode "price_only" with every new argument at its default: I8 hash (the v1.3
+        default) unchanged.
+  T-N7  the research reading uses the agent's RNG: the oracle path is unchanged (I2 with
+        informed agents) and two runs with the same seed are identical.
+10.2 Budget (abides-markets/tests/test_budget.py)
+  T-N12 GrossLimit maths: hand-built holdings, a 1000-share noise buy at $1000 with
+        $100,000 wealth is clipped to 200; a short beyond -2 x W is clipped; W <= 0 allows
+        only reducing orders.
+  T-N13 abides_budget None -> I8; with budget, every ABIDES agent's fills satisfy the gross
+        limit (one-order tolerance) over a 1-hour market; BUDGET_BLOCK logged.
+10.3 Measurement: T-N8 .. T-N11 (Part 3.4).
+10.4 Invariants (abides-markets/tests/test_invariants.py)
+  I1-I3, I5-I7 unchanged. I4 split: price-only fundamentalists and momentum EKF: shares
+  >= 0 and cash >= 0 (unchanged); informed: the T-N5 rule.
+  I8 (no drift): until N6 the v1.3 default hash; in N6 re-record for the new default
+  market (DECISIONS.md entry). I8-legacy (new in N6): the legacy parameters of 6.1
+  reproduce the v1.3 default hash exactly.
+  I9 (new): budget respected (T-N13 rule) in the invariant market with budget on.
+  The invariant market after N6: the new default market, 09:30-10:30, seed 42, with
+  num_fund = 30 informed (to keep it fast); before N6 unchanged.
+10.5 All existing tests pass (pre-existing upstream failures excepted). The regression
+  set (realism_lab --campaign regression) is re-baselined in N6 on the new default
+  market (P0-C, P0-S2, IMP-1 on seeds 42, 7, 1), with the old baseline kept as
+  regression-legacy.
+
+
+==============================================================================
+PART 11. MILESTONES (one commit each on branch v1.4; docs in the same commit)
+==============================================================================
+  N0  spec copy; DECISIONS D-R3-1..6; doc skeleton updates; owner's sim_data.pkl answer.
+  N1  measurement updates (Part 3) + T-N8..T-N11; recompute the v1.3 C-DEF and C-V20
+      corrected half-lives from the stored v1.3 series (no new simulations) and add them
+      to RESULTS.md.
+  N2  budget (Part 5) + T-N12, T-N13, I9; Campaign b; interim note.
+  N3  informed mode (Part 4) + T-N1..T-N7; invariants pass; I8 unchanged.
+  N4  Campaign s1 (+ round 2 if needed); selection printout; interim RESULTS_s1.md.
+      STOP after N4 and report the selected design and the screening table to the
+      owner before running the step-down (the owner may ask questions; the selection
+      itself is mechanical and is not changed).
+  N5  Campaign step (240 runs) + Campaign final (140 runs); figures:
+      r3_scorecard.png (T1-T7 per step), stepdown_lines.png (key measures vs num_value),
+      jump_response_r3.png (S2 at each step vs v1.3), impact_curve_r3.png.
+  N6  switch defaults (Part 6): new default market, RunParams, payload cap, dashboard,
+      ENGINE_VERSION 1.4, I8 re-record + I8-legacy, regression re-baseline; npm build;
+      Realism tab screenshot (seed 42) in docs/v1.4/screenshots/.
+  N7  RESULTS.md and REPORT.md final; KNOWN_ISSUES, CHANGELOG, TESTING, README synced.
+
+
+==============================================================================
+PART 12. ACCEPTANCE AND REPORTS
+==============================================================================
+12.1 Acceptance of the IMPLEMENTATION (must all hold)
+  A1 every run of Part 7 completed or is listed with its error; >= 19 valid seeds per
+     20-seed config, >= 5 per screening config.
+  A2 zero_sum = 0 exactly in every run.
+  A3 I1-I9 and I8-legacy pass; all unit tests pass.
+  A4 the selection printout shows every design's numbers and the rule's steps.
+  A5 payload <= 9 MB for a full default day (report size); npm run build passes.
+12.2 Acceptance of R3 (the RESULT): Part 2.4. Report PASS/FAIL per target and limit
+  honestly; a FAIL is a finding, not a reason to tune.
+12.3 docs/v1.4/lab/RESULTS.md, in this order:
+  1. One paragraph: the final market in numbers (20-seed medians) and whether R3
+     succeeded (T1-T7, L1-L5 table).
+  2. Budget alone (C-BL vs C-DEF).
+  3. The design sweep: the 16 (+8) designs' table, the selection printout, and what each
+     dial does (main effects over the 16 designs: for each dial, the median change of
+     each T-measure from its low to its high level).
+  4. Step-down 97 -> 50 -> 20 -> 0: tables and lines.
+  5. Final market: v1.3 scorecard with grades, R3 scorecard, diagnostics (gap std,
+     corrected half-life with range, gap mean), per-class volume and P&L.
+  6. Jumps, news, vol burst, impact on the final market vs v1.3.
+  7. E1-E10 verdicts.
+  8. What remains for R4 (observations only; the owner decides).
+  9. Open questions.
+  Every number states config, seeds, engine_version and date.
+12.4 docs/v1.4/REPORT.md: files and functions changed, tests, run times (per run and per
+  campaign), deviations from this spec with reasons, open questions.
+
+
+==============================================================================
+APPENDIX A. FORMULA SHEET (informed fundamentalist)
+==============================================================================
+  predict      P <- P + q * sigma_f2_hat * dt
+  research     K_r = P/(P + sigma_r^2);  x_hat <- x_hat + K_r (y_r - x_hat);  P <- (1-K_r) P
+  market       R_noise = (delta mid)^2 exp(lambda_er (1 - ER));  R_m = rho R_noise
+               K_m = P/(P + R_m);  x_hat <- x_hat + K_m (mid - x_hat);  P <- (1-K_m) P
+  edge         z = (x_hat - mid) / sqrt(P + R_noise)
+  target       w* = clip(0.5 + a_max C tanh(z/z0), -0.5, 1.5)
+  prices       m = m0 + kappa_m sqrt(P);  h = m + h0
+               target BUY at floor(x_hat - m), SELL at ceil(x_hat + m)
+               quotes at floor(x_hat - h) / ceil(x_hat + h), size max(1, floor(theta_q W / x_hat))
+  budget       (n + B + q) p <= 1.5 W_p  (buy);  (n - S - q) p >= -0.5 W_p  (sell)
+  ABIDES gross |position after order (incl. open same-side)| x p <= 2 W_p
+  half-life    rho0(L) = sum g_t g_{t+L} / sum g_t^2 (no de-meaning); k = median(-ln rho0(L)/L)
+               h_read = ln2/k; h_corrected = inverse of the synthetic table median(h_read | H)
+
+APPENDIX B. DECISION LOG ENTRIES (docs/engine/DECISIONS.md)
+  2026-10-12 (v1.4, R3) D-R3-1: replace ValueAgents with informed fundamentalists (ours);
+      ValueAgent code untouched. Reason: we should not depend on stock agents we do not
+      control; R2 showed their book-anchored pricing causes most failures (0.3).
+      Alternative: patch ValueAgent pricing (rejected by the owner).
+  2026-10-13 D-R3-2: R3 focused; oracle and MM inventory unchanged until R4.
+  2026-10-13 D-R3-3: R3 graded on real-world-checkable measures; gap and half-life are
+      diagnostics (no real market has an oracle; real mispricing is measured indirectly
+      through autocorrelation, variance ratios and event studies).
+  2026-10-13 D-R3-4: corrected half-life (no de-meaning + synthetic correction table).
+      Reason: the v1.3 estimator reads true 45/90 min as about 25/29 min on one day.
+  2026-10-13 D-R3-5: ABIDES budget limits (gross 2x wealth; MMs exempt until R4),
+      measured alone first.
+  2026-10-13 D-R3-6: multi-day sessions after R6.

@@ -48,6 +48,29 @@ fundamentalist to take over (1) and, with enough agents and capital, (2). After 
 ValueAgents can be phased out. Until then they stay as scaffolding
 ([DECISIONS.md](DECISIONS.md), 2026-10-09).
 
+### v1.4 finding: the ValueAgent prices from the book, not from its estimate (spec v1.4 §0.3)
+
+On S2 seed 42, one minute after a +2% value jump, the ValueAgents know the value is $1020.90
+and 89% of their orders are buys, but they bid $1000.86. `ValueAgent.placeOrder` sets the
+limit price from the **book**: a buy goes at ask − U[0, 2·spread], and 10% of orders go at the
+ask. Its estimate decides only the side, so a $20 mispricing produces the same order as a
+1-cent one. These agents supply 87% of the volume, yet they never push the price toward
+value; the price moves only when one side of the book runs out. This one rule explains:
+- the smooth, positively autocorrelated price (ac1 +0.37, VR(5) 1.90);
+- the stall-then-gap pricing of jumps;
+- the negative volume-volatility correlation (−0.25);
+- the linear, transient impact.
+
+**κ mismatch.** The ValueAgent's own model uses κ = 1.67e-15/ns, ten times the oracle's
+1.67e-16. The agent therefore expects any deviation from r̄ to shrink by the close: 97.0% of
+it is kept at 11:00 and 97.6% at 12:00. This is why a jump settles at 97.6%.
+
+R3 (spec v1.4, D-R3-1) replaces these agents with informed fundamentalists. The ValueAgent
+code is not modified; the legacy market keeps them.
+
+### v1.4: gross budget limits (spec v1.4 Part 5)
+Documented in N2.
+
 ## AdaptiveMarketMakerAgent (`market_makers/adaptive_market_maker_agent.py`) — 2 by default
 
 - **Does:** at each wake, cancels its orders, asks for the spread and the recent traded volume,
