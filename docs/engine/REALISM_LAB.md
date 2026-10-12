@@ -242,9 +242,77 @@ Exit code 1 on (a) or any DRIFT. `--rebaseline` rewrites the stored summary and 
 
 ## v1.4 (R3) additions
 
-Spec v1.4 Parts 2, 3 and 7. Filled in milestone by milestone:
-- the corrected half-life and its table (N1);
-- the jump-window metrics (N1);
-- the R3 scorecard (N1);
-- campaigns b, s1, step and final (N2–N5).
-Lab outputs for v1.4 go to `runs/_lab_v14/` and `docs/v1.4/lab/`.
+Spec v1.4 Parts 2, 3 and 7. v1.4 lab outputs go to `runs/_lab_v14/` and `docs/v1.4/lab/`.
+
+### Corrected gap half-life (spec v1.4 §3.1, D-R3-4) — G10 grades this from v1.4
+
+The v1.3 estimator de-means the gap within one day. For slow mispricings, the day's own mean
+absorbs part of each swing, so slow swings read short. `api.realism.gap_half_life_corrected(gap)`:
+
+1. ρ0(L) = Σ g_t g_(t+L) / Σ g_t² **with no de-meaning**. The gap mean is reported separately
+   as `gap_mean`.
+2. k_L = −ln ρ0(L) / L for 0.05 < ρ0 < 0.98, at the lags LAB_GAP_LAGS (1–60 min).
+   k = median k_L, and h_read = ln 2 / k / 60 min.
+3. **Correction table** (`api/realism_halflife_table.json`, committed, built by
+   `build_halflife_table()`): 200 AR(1) gaps per true half-life H. Each gap is one 6.5 h day on
+   the 1 s grid (23,401 points), starts from the stationary distribution, and is drawn from
+   `default_rng(0)` with H ascending, path by path. The table records the median and the
+   p10/p90 of h_read. The medians are increasing (no isotonic fit was needed).
+4. h_corrected is the log-log linear interpolation of the inverse of median(h_read | H).
+   Below the first median it is h_read; above the last, ">240 min" (`above_table`, value
+   None). h_range is [min, max] of the table H whose p10..p90 interval contains h_read.
+
+| true H (min) | median h_read | p10 | p90 |
+|---|---|---|---|
+| 0.5 | 0.54 | 0.46 | 0.88 |
+| 1 | 1.07 | 0.87 | 1.42 |
+| 2 | 2.09 | 1.66 | 2.71 |
+| 3 | 3.01 | 2.43 | 3.94 |
+| 5 | 4.98 | 3.79 | 7.00 |
+| 7.5 | 7.47 | 5.51 | 9.95 |
+| 10 | 9.74 | 6.54 | 13.87 |
+| 15 | 13.69 | 8.46 | 21.02 |
+| 20 | 17.20 | 10.44 | 30.79 |
+| 30 | 24.28 | 14.10 | 41.96 |
+| 45 | 32.12 | 15.60 | 68.48 |
+| 60 | 40.77 | 21.63 | 85.09 |
+| 90 | 59.31 | 24.74 | 150.99 |
+| 120 | 63.12 | 27.47 | 157.61 |
+| 180 | 67.83 | 27.98 | 190.85 |
+| 240 | 92.52 | 36.13 | 212.20 |
+
+**How to read it.** Up to about 10 min the reading is nearly unbiased and narrow. From
+30 min up it is biased low and wide. Above 90 min the median barely moves
+(59 → 63 → 68 min for H = 90, 120, 180), so the inverse is steep there: a reading of 60 to
+70 min maps to anything from 90 to 180 min. One day cannot tell those half-lives apart. A
+corrected value above 90 min should be read with its h_range.
+
+Run metrics: `gap_half_life_corr_min` (graded by G10; band unchanged, 30–90 min),
+`gap_half_life_read_min`, `gap_half_life_range`, `gap_half_life_corr_above`, `gap_mean`,
+`gap_rho0`. The v1.3 key `gap_half_life_min` is still computed and is labelled
+"v1.3 estimator (biased for slow mispricing)". Across seeds, the lab reports both the median
+of h_read with the correction applied to it, and the median of the per-seed h_corrected.
+
+### Jump-window metrics (spec v1.4 §3.2, `jump_window_metrics`, in every jump_response)
+
+All are measured on the treated run in [t0, t0 + 30 min]:
+- `one_sided_share_jump`: the share of 1 s points with an empty side.
+- `spread_p95_jump_ticks` / `spread_max_jump_ticks`: over the two-sided points.
+- `price_path_steps`: the number of 1-min steps of the mid (sampled every 60 s) larger than
+  25% of |J|. This shows whether a jump was priced in one gap or steadily.
+
+### R3 scorecard (spec v1.4 Part 2, §3.3)
+
+`R3_TARGETS` and `R3_LIMITS` in `api/realism.py` are the single source. `r3_scorecard(...)`
+takes medians over seeds:
+- `{"C": no-trigger config, "S2": ..., "S2n": ...}`;
+- it returns every check with its value, threshold and PASS/FAIL/MISSING;
+- it adds the normalised miss of T1–T4 (scales 0.10, 0.45, 0.90, 0.30) for the §7.4 tie-break.
+
+T1 applies |.| to the median ac1, the same convention as G3. T7 reads the
+FundamentalistAgent group's pnl_vs_hold (total and per-agent median, $). L3 is measured as
+the share of the 13 half-hours with at least one trade (`active_halfhours_share` = 1).
+L4's run-level part is zero_sum in every run; the invariants are checked by the test suite.
+
+### Campaigns (spec v1.4 Part 7)
+Documented as they are added (N2: b; N4: s1; N5: step, final).

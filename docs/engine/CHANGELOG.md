@@ -10,6 +10,7 @@ Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt).
 | Milestone | Files | Change |
 |---|---|---|
 | N0 | `docs/specs/spec_v1.4.txt`, `docs/engine/DECISIONS.md`, `docs/engine/AGENTS_ABIDES.md`, doc skeletons, `docs/HANDOFF.md` | Spec v1.4 stored; D-R3-1..6; ValueAgent mechanism finding (§0.3) and κ mismatch documented; sim_data.pkl confirmed clean by the owner |
+| N1 | `api/realism.py`, `api/realism_halflife_table.json`, `api/tests/test_realism.py`, `scripts/realism_lab.py`, `scripts/halflife_v13_recompute.py`, `docs/v1.4/lab/RESULTS.md` | Corrected gap half-life (no de-meaning + synthetic correction table), G10 grades it; jump-window metrics; `R3_TARGETS`, `R3_LIMITS`, `r3_scorecard`; `active_halfhours_share` (L3); T-N8 … T-N11; v1.3 C-DEF/C-V20 half-lives recomputed from stored series |
 
 ## v1.3 — R2: the realism lab, measurement only (2026-10-12, branch `v1.3`)
 

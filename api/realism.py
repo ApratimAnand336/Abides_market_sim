@@ -10,15 +10,17 @@ seconds since the 09:30 open on a 1 s grid, returns as log returns. Reuses
 api.stats.acf and api.stats.gap_half_life without changing them.
 """
 
+import json
 import math
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 from scipy import stats as sps
 
-from .stats import GAP_LAGS_S, acf, gap_half_life
+from .stats import GAP_LAGS_S, GAP_RHO_RANGE, acf, gap_half_life
 
 # ── constants ─────────────────────────────────────────────────────────────
 
@@ -115,10 +117,10 @@ BANDS: List[Dict[str, Any]] = [
         "scope": "run", "source": SOURCE,
     },
     {
-        "id": "G10", "key": "gap_half_life_min", "label": "Mispricing half-life", "unit": "min",
+        "id": "G10", "key": "gap_half_life_corr_min", "label": "Mispricing half-life", "unit": "min",
         "pass": [[30.0, 90.0]], "warn": [[10.0, 30.0], [90.0, 180.0]],
         "text": "PASS 30–90 min · WARN 10–30 or 90–180 min · FAIL otherwise or none",
-        "note": "How long a mispricing takes to halve (spring model, lags 1–60 min). Real mispricings last much longer than minutes.",
+        "note": "How long a mispricing takes to halve (spring model, lags 1–60 min, corrected reading, spec v1.4 §3.1). Real mispricings last much longer than minutes.",
         "scope": "run", "source": SOURCE,
     },
     {
@@ -573,6 +575,15 @@ def run_metrics(s: Dict[str, Any]) -> Dict[str, Any]:
     out["gap_half_life_min"] = _f(lab["half_life_min"])
     out["gap_rho"] = lab["rho"]
     out["gap_half_life_min_dash"] = _f(dash["half_life_min"])
+    # spec v1.4 §3.1: corrected reading (G10); gap_half_life_min above is the
+    # "v1.3 estimator (biased for slow mispricing)", kept for continuity
+    corr = gap_half_life_corrected(gap)
+    out["gap_half_life_read_min"] = _f(corr["h_read"])
+    out["gap_half_life_corr_min"] = _f(corr["h_corrected"])
+    out["gap_half_life_corr_above"] = bool(corr["above_table"])
+    out["gap_half_life_range"] = corr["h_range"]
+    out["gap_mean"] = _f(corr["gap_mean"])
+    out["gap_rho0"] = corr["rho0"]
     out["corr_mid_value"] = float(np.corrcoef(mid, val)[0, 1]) if np.std(mid) > 0 and np.std(val) > 0 else None
     val_close = bar_closes(val, s["duration"])
     out["vol_ratio_price_value"] = _ratio(_std(r1), _std(returns_from_closes(val_close)))
@@ -582,7 +593,133 @@ def run_metrics(s: Dict[str, Any]) -> Dict[str, Any]:
     out["trend_share"] = trend_share(close)
 
     out["shares_executed"] = int(s.get("shares_executed", int(np.sum(s["vol_1m"]))))
+    # spec v1.4 L3: share of the 13 half-hour windows with at least one trade
+    v = np.asarray(s["vol_1m"], dtype=float)
+    win = [v[i:i + 30].sum() for i in range(0, len(v), 30)]
+    out["active_halfhours_share"] = float(np.mean([w > 0 for w in win])) if win else None
     return out
+
+
+# ── corrected gap half-life (spec v1.4 §3.1, D-R3-4) ──────────────────────
+
+HL_TABLE_H_MIN = (0.5, 1, 2, 3, 5, 7.5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240)
+HL_TABLE_PATHS = 200
+HL_TABLE_N = 23_401  # 1 s grid of a 6.5 h session
+HL_TABLE_PATH = Path(__file__).with_name("realism_halflife_table.json")
+_HL_TABLE: Optional[Dict[str, Any]] = None
+
+
+def gap_half_life_read(gap: np.ndarray, dt: float = 1.0, lags_s: Sequence[int] = LAB_GAP_LAGS) -> Dict[str, Any]:
+    """Steps 1-2 of §3.1: rho0(L) = sum g_t g_{t+L} / sum g_t^2 WITHOUT
+    de-meaning; k = median(-ln rho0(L) / L) over 0.05 < rho0 < 0.98;
+    h_read = ln 2 / k / 60 minutes (None if no lag qualifies)."""
+    g = np.asarray(gap, dtype=float)
+    denom = float(g @ g) if len(g) else 0.0
+    rho, ks = [], []
+    for L in lags_s:
+        n = int(round(L / dt))
+        if n <= 0 or n >= len(g) or denom == 0:
+            rho.append(0.0)
+            continue
+        r = float(g[:-n] @ g[n:]) / denom
+        rho.append(r)
+        if GAP_RHO_RANGE[0] < r < GAP_RHO_RANGE[1]:
+            ks.append(-math.log(r) / L)
+    k = float(np.median(ks)) if ks else None
+    return {
+        "h_read": (math.log(2.0) / k / 60.0) if k and k > 0 else None,
+        "gap_mean": float(np.mean(g)) if len(g) else None,
+        "rho0": rho,
+        "lags_s": [int(L) for L in lags_s],
+    }
+
+
+def _isotonic(y: Sequence[float]) -> List[float]:
+    """Pool-adjacent-violators fit of a non-decreasing sequence (equal weights)."""
+    blocks: List[List[float]] = []  # [sum, count]
+    for v in y:
+        blocks.append([float(v), 1.0])
+        while len(blocks) > 1 and blocks[-2][0] / blocks[-2][1] > blocks[-1][0] / blocks[-1][1]:
+            s, c = blocks.pop()
+            blocks[-1][0] += s
+            blocks[-1][1] += c
+    out: List[float] = []
+    for s, c in blocks:
+        out.extend([s / c] * int(c))
+    return out
+
+
+def build_halflife_table(paths: int = HL_TABLE_PATHS, n: int = HL_TABLE_N) -> Dict[str, Any]:
+    """Step 3 of §3.1: for each true half-life H (ascending), `paths` AR(1)
+    gaps on the 1 s grid from the stationary distribution, drawn path by path
+    from one numpy default_rng(seed=0); median and p10/p90 of h_read."""
+    from scipy.signal import lfilter
+
+    rng = np.random.default_rng(seed=0)
+    rows = []
+    for H in HL_TABLE_H_MIN:
+        phi = math.exp(-math.log(2.0) / (H * 60.0))
+        reads = []
+        for _ in range(paths):
+            e = rng.standard_normal(n)
+            e[0] /= math.sqrt(1.0 - phi * phi)  # stationary start, unit innovations
+            g = lfilter([1.0], [1.0, -phi], e)
+            h = gap_half_life_read(g)["h_read"]
+            reads.append(np.nan if h is None else h)
+        x = np.array(reads)
+        rows.append({
+            "H": float(H), "median": float(np.nanmedian(x)), "p10": float(np.nanpercentile(x, 10)),
+            "p90": float(np.nanpercentile(x, 90)), "n_none": int(np.isnan(x).sum()),
+        })
+    med = [r["median"] for r in rows]
+    monotone = all(b > a for a, b in zip(med, med[1:]))
+    if not monotone:  # §3.1 step 3: isotonic fit, recorded in DECISIONS.md
+        for r, v in zip(rows, _isotonic(med)):
+            r["median_raw"], r["median"] = r["median"], v
+    return {"spec": "v1.4 §3.1", "rng": "numpy default_rng(seed=0)", "paths": paths, "n": n,
+            "lags_s": list(LAB_GAP_LAGS), "monotone_raw": monotone, "rows": rows}
+
+
+def halflife_table() -> Dict[str, Any]:
+    """The committed table (api/realism_halflife_table.json), cached."""
+    global _HL_TABLE
+    if _HL_TABLE is None:
+        _HL_TABLE = json.loads(HL_TABLE_PATH.read_text(encoding="utf-8"))
+    return _HL_TABLE
+
+
+def correct_half_life(h_read: Optional[float]) -> Dict[str, Any]:
+    """Step 4 of §3.1. h_corrected: log-log linear interpolation of the inverse
+    of median(h_read | H); below the first reading h_corrected = h_read; above
+    the last None with above_table = True (">240 min"). h_range: [min, max] of
+    the H whose p10..p90 reading interval contains h_read (None if none)."""
+    if _f(h_read) is None:
+        return {"h_corrected": None, "above_table": False, "h_range": None, "text": "none"}
+    rows = halflife_table()["rows"]
+    med = np.array([r["median"] for r in rows])
+    Hs = np.array([r["H"] for r in rows])
+    above = False
+    if h_read < med[0]:
+        hc = float(h_read)
+    elif h_read > med[-1]:
+        hc, above = None, True
+    else:
+        hc = float(np.exp(np.interp(math.log(h_read), np.log(med), np.log(Hs))))
+    inside = [r["H"] for r in rows if r["p10"] <= h_read <= r["p90"]]
+    return {
+        "h_corrected": hc, "above_table": above,
+        "h_range": [min(inside), max(inside)] if inside else None,
+        "text": f">{Hs[-1]:g} min" if above else f"{hc:.1f} min",
+    }
+
+
+def gap_half_life_corrected(gap: np.ndarray, dt: float = 1.0, lags_s: Sequence[int] = LAB_GAP_LAGS) -> Dict[str, Any]:
+    """§3.1: {"h_read", "h_corrected", "h_range", "gap_mean", "rho0", "lags_s"}
+    (+ "above_table" when h_read is above the table: report ">240 min")."""
+    r = gap_half_life_read(gap, dt, lags_s)
+    c = correct_half_life(r["h_read"])
+    return {"h_read": r["h_read"], "h_corrected": c["h_corrected"], "h_range": c["h_range"],
+            "above_table": c["above_table"], "gap_mean": r["gap_mean"], "rho0": r["rho0"], "lags_s": r["lags_s"]}
 
 
 # ── 3.9 accounting and 3.10 heavy-trader watch ───────────────────────────
@@ -733,7 +870,7 @@ def scorecard(per_seed: Sequence[Dict[str, Any]], min_seeds: int = MIN_VALID_SEE
         agg = {k: aggregate([m.get(k) for m in per_seed], min_seeds) for k in keys}
         med = {k: agg[k]["median"] for k in keys}
         if gid == "G10":  # None is a FAIL for a seed, but not a value for the median
-            med = {"gap_half_life_min": med["gap_half_life_min"]}
+            med = {band["key"]: med[band["key"]]}
         seed_grades = [grade_value(band, m) for m in per_seed]
         valid = [g for g in seed_grades if g is not None]
         incomplete = any(a["status"] == "INCOMPLETE" for a in agg.values())
@@ -807,7 +944,27 @@ def jump_response(T: Dict[str, Any], B: Dict[str, Any], t0: int, jump_dollars: f
     out["net_flow"] = net_flow(T, B, t0, t0 + 3600)
     out["vol_uplift"] = _ratio(sigma_window_bps(T["mid_1s"], t0, t0 + 1800), sigma_window_bps(B["mid_1s"], t0, t0 + 1800))
     out["volume_uplift"] = _ratio(window_volume(T, t0, t0 + 1800), window_volume(B, t0, t0 + 1800))
+    out.update(jump_window_metrics(T, t0, J))
     return out
+
+
+def jump_window_metrics(T: Dict[str, Any], t0: int, jump_dollars: float, window_s: int = 1800) -> Dict[str, Any]:
+    """spec v1.4 §3.2, treated run only, window [t0, t0 + 30 min]:
+    one_sided_share_jump (share of 1 s points with an empty side),
+    spread_p95_jump_ticks / spread_max_jump_ticks (two-sided points),
+    price_path_steps (1-min bars in the window with |return| > 25% of J,
+    the return being the change of the mid sampled every 60 s, in dollars)."""
+    spr = _win(T["spr_1s"], t0, t0 + window_s) if "spr_1s" in T else np.array([])
+    ok = np.isfinite(spr)
+    two = spr[ok]
+    pts = _win(T["mid_1s"], t0, t0 + window_s)[::60]
+    steps = int(np.sum(np.abs(np.diff(pts)) > 0.25 * abs(float(jump_dollars)))) if len(pts) > 1 else 0
+    return {
+        "one_sided_share_jump": float(1.0 - ok.mean()) if len(spr) else None,
+        "spread_p95_jump_ticks": float(np.percentile(two, 95)) if len(two) else None,
+        "spread_max_jump_ticks": float(np.max(two)) if len(two) else None,
+        "price_path_steps": steps,
+    }
 
 
 def window_volume(S: Dict[str, Any], a: int, b: int) -> float:
@@ -965,3 +1122,89 @@ def resolved(median_abs_I: Optional[float], floor: Optional[float]) -> Optional[
     if median_abs_I is None or floor is None:
         return None
     return bool(abs(median_abs_I) >= 2.0 * floor)
+
+
+# ── R3 scorecard (spec v1.4 Part 2, §3.3; pre-registered) ────────────────
+# Inputs are medians over seeds: "C" = the no-trigger config, "S2"/"S2n" =
+# the jump configs (jump_response of treated vs baseline). Operators are
+# exactly as Part 2 writes them; "abs" applies |.| to the median (as G3).
+# One check per (scope, key); a target passes when all its checks pass.
+
+R3_TARGETS: List[Dict[str, Any]] = [
+    {"id": "T1", "label": "|ac1| of 1-min returns", "checks": [("C", "ac1", "abs<=", 0.10)]},
+    {"id": "T2", "label": "VR(5)", "checks": [("C", "vr5", ">=", 0.80), ("C", "vr5", "<=", 1.25)]},
+    {"id": "T3", "label": "price vol / value vol", "checks": [("C", "vol_ratio_price_value", ">=", 0.90)]},
+    {"id": "T4", "label": "volume-volatility Spearman", "checks": [("C", "vv_corr", ">", 0.0)]},
+    {"id": "T5", "label": "volume uplift after a ±2% jump",
+     "checks": [("S2", "volume_uplift", ">", 1.0), ("S2n", "volume_uplift", ">", 1.0)]},
+    {"id": "T6", "label": "no emptied book during a jump",
+     "checks": [("S2", "one_sided_share_jump", "<=", 0.01), ("S2", "spread_p95_jump_ticks", "<=", 10.0),
+                ("S2n", "one_sided_share_jump", "<=", 0.01), ("S2n", "spread_p95_jump_ticks", "<=", 10.0)]},
+    {"id": "T7", "label": "informed fundamentalists earn their information ($)",
+     "checks": [("C", "fund_pnl_total", ">", 0.0), ("C", "fund_pnl_median", ">", 0.0)]},
+]
+R3_LIMITS: List[Dict[str, Any]] = [
+    {"id": "L1", "label": "spread (ticks)",
+     "checks": [("C", "spread_med_ticks", "<=", 2.0), ("C", "spread_p95_ticks", "<=", 10.0)]},
+    {"id": "L2", "label": "shares executed per day", "checks": [("C", "shares_executed", ">=", 295_500)]},
+    {"id": "L3", "label": "trades all day with num_value = 0 (share of half-hours with trades)",
+     "checks": [("C", "active_halfhours_share", ">=", 1.0)]},
+    {"id": "L4", "label": "zero_sum = 0 in every run (1 = yes)", "checks": [("C", "zero_sum_all_zero", ">=", 1.0)]},
+    {"id": "L5", "label": "median wall time of a full day (s)", "checks": [("C", "wall_time_s", "<=", 90.0)]},
+]
+R3_MISS_SCALE = {"T1": 0.10, "T2": 0.45, "T3": 0.90, "T4": 0.30}  # §7.4 tie-break
+
+
+def _check(value: Optional[float], op: str, thr: float) -> Optional[bool]:
+    x = _f(value)
+    if x is None:
+        return None
+    if op == "abs<=":
+        return abs(x) <= thr
+    return {">": x > thr, ">=": x >= thr, "<=": x <= thr, "<": x < thr}[op]
+
+
+def _miss(value: Optional[float], op: str, thr: float) -> Optional[float]:
+    """Distance outside the target (0 when inside)."""
+    x = _f(value)
+    if x is None:
+        return None
+    if op == "abs<=":
+        return max(0.0, abs(x) - thr)
+    if op in (">", ">="):
+        return max(0.0, thr - x)
+    return max(0.0, x - thr)
+
+
+def _r3_item(item: Dict[str, Any], summaries: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    checks, oks, misses = [], [], []
+    for scope, key, op, thr in item["checks"]:
+        v = summaries.get(scope, {}).get(key)
+        ok = _check(v, op, thr)
+        checks.append({"scope": scope, "key": key, "op": op, "threshold": thr, "value": _f(v),
+                       "result": None if ok is None else ("PASS" if ok else "FAIL")})
+        oks.append(ok)
+        m = _miss(v, op, thr)
+        if m is not None:
+            misses.append(m)
+    if any(o is None for o in oks):
+        status = "MISSING"
+    else:
+        status = "PASS" if all(oks) else "FAIL"
+    out = {"id": item["id"], "label": item["label"], "checks": checks, "status": status}
+    if item["id"] in R3_MISS_SCALE:
+        out["norm_miss"] = (sum(misses) / R3_MISS_SCALE[item["id"]]) if len(misses) == len(item["checks"]) else None
+    return out
+
+
+def r3_scorecard(per_config_summaries: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """T1-T7 and L1-L5 of spec v1.4 Part 2 with value, threshold, PASS/FAIL.
+    per_config_summaries: {"C": {...}, "S2": {...}, "S2n": {...}} of medians
+    (a scope that is absent makes the items that need it MISSING)."""
+    targets = {t["id"]: _r3_item(t, per_config_summaries) for t in R3_TARGETS}
+    limits = {l["id"]: _r3_item(l, per_config_summaries) for l in R3_LIMITS}
+    return {
+        "targets": targets, "limits": limits,
+        "n_targets_passed": sum(t["status"] == "PASS" for t in targets.values()),
+        "all_pass": all(x["status"] == "PASS" for x in list(targets.values()) + list(limits.values())),
+    }

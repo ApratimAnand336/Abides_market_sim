@@ -253,3 +253,16 @@ Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt) (Part 1, Appendix B).
 
 ### 2026-10-12 (N0) sim_data.pkl: clean
 - **Decision:** the owner confirmed that the tracked `sim_data.pkl` is restored (`git status` shows it unmodified). v1.4 runs therefore carry no "+dirty" engine_version label. The spec's owner action before N0 is done.
+
+### 2026-10-12 (N1) T-N9 coverage: the spec's "≥ 80%" is not met by the §3.1 h_range — reported, not changed
+- **Decision:** h_range is implemented exactly as §3.1 defines it: [min, max] of the table H whose p10..p90 interval contains h_read. T-N9's coverage assertion is a strict xfail with the measured value. Reproducibility, monotonicity and the bracketing property of h_range are tested normally.
+- **Evidence:** on the T-N8 paths (default_rng(1), 40 per H), h_range contains H for 59% of paths (H 1.5: 0/40, 10: 29/40, 45: 36/40, 90: 29/40).
+- **Reason:** H = 1.5 is not a table point. Its readings (1.4–1.7 min) fall in the gap between the p10–p90 intervals of H = 1 (0.87–1.42) and H = 2 (1.66–2.71). At table points, coverage is about 80% by construction, so "at least 80%" is a coin flip. The spec is inconsistent here; how to fix it (for example a finer H grid or interpolated p10/p90 bands) is the owner's call. G10 and every graded number use h_corrected, not h_range.
+
+### 2026-10-12 (N1) G10 switched to the corrected half-life; encodings
+- **Decision:** G10's key becomes `gap_half_life_corr_min` (band unchanged), as §3.1 requires. T-R11's G10 boundary cases now name that key.
+- A reading above the table's last median is stored as None with `gap_half_life_corr_above = true` and reported as ">240 min". G10 grades it FAIL (above 180 min it would be a FAIL either way). For the median across seeds, the lab uses the §3.1 "correction of the median h_read", which has no such gap.
+- T1 uses |median ac1| (G3's convention). L3 is graded as "every half-hour has a trade" (`active_halfhours_share` = 1).
+
+### 2026-10-12 (N1) Half-life table: no isotonic fit needed; the slow end is flat
+- The 16 medians are strictly increasing (`monotone_raw: true`). Above H = 90 min they are nearly flat (59.3, 63.1, 67.8, 92.5 min for 90, 120, 180, 240), so the correction is poorly determined there. This is reported in REALISM_LAB.md; nothing is tuned.

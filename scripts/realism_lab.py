@@ -50,9 +50,11 @@ REPORTED = [
     "trend_share", "sigma_day_implied", "spread_max_ticks", "spread_mean_ticks",
     "one_sided_share", "gap_mean_abs", "gap_half_life_min_dash", "day_return_pct",
     "shares_executed", "n_execs",
+    # spec v1.4 §3.1 (gap diagnostics) and L3
+    "gap_half_life_read_min", "gap_half_life_min", "gap_mean", "active_halfhours_share",
 ]
 GRADED_KEYS = ["sigma_1m_bps", "ac1", "vr5", "cs", "ps", "kurt", "vv_corr",
-               "spread_med_ticks", "spread_p95_ticks", "gap_std", "gap_half_life_min", "regime_contrast"]
+               "spread_med_ticks", "spread_p95_ticks", "gap_std", "gap_half_life_corr_min", "regime_contrast"]
 FUND_PARAMS = ["er_window", "delta", "lambda_er", "sigma_n", "gamma", "k", "mu", "q",
                "a_max", "z0", "s_max", "b_f", "k_news"]
 
