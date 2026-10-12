@@ -257,3 +257,60 @@ def test_l7_probe_uses_no_global_rng(probe_market, plain_market):
     b = [e for e in _execs(plain_market[1]) if e[0] < T_PROBE]
     assert a and a == b
 
+# ── T-L8 ───────────────────────────────────────────────────────────────────
+PAUSE = [("10:00:00", "10:15:00")]
+P0, P1 = DATE + str_to_ns("10:00:00"), DATE + str_to_ns("10:15:00")
+
+
+def test_l8_market_maker_pause(tmp_path, plain_market):
+    config, es, _ = _run(tmp_path, mm_pause_windows=PAUSE)
+    mms = [a for a in es["agents"] if type(a).__name__ == "AdaptiveMarketMakerAgent"]
+    assert len(mms) == 2
+    for mm in mms:
+        assert [typ for _, typ, _ in mm.log].count("MM_PAUSED") == 1
+        assert [typ for _, typ, _ in mm.log].count("MM_RESUMED") == 1
+    ids = {mm.id for mm in mms}
+    hist = es["agents"][0].order_books["ABM"].history
+    # no MM order placed inside the window (resting or marketable)
+    assert not [h for h in hist if h["type"] == "LIMIT" and h["agent_id"] in ids and P0 <= h["time"] < P1]
+    assert not [h for h in hist if h["type"] == "EXEC" and h["oppos_agent_id"] in ids and P0 <= h["time"] < P1]
+    # no MM order rests in the book once the 10:00 cancels have arrived (1 s)
+    alive = {}
+    for h in hist:
+        t = h["time"]
+        if h["type"] == "LIMIT" and h["agent_id"] in ids:
+            alive[h["order_id"]] = h["quantity"]
+        elif h["type"] == "EXEC" and h["order_id"] in alive:
+            alive[h["order_id"]] -= h["quantity"]
+            if alive[h["order_id"]] <= 0:
+                del alive[h["order_id"]]
+        elif h["type"] == "CANCEL" and h["order_id"] in alive:
+            del alive[h["order_id"]]
+        if P0 + 1_000_000_000 <= t < P1:
+            assert not alive, (t, alive)
+    # identical market until the pause
+    assert [e for e in _execs(es) if e[0] < P0] == [e for e in _execs(plain_market[1]) if e[0] < P0]
+
+
+# ── T-L9 ───────────────────────────────────────────────────────────────────
+def test_l9_momentum_capital_multiplier():
+    from abides_markets.configs.rmsc04_ekf import build_config
+
+    base = build_config(**_lab_kwargs())
+    x3 = build_config(**_lab_kwargs(mom_capital_mult=3.0))
+    mom = x3["_mom_ekf_agent_ids"]
+    assert mom
+    for i in mom:
+        a, b = x3["agents"][i], base["agents"][i]
+        assert a.starting_cash == 3 * b.starting_cash == 30_000_000
+        assert a.holdings["ABM"] == (0.5 * a.starting_cash) // 100_000 == 150
+        assert a.holdings["CASH"] + a.holdings["ABM"] * 100_000 == a.starting_cash
+    # every other agent (and every RNG) is unchanged
+    others = [f for f in _agent_fingerprint(base) if f[1] not in mom]
+    assert others == [f for f in _agent_fingerprint(x3) if f[1] not in mom]
+
+
+# ── explicit defaults of every v1.3 switch keep the I8 hash ───────────────
+def test_l8_l9_explicit_defaults_hold_i8(tmp_path):
+    extra = {"oracle_events": None, "probe": None, "mm_pause_windows": None, "mom_capital_mult": 1.0}
+    assert fingerprint(tmp_path, extra) == I8_EXPECTED

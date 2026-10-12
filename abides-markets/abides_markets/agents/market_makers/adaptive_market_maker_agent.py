@@ -69,6 +69,7 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         min_imbalance=0.9,
         cold_start_price: Optional[int] = None,
         max_spread: Optional[float] = None,
+        pause_windows: Optional[List[Tuple[int, int]]] = None,
     ) -> None:
 
         super().__init__(id, name, type, random_state, starting_cash, log_orders)
@@ -130,6 +131,16 @@ class AdaptiveMarketMakerAgent(TradingAgent):
         # (1.6c -> $46 in 10 minutes with no value agents). None = no cap.
         self.max_spread: Optional[float] = max_spread
         self.spread_cap_hits: int = 0
+
+        # FinVerse spec v1.3 §6.3 (realism lab scenario S6): absolute ns
+        # windows [start, end) in which the market maker pulls its orders and
+        # does not quote. None (the default) changes no code path.
+        self.pause_windows: Optional[List[Tuple[int, int]]] = (
+            sorted((int(s), int(e)) for s, e in pause_windows) if pause_windows else None
+        )
+        self._pause_extra_wakes: set = set()
+        self._paused_logged: set = set()
+        self._resumed_logged: set = set()
 
         ## Internal variables
 
@@ -204,6 +215,34 @@ class AdaptiveMarketMakerAgent(TradingAgent):
 
     def kernel_starting(self, start_time: NanosecondTime) -> None:
         super().kernel_starting(start_time)
+        if self.pause_windows:
+            # one extra wake at each window start pulls the orders on time
+            for s, _ in self.pause_windows:
+                self._pause_extra_wakes.add(s)
+                self.set_wakeup(s)
+
+    def _pause_index(self, t: NanosecondTime) -> Optional[int]:
+        """Index of the pause window containing t, or None."""
+        if self.pause_windows:
+            for i, (s, e) in enumerate(self.pause_windows):
+                if s <= t < e:
+                    return i
+        return None
+
+    def _paused_wakeup(self, current_time: NanosecondTime, i: int) -> None:
+        """A wake inside pause window i: pull every order, do not ask for the
+        spread. The extra wake at the window start does not reschedule (the
+        regular wake chain continues); a regular wake schedules its next wake
+        as usual."""
+        self.cancel_all_orders()
+        if i not in self._paused_logged:
+            self._paused_logged.add(i)
+            s, e = self.pause_windows[i]
+            self.logEvent("MM_PAUSED", {"window": i, "start": s, "end": e})
+        if current_time in self._pause_extra_wakes:
+            self._pause_extra_wakes.discard(current_time)
+        else:
+            self.set_wakeup(current_time + self.get_wake_frequency())
 
     def kernel_stopping(self) -> None:
         super().kernel_stopping()
@@ -212,6 +251,22 @@ class AdaptiveMarketMakerAgent(TradingAgent):
 
     def wakeup(self, current_time: NanosecondTime):
         """Agent wakeup is determined by self.wake_up_freq."""
+
+        if self.pause_windows:
+            i = self._pause_index(current_time)
+            if i is not None:
+                super().wakeup(current_time)
+                self._paused_wakeup(current_time, i)
+                return
+            if current_time in self._pause_extra_wakes:
+                # an extra window-start wake delivered outside its window
+                # (cannot happen with [start, end) windows; kept for safety)
+                self._pause_extra_wakes.discard(current_time)
+                return
+            for j, (s, e) in enumerate(self.pause_windows):
+                if e <= current_time and j in self._paused_logged and j not in self._resumed_logged:
+                    self._resumed_logged.add(j)
+                    self.logEvent("MM_RESUMED", {"window": j, "start": s, "end": e})
 
         can_trade = super().wakeup(current_time)
 
@@ -273,7 +328,9 @@ class AdaptiveMarketMakerAgent(TradingAgent):
             self.state["AWAITING_TRANSACTED_VOLUME"] = False
 
         if isinstance(message, BookImbalanceDataMsg):
-            if message.stage == MarketDataEventMsg.Stage.START:
+            if message.stage == MarketDataEventMsg.Stage.START and not (
+                self.pause_windows and self._pause_index(current_time) is not None
+            ):
                 try:
                     self.place_orders(mid)
                     self.last_time_book_order = current_time
@@ -305,7 +362,11 @@ class AdaptiveMarketMakerAgent(TradingAgent):
                 and self.state["AWAITING_TRANSACTED_VOLUME"] is False
             ):
                 mid = self._mid_or_cold_start(mid)
-                if mid is not None:
+                if self.pause_windows and self._pause_index(current_time) is not None:
+                    # a spread answer that arrives inside a pause window (asked
+                    # for before it began): pull, do not quote, keep the chain
+                    self.cancel_all_orders()
+                elif mid is not None:
                     self.place_orders(mid)
                 self.state = self.initialise_state()
                 # always reschedule (spec v1.2 Part 4): upstream ABIDES only did

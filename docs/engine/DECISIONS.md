@@ -178,6 +178,11 @@ Appendix B. Implementation decisions follow under "Decisions made while implemen
 
 (Added by milestone; each with its evidence.)
 
+### 2026-10-12 (L5) — Four c4 runs re-run after the laptop suspended
+- **Decision:** S7a seeds 12–15 were re-run; their first attempts are not used.
+- **Reason:** the c4 log jumps from 3.5 to 334 minutes elapsed between two consecutive completions while every other run took 21–32 s: the machine was suspended with those four runs in flight, and on wake the 15-minute watchdog killed them. Re-run normally (28–31 s each). Nothing else in the campaign was affected (a run's result does not depend on wall-clock time).
+- **Evidence:** `runs/_lab/c4.log`.
+
 ### 2026-10-12 (L4) — C-NULL baselines are not needed
 - **Decision:** the impact runs use C-DEF on the same seed as their baseline (spec §5.4). C-NULL (probe with quantity 0) was not run.
 - **Reason:** T-L6 passes: the 1-hour I8 market with a null probe gives the I8 EXEC and holdings hashes exactly. The latency model is deterministic (no per-message random draws), the probe's coordinate is drawn after every existing agent's, its RandomState is a constant, and the exchange has zero computation delay, so the probe's start-up messages change nothing for the other agents. T-L7 adds that a 600-share probe leaves every other agent's parameters and RNG state, and every execution before its start, unchanged.

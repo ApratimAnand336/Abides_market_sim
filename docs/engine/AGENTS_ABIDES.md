@@ -90,6 +90,27 @@ and a maximum of 53¢ (v1.1 report, seed 42, run B), so the cap does not bind th
 **No quotes at or below zero.** Buy levels below 1 cent are dropped from the ladder (a safety guard
 for crashing markets).
 
+### v1.3: pause windows (realism lab scenario S6; default inert)
+
+`AdaptiveMarketMakerAgent(pause_windows=[(start_ns, end_ns), ...])`, set through
+`rmsc04_ekf.build_config(mm_pause_windows=[("13:00:00", "13:30:00")])` (clock times) and passed to
+both market makers. Spec v1.3 §6.3. **Default `None`: no code path changes** (invariant I8).
+
+When given:
+
+- `kernel_starting` schedules one extra wake at each window start;
+- at any wake inside a window [start, end) the agent cancels all its orders, logs `MM_PAUSED`
+  (once per window) and does not ask for the spread. The extra window-start wake does not
+  reschedule (the regular Poisson wake chain continues); a regular wake schedules its next wake as
+  usual, so the chain survives the pause;
+- a spread answer that arrives inside a window (asked for just before it began) and a book-imbalance
+  event inside a window place no orders;
+- at the first wake at or after the window end it quotes normally again and logs `MM_RESUMED`.
+
+Tested by T-L8 (`tests/test_scenarios.py`): in a 1-hour market paused 10:00–10:15, no market-maker
+order is placed in the window, none rests in the book once the cancels have arrived (1 s), each
+MM logs one `MM_PAUSED` and one `MM_RESUMED`, and every execution before 10:00 equals the baseline's.
+
 ## MomentumAgent, "ABIDES MA" (`examples/momentum_agent.py`) — 12 minus our momentum count
 
 - **Does:** after 50 observations of the mid, compares the 20- and 50-observation moving averages

@@ -120,6 +120,13 @@ def build_config(
     #            (offset from the open), "duration_s": 300,
     #            "child_interval_s": 10}. None -> no probe agent.
     probe=None,
+    #    mm_pause_windows: [("HH:MM:SS", "HH:MM:SS"), ...] CLOCK times
+    #            [start, end) in which both market makers pull their orders
+    #            and do not quote. None -> no pause.
+    mm_pause_windows=None,
+    #    mom_capital_mult: our MomentumEKFAgents start with
+    #            starting_cash * mom_capital_mult (endowment rule unchanged).
+    mom_capital_mult=1.0,
 ):
     np.random.seed(seed)
 
@@ -316,6 +323,11 @@ def build_config(
                 cold_start_price=r_bar,
                 # v1.2: stop the self-referential spread runaway (see agent)
                 max_spread=mm_max_spread,
+                # spec v1.3 §6.3 (lab scenario S6); None = no pause
+                pause_windows=(
+                    [(DATE + str_to_ns(s), DATE + str_to_ns(e)) for s, e in mm_pause_windows]
+                    if mm_pause_windows else None
+                ),
                 log_orders=log_orders,
                 random_state=np.random.RandomState(
                     seed=np.random.randint(low=0, high=2**31, dtype="uint32")
@@ -372,7 +384,8 @@ def build_config(
                 name="EKF_Mom_{}".format(j),
                 type="EKF_Momentum",
                 symbol=ticker,
-                starting_cash=starting_cash,
+                # spec v1.3 §6.4 (lab scenarios S7a-c); 1.0 = unchanged
+                starting_cash=int(round(starting_cash * mom_capital_mult)),
                 log_orders=True,  # Always log our agents
                 initial_exposure=mom_ekf_initial_exposure,
                 reference_price=r_bar,
