@@ -415,3 +415,11 @@ def test_n11_r3_definitions_single_source():
     assert t["T1"]["norm_miss"] == pytest.approx(2.0) and t["T2"]["norm_miss"] == pytest.approx(0.65 / 0.45)
     assert t["T3"]["norm_miss"] == pytest.approx(0.4 / 0.9) and t["T4"]["norm_miss"] == pytest.approx(1.0)
     assert t["T5"]["status"] == "MISSING"
+
+
+def test_n11_r3_screening_uses_s2_only():
+    s = _r3_ok()
+    del s["S2n"]
+    assert R.r3_scorecard(s)["targets"]["T5"]["status"] == "MISSING"
+    sc = R.r3_scorecard(s, screening=True)
+    assert sc["all_pass"] and all(c["scope"] != "S2n" for t in sc["targets"].values() for c in t["checks"])

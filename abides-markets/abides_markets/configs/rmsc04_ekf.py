@@ -40,6 +40,7 @@ from abides_markets.configs.param_ranges import (
 from abides_markets.models import OrderSizeModel
 from abides_markets.oracles import PregeneratedOracle
 from abides_markets.utils import generate_latency_model
+from abides_markets.utils.budget import GrossLimit
 
 
 def _oracle_events(events, mkt_open, r_bar):
@@ -127,6 +128,10 @@ def build_config(
     #    mom_capital_mult: our MomentumEKFAgents start with
     #            starting_cash * mom_capital_mult (endowment rule unchanged).
     mom_capital_mult=1.0,
+    # 9) spec v1.4 Part 5 (K10): gross budget limit for the stock ABIDES
+    #    agents (Noise, Value, ABIDES Momentum; market makers exempt in R3).
+    #    None -> no limit (I8). {"L": 2.0} -> GrossLimit(2.0). No RNG draw.
+    abides_budget=None,
 ):
     np.random.seed(seed)
 
@@ -481,6 +486,12 @@ def build_config(
         )
         agent_count += 1
         agent_types.extend(["ImpactProbeAgent"])
+
+    # ── spec v1.4 Part 5: budget limits (set after construction, no RNG) ──
+    if abides_budget is not None:
+        for a in agents:
+            if type(a) in (NoiseAgent, ValueAgent, MomentumAgent):
+                a.budget = GrossLimit(abides_budget.get("L", 2.0))
 
     # ── Kernel configuration ─────────────────────────────────────────────
     random_state_kernel = np.random.RandomState(

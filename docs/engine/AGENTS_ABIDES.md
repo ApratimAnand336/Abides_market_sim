@@ -68,8 +68,32 @@ it is kept at 11:00 and 97.6% at 12:00. This is why a jump settles at 97.6%.
 R3 (spec v1.4, D-R3-1) replaces these agents with informed fundamentalists. The ValueAgent
 code is not modified; the legacy market keeps them.
 
-### v1.4: gross budget limits (spec v1.4 Part 5)
-Documented in N2.
+### v1.4: gross budget limits (spec v1.4 Part 5, K10; default off until N6)
+
+`abides_markets/utils/budget.py: GrossLimit(L=2.0)`. `TradingAgent.budget` defaults to None,
+which changes nothing (I8). `build_config(abides_budget={"L": 2.0})` sets the limit, after
+construction and with no RNG draw, on every **NoiseAgent, ValueAgent and ABIDES
+MomentumAgent**. **Market makers are exempt in R3**; their inventory management is R4. Our
+agents never use it, because they have their own rules.
+
+Rule (worst case, the same as the informed fundamentalist's §4.5 with ±L). Let n = shares
+held, O = the quantity of the agent's own open orders on the same side, p = the order's limit
+price, and W_p = cash + n·p:
+- a BUY of q is allowed only if (n + O + q)·p ≤ L·W_p;
+- a SELL of q is allowed only if (n − O − q)·p ≥ −L·W_p;
+- if W_p ≤ 0, only orders that reduce |n| are allowed, and never past zero.
+
+A larger order is clipped to the largest allowed integer. At 0 the order is not sent, and
+`BUDGET_BLOCK {side, requested, allowed, price}` is logged. The counters `budget_clipped` and
+`budget_blocked` are kept on the agent. A market order is checked at the known opposite best
+(or, failing that, the last trade). "Open orders" means `self.orders`, which still holds orders
+whose cancellation is in flight; a ValueAgent cancels and re-orders at each wake, so the rule
+counts its previous order as open (it could still fill). This is conservative by design.
+
+Expected effect: a noise order above floor(2 · $100,000 / $1000) = 200 shares is clipped.
+ValueAgents can no longer accumulate unlimited positions: on one hour of seed 42 there were
+953 clipped and 632 blocked orders. Campaign b (§7.2) measures the effect alone:
+[`docs/v1.4/lab/CAMPAIGN_b.md`](../v1.4/lab/CAMPAIGN_b.md).
 
 ## AdaptiveMarketMakerAgent (`market_makers/adaptive_market_maker_agent.py`) — 2 by default
 

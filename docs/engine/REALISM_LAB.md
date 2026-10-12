@@ -315,4 +315,34 @@ the share of the 13 half-hours with at least one trade (`active_halfhours_share`
 L4's run-level part is zero_sum in every run; the invariants are checked by the test suite.
 
 ### Campaigns (spec v1.4 Part 7)
-Documented as they are added (N2: b; N4: s1; N5: step, final).
+
+The v1.3 runner is used unchanged (resumable, one process per run, 15-minute timeout).
+`--campaign b | s1 | s1r2` is handed to `scripts/lab_v14.py`, which:
+- writes runs to `runs/_lab_v14/` and reports to `docs/v1.4/lab/`;
+- leaves the v1.3 `runs/_lab` and `docs/v1.3/lab/summary.json` untouched;
+- records the per-class budget counters (`budget`: agents, clipped, blocked, blocks per
+  half-hour) and, for informed fundamentalists, the research/quote counts (`fund_info`) in
+  each run's `metrics.json`.
+
+| campaign | configs | seeds | report |
+|---|---|---|---|
+| b (§7.2) | C-BL = C-DEF + budget; S2-BL = S2 + budget (baseline C-BL) | 20 | `CAMPAIGN_b.md`, `summary_b.json`; compared with the stored v1.3 C-DEF/S2 runs (identical market without the budget, I8) |
+| s1 (§7.3) | 16 designs `D-<N><T><S><W>` × {no trigger, `-S2`} | 42, 7, 1, 2, 3 | `RESULTS_s1.md`, `selection_s1.json`, `summary_s1.json` |
+| s1r2 (§7.4) | the round-1 winner's 8 extensions | 42, 7, 1, 2, 3 | appended to `RESULTS_s1.md` |
+
+Design ids: N ∈ {30, 60, 120, 240}; T_r ∈ {vf [15, 60], f [60, 300], s [300, 1800],
+vs [1800, 7200]} s; σ_r ∈ {vl [3, 10], l [10, 50], h [50, 200], vh [200, 600]} ¢;
+W ∈ {250k, 500k, 2M, 5M} $. For example, `D-60fl500k` is 60 agents, fast research, low
+noise and $500,000 each. Every design that round 2 can reach is registered in `api.lab`
+at import, so worker processes know it.
+
+Lab configs set the informed population through build_config keyword arguments
+(`num_ekf_agents`, `fund_mode`, `informed_design`, `abides_budget`), not through RunParams.
+RunParams' num_fund bound (20) stays until N6 (§4.7). The `params.num_fund = 20` recorded in
+a design run's metrics.json is therefore overridden by `extra.num_ekf_agents`; the config hash
+covers both.
+
+The selection (§7.4) is `lab_v14.select_design`, and it is printed in full. Screening uses
+`r3_scorecard(..., screening=True)`, in which T5 and T6 are judged on S2 only. L4's run part
+is zero_sum over every run of the design; L5 is the median wall time over every run of the
+design.

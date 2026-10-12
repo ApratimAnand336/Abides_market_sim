@@ -104,6 +104,12 @@ class TradingAgent(FinancialAgent):
         self.holdings: Dict[str, int] = {"CASH": starting_cash}
         self.orders: Dict[int, Order] = {}
 
+        # FinVerse spec v1.4 Part 5: optional gross budget limit (a GrossLimit).
+        # None (the default) leaves every order untouched (invariant I8).
+        self.budget = None
+        self.budget_clipped: int = 0  # orders reduced by the budget
+        self.budget_blocked: int = 0  # orders not sent (reduced to 0)
+
         # The base TradingAgent also tracks last known prices for every symbol
         # for which it has received as QUERY_LAST_TRADE message.  Subclass
         # agents may use or ignore this as they wish.  Note that the subclass
@@ -538,6 +544,11 @@ class TradingAgent(FinancialAgent):
             tag:
         """
 
+        if self.budget is not None:
+            quantity = self._apply_budget(symbol, quantity, side, limit_price)
+            if quantity <= 0:
+                return
+
         order = self.create_limit_order(
             symbol,
             quantity,
@@ -558,6 +569,23 @@ class TradingAgent(FinancialAgent):
 
             if self.log_orders:
                 self.logEvent("ORDER_SUBMITTED", order.to_dict(), deepcopy_event=False)
+
+    def _apply_budget(self, symbol: str, quantity: int, side: Side, price: int) -> int:
+        """Clip quantity to self.budget (spec v1.4 §5.2); log BUDGET_BLOCK at 0."""
+        open_same = sum(
+            int(o.quantity) for o in self.orders.values()
+            if o.symbol == symbol and o.side == side
+        )
+        allowed = self.budget.allowed_qty(side, quantity, price, self.holdings, symbol, open_same)
+        if allowed < quantity:
+            self.budget_clipped += 1
+        if allowed <= 0:
+            self.budget_blocked += 1
+            self.logEvent("BUDGET_BLOCK", {
+                "side": "BUY" if side.is_bid() else "SELL",
+                "requested": int(quantity), "allowed": 0, "price": int(price),
+            })
+        return int(allowed)
 
     def place_market_order(
         self,
@@ -583,6 +611,16 @@ class TradingAgent(FinancialAgent):
                 the order.
             tag:
         """
+
+        if self.budget is not None:
+            # worst-case price of a market order: the known opposite best,
+            # else the last trade; with neither, the order is not clipped
+            bid, _, ask, _ = self.get_known_bid_ask(symbol)
+            px = (ask if side.is_bid() else bid) or self.last_trade.get(symbol)
+            if px:
+                quantity = self._apply_budget(symbol, quantity, side, px)
+                if quantity <= 0:
+                    return
 
         order = MarketOrder(
             self.id, self.current_time, symbol, quantity, side, order_id, tag

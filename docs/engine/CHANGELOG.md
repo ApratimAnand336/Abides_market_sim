@@ -11,6 +11,7 @@ Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt).
 |---|---|---|
 | N0 | `docs/specs/spec_v1.4.txt`, `docs/engine/DECISIONS.md`, `docs/engine/AGENTS_ABIDES.md`, doc skeletons, `docs/HANDOFF.md` | Spec v1.4 stored; D-R3-1..6; ValueAgent mechanism finding (§0.3) and κ mismatch documented; sim_data.pkl confirmed clean by the owner |
 | N1 | `api/realism.py`, `api/realism_halflife_table.json`, `api/tests/test_realism.py`, `scripts/realism_lab.py`, `scripts/halflife_v13_recompute.py`, `docs/v1.4/lab/RESULTS.md` | Corrected gap half-life (no de-meaning + synthetic correction table), G10 grades it; jump-window metrics; `R3_TARGETS`, `R3_LIMITS`, `r3_scorecard`; `active_halfhours_share` (L3); T-N8 … T-N11; v1.3 C-DEF/C-V20 half-lives recomputed from stored series |
+| N2 | `abides_markets/utils/budget.py`, `agents/trading_agent.py`, `configs/rmsc04_ekf.py`, `tests/test_budget.py`, `tests/test_invariants.py`, `api/lab.py`, `api/realism.py`, `scripts/realism_lab.py`, `scripts/lab_v14.py` | GrossLimit (K10) and `TradingAgent.budget` (default None); `build_config(abides_budget=...)` on Noise/Value/ABIDES Momentum (MMs exempt); T-N12, T-N13, I9; v1.4 lab plumbing (runs/_lab_v14, campaigns b/s1/s1r2, design ids, §7.4 selection, `r3_scorecard(screening=True)`); Campaign b |
 
 ## v1.3 — R2: the realism lab, measurement only (2026-10-12, branch `v1.3`)
 

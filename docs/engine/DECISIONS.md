@@ -266,3 +266,11 @@ Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt) (Part 1, Appendix B).
 
 ### 2026-10-12 (N1) Half-life table: no isotonic fit needed; the slow end is flat
 - The 16 medians are strictly increasing (`monotone_raw: true`). Above H = 90 min they are nearly flat (59.3, 63.1, 67.8, 92.5 min for 90, 120, 180, 240), so the correction is poorly determined there. This is reported in REALISM_LAB.md; nothing is tuned.
+
+### 2026-10-12 (N2) Budget: open orders in flight count as open
+- **Decision:** `GrossLimit` counts every order still in `TradingAgent.orders`, including orders whose cancellation has been sent but not yet confirmed.
+- **Reason:** §5.1 is a worst-case rule ("open same-side quantity"). An order whose cancellation is in flight can still fill. For ValueAgents, which cancel and re-order at each wake, this makes the limit bind a little earlier. It is reported with the block counts.
+
+### 2026-10-12 (N2) Campaign runs use a committed engine: N2 is two commits
+- **Decision:** the N2 code (budget, tests, lab plumbing) is committed first. Campaign b then runs on that clean engine label, and its report is committed as a second N2 commit.
+- **Reason:** a campaign needs the code committed before it runs, or every run is labelled "+dirty" (the owner restored `sim_data.pkl` so that labels would be clean). From N3 on, a milestone's campaign runs on the previous milestone's commit, so N4 is again a single commit.

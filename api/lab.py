@@ -8,6 +8,7 @@ not gain these switches in R2.
 
 import hashlib
 import json
+import re
 from typing import Any, Dict, List
 
 from .jobs import run_config_kwargs
@@ -88,6 +89,106 @@ CAMPAIGNS: Dict[str, List[str]] = {
 }
 CAMPAIGNS["all"] = [c for k in ("c1", "c2", "c3", "c4") for c in CAMPAIGNS[k]]
 REGRESSION = {"seeds": [42, 7, 1], "configs": ["C-DEF", "S2", "IMP-1"]}
+
+# ══════════════════════════════════════════════════════════════════════════
+# spec v1.4 (R3), Part 7. Outputs of these campaigns go to runs/_lab_v14 and
+# docs/v1.4/lab (CAMPAIGN_ROOT); the v1.3 campaigns keep runs/_lab.
+# ══════════════════════════════════════════════════════════════════════════
+BUDGET = {"L": 2.0}  # spec v1.4 Part 5
+SCREEN_SEEDS: List[int] = [42, 7, 1, 2, 3]  # spec v1.4 §7.3
+
+# §7.2 Campaign b: the v1.3 market + budget (compared with v1.3's C-DEF / S2)
+CONFIGS["C-BL"] = {"campaign": "b", "label": "default v1.3 market + budget L=2",
+                   "extra": {"abides_budget": BUDGET}}
+CONFIGS["S2-BL"] = {"campaign": "b", "label": "value jump +2% + budget L=2",
+                    "extra": {"oracle_events": [JUMP_UP], "abides_budget": BUDGET},
+                    "baseline": "C-BL", "kind": "jump", "jump_pct": 2.0}
+CAMPAIGNS["b"] = ["C-BL", "S2-BL"]
+
+# §7.3 / §7.4 design dials. Code -> level. Round 1 uses the first two levels
+# of each dial; round 2 adds the outer ones.
+DIAL_N = {"30": 30, "60": 60, "120": 120, "240": 240}
+DIAL_T = {"vf": (15.0, 60.0), "f": (60.0, 300.0), "s": (300.0, 1800.0), "vs": (1800.0, 7200.0)}  # T_r, s
+DIAL_S = {"vl": (3.0, 10.0), "l": (10.0, 50.0), "h": (50.0, 200.0), "vh": (200.0, 600.0)}  # sigma_r, cents
+DIAL_W = {"250k": 25_000_000, "500k": 50_000_000, "2M": 200_000_000, "5M": 500_000_000}  # wealth, cents
+DIAL_ORDER = {"N": ["30", "60", "120", "240"], "T": ["vf", "f", "s", "vs"],
+              "S": ["vl", "l", "h", "vh"], "W": ["250k", "500k", "2M", "5M"]}
+ROUND1 = {"N": ["60", "120"], "T": ["f", "s"], "S": ["l", "h"], "W": ["500k", "2M"]}
+_DESIGN_RE = re.compile(r"^D-(\d+)(vf|vs|f|s)(vl|vh|l|h)(\d+(?:k|M))$")
+
+
+def design_id(n: str, t: str, s: str, w: str) -> str:
+    """D-<N><T><S><W>, e.g. D-60fl500k (spec v1.4 §7.3)."""
+    return f"D-{n}{t}{s}{w}"
+
+
+def parse_design(did: str) -> Dict[str, str]:
+    m = _DESIGN_RE.match(did)
+    if not m:
+        raise ValueError(f"not a design id: {did}")
+    return dict(zip("NTSW", m.groups()))
+
+
+def design_extra(did: str) -> Dict[str, Any]:
+    """build_config keyword arguments of the final population with this design:
+    0 ValueAgents, N informed fundamentalists, budget on (spec v1.4 §7.3)."""
+    d = parse_design(did)
+    return {
+        "num_ekf_agents": DIAL_N[d["N"]],
+        "fund_mode": "informed",
+        "informed_design": {"T_r_range_s": list(DIAL_T[d["T"]]), "sigma_r_range_c": list(DIAL_S[d["S"]]),
+                            "wealth_c": DIAL_W[d["W"]]},
+        "abides_budget": BUDGET,
+    }
+
+
+def _register_design(did: str, campaign: str) -> None:
+    CONFIGS[did] = {"campaign": campaign, "label": f"design {did} (no trigger)",
+                    "params": {"num_value": 0}, "extra": design_extra(did), "design": did}
+    CONFIGS[did + "-S2"] = {"campaign": campaign, "label": f"design {did} + value jump +2%",
+                            "params": {"num_value": 0},
+                            "extra": {**design_extra(did), "oracle_events": [JUMP_UP]},
+                            "baseline": did, "kind": "jump", "jump_pct": 2.0, "design": did}
+
+
+ROUND1_DESIGNS: List[str] = [design_id(n, t, s, w) for n in ROUND1["N"] for t in ROUND1["T"]
+                             for s in ROUND1["S"] for w in ROUND1["W"]]
+for _d in ROUND1_DESIGNS:
+    _register_design(_d, "s1")
+CAMPAIGNS["s1"] = [c for d in ROUND1_DESIGNS for c in (d, d + "-S2")]
+
+
+def round2_designs(winner: str) -> List[str]:
+    """§7.4 round 2: the winner with ONE dial replaced by each of its two new
+    outer levels (N 30/240, T_r very fast/very slow, sigma_r very low/very
+    high, W $250k/$5M) -> 8 designs."""
+    d = parse_design(winner)
+    out = []
+    for dial in "NTSW":
+        for lev in DIAL_ORDER[dial]:
+            if lev not in ROUND1[dial]:
+                nd = dict(d)
+                nd[dial] = lev
+                out.append(design_id(nd["N"], nd["T"], nd["S"], nd["W"]))
+    return out
+
+
+# Every design round 2 can reach (a round-1 design with one dial at an outer
+# level) is registered up front, so that spawned worker processes know it.
+for _d in ROUND1_DESIGNS:
+    for _r in round2_designs(_d):
+        if _r not in CONFIGS:
+            _register_design(_r, "s1r2")
+
+
+def register_round2(winner: str) -> List[str]:
+    """Set CAMPAIGNS["s1r2"] to the 8 round-2 designs of this winner."""
+    ds = round2_designs(winner)
+    CAMPAIGNS["s1r2"] = [c for d in ds for c in (d, d + "-S2")]
+    return ds
+
+
+V14_CAMPAIGNS = {"b", "s1", "s1r2"}
 
 
 def run_params(config_id: str, seed: int) -> RunParams:

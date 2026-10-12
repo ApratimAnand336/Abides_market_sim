@@ -39,6 +39,8 @@ from api import lab, realism as R  # noqa: E402
 TICKER = "ABM"
 LAB_DIR = REPO / "runs" / "_lab"
 REG_DIR = REPO / "runs" / "_lab_regression"
+LAB_V14 = REPO / "runs" / "_lab_v14"  # spec v1.4 §7.1
+DOC_V14 = REPO / "docs" / "v1.4" / "lab"
 DOC_DIR = REPO / "docs" / "v1.3" / "lab"
 FIG_DIR = DOC_DIR / "figures"
 TIMEOUT_S = 15 * 60
@@ -91,6 +93,37 @@ def _fingerprint(end_state):
         "holdings": hashlib.sha256(json.dumps(hold).encode()).hexdigest(),
         "n_execs": len(execs),
     }
+
+
+def _budget_counts(agents, open_ns):
+    """spec v1.4 §7.2: per class, orders clipped / blocked by the gross limit,
+    and the blocks per half-hour of the session (13 bins from 09:30)."""
+    out = {}
+    for a in agents:
+        if getattr(a, "budget", None) is None:
+            continue
+        c = out.setdefault(R.class_of(a), {"agents": 0, "clipped": 0, "blocked": 0, "blocked_by_halfhour": [0] * 13})
+        c["agents"] += 1
+        c["clipped"] += int(getattr(a, "budget_clipped", 0))
+        c["blocked"] += int(getattr(a, "budget_blocked", 0))
+        for t, typ, _e in a.log:
+            if typ == "BUDGET_BLOCK":
+                k = int((int(t) - open_ns) // (1800 * 10**9))
+                c["blocked_by_halfhour"][min(max(k, 0), 12)] += 1
+    return out
+
+
+def _fund_info(agents, config):
+    """spec v1.4: informed fundamentalists' research and quote counts (None
+    for price-only)."""
+    ids = config.get("_ekf_agent_ids", [])
+    fs = [agents[i] for i in ids if getattr(agents[i], "mode", "price_only") == "informed"]
+    if not fs:
+        return None
+    reads = [sum(1 for _, t, _e in a.log if t == "RESEARCH_READING") for a in fs]
+    blocked = [sum(1 for _, t, e in a.log if t == "FUND_QUOTES" and e.get("blocked_sides")) for a in fs]
+    return {"n": len(fs), "research_readings_median": float(np.median(reads)),
+            "quote_cycles_with_blocked_side_median": float(np.median(blocked))}
 
 
 def simulate(config_id: str, seed: int, out_root: str, engine: str) -> None:
@@ -155,6 +188,8 @@ def simulate(config_id: str, seed: int, out_root: str, engine: str) -> None:
             "probe": s["probe"],
             "oracle_events": s["oracle_events"],
             "mom_entries_per_agent": entries / n_mom if n_mom else None,
+            "budget": _budget_counts(agents, config["_mkt_open_ns"]),
+            "fund_info": _fund_info(agents, config),
         }
         f32 = lambda x: np.asarray(x, dtype=np.float32)  # noqa: E731
         np.savez_compressed(
@@ -845,7 +880,9 @@ def regression(workers, engine, rebaseline=False, force=True) -> int:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--campaign", default="c1", choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression"])
+    ap.add_argument("--campaign", default="c1",
+                    choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression", "b", "s1", "s1r2"])
+    ap.add_argument("--winner", default=None, help="s1r2: the round-1 winner (default: from docs/v1.4/lab/selection_s1.json)")
     ap.add_argument("--seeds", default=None, help="comma-separated (default: the 20 lab seeds)")
     ap.add_argument("--workers", type=int, default=min((os.cpu_count() or 2) - 1, 6))
     ap.add_argument("--force", action="store_true")
@@ -872,6 +909,11 @@ def main(argv=None) -> int:
                 ref["rebaselined"] = date.today().isoformat()
                 ref_path.write_text(json.dumps(ref, indent=2), encoding="utf-8")
         return regression(a.workers, engine)
+
+    if a.campaign in lab.V14_CAMPAIGNS:
+        import lab_v14
+
+        return lab_v14.main_v14(a, engine)
 
     seeds = [int(x) for x in a.seeds.split(",")] if a.seeds else lab.SEEDS
     configs = a.configs.split(",") if a.configs else lab.CAMPAIGNS.get(a.campaign, ["C-NULL"])

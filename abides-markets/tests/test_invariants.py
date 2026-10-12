@@ -13,6 +13,9 @@ I6 no value agents        = T-M6 (test_market_maker.py)
 I7 market-maker liveness  = T-M7 (test_market_maker.py)
 I8 no drift               (spec v1.3 Part 2) default parameters reproduce v1.2 (aa5f606)
                           bit for bit
+I9 budget respected       (spec v1.4 §10.4) = T-N13 (test_budget.py): with
+                          abides_budget {"L": 2}, every Noise/Value/ABIDES
+                          Momentum fill keeps |n| p <= 2 W_p (one-order tolerance)
 """
 
 import hashlib
@@ -165,3 +168,11 @@ def test_i5_book_sanity(market):
     assert two_sided > 100
     execs = [x for x in history(end_state) if x["type"] == "EXEC"]
     assert execs and all(x["price"] is not None and x["price"] > 0 for x in execs)
+
+
+# ── I9 budget respected (spec v1.4 §10.4) = T-N13 ────────────────────────
+# Imported at the end: test_budget imports I8_EXPECTED from this module.
+from .test_budget import (  # noqa: E402,F401
+    budget_market,
+    test_n13_fills_respect_the_gross_limit as test_i9_budget_respected,
+)

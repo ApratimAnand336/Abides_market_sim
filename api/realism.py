@@ -1176,9 +1176,11 @@ def _miss(value: Optional[float], op: str, thr: float) -> Optional[float]:
     return max(0.0, x - thr)
 
 
-def _r3_item(item: Dict[str, Any], summaries: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+def _r3_item(item: Dict[str, Any], summaries: Dict[str, Dict[str, Any]], screening: bool = False) -> Dict[str, Any]:
     checks, oks, misses = [], [], []
     for scope, key, op, thr in item["checks"]:
+        if screening and scope == "S2n":  # §7.4: T5, T6 on S2 only in screening
+            continue
         v = summaries.get(scope, {}).get(key)
         ok = _check(v, op, thr)
         checks.append({"scope": scope, "key": key, "op": op, "threshold": thr, "value": _f(v),
@@ -1193,16 +1195,17 @@ def _r3_item(item: Dict[str, Any], summaries: Dict[str, Dict[str, Any]]) -> Dict
         status = "PASS" if all(oks) else "FAIL"
     out = {"id": item["id"], "label": item["label"], "checks": checks, "status": status}
     if item["id"] in R3_MISS_SCALE:
-        out["norm_miss"] = (sum(misses) / R3_MISS_SCALE[item["id"]]) if len(misses) == len(item["checks"]) else None
+        out["norm_miss"] = (sum(misses) / R3_MISS_SCALE[item["id"]]) if len(misses) == len(checks) else None
     return out
 
 
-def r3_scorecard(per_config_summaries: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+def r3_scorecard(per_config_summaries: Dict[str, Dict[str, Any]], screening: bool = False) -> Dict[str, Any]:
     """T1-T7 and L1-L5 of spec v1.4 Part 2 with value, threshold, PASS/FAIL.
     per_config_summaries: {"C": {...}, "S2": {...}, "S2n": {...}} of medians
-    (a scope that is absent makes the items that need it MISSING)."""
-    targets = {t["id"]: _r3_item(t, per_config_summaries) for t in R3_TARGETS}
-    limits = {l["id"]: _r3_item(l, per_config_summaries) for l in R3_LIMITS}
+    (a scope that is absent makes the items that need it MISSING).
+    screening=True drops the S2n checks (§7.4: T5, T6 on S2 only)."""
+    targets = {t["id"]: _r3_item(t, per_config_summaries, screening) for t in R3_TARGETS}
+    limits = {x["id"]: _r3_item(x, per_config_summaries, screening) for x in R3_LIMITS}
     return {
         "targets": targets, "limits": limits,
         "n_targets_passed": sum(t["status"] == "PASS" for t in targets.values()),
