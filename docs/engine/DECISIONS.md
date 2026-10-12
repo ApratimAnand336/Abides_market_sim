@@ -178,6 +178,11 @@ Appendix B. Implementation decisions follow under "Decisions made while implemen
 
 (Added by milestone; each with its evidence.)
 
+### 2026-10-12 (L3) — A value jump decays 0.3% over 5 hours, not 0.0003%
+- **Decision:** T-L2 checks the exact decay J · a^(k − k0) (to 1e-6 ¢) and that the 16:00 value is ≥ 99.7% of the jump, instead of spec §6.1's "less than 0.0003% over 5 hours".
+- **Reason:** a = e^(−κ · 1 s) = e^(−1.67e-7); over 18,000 s that is e^(−0.003), a 0.30% decay ($20.00 → $19.94; measured 1993.997 ¢ of 2,000). The spec's number is a factor-1000 slip; "permanent in practice" stays true. Nothing in the generator changes.
+- **Evidence:** `test_scenarios.py::test_l2_jump_adds_a_decaying_step`.
+
 ### 2026-10-12 (L2) — 20 distinct seeds: 42, 7, 1–6, 8–19
 - **Decision:** `api.lab.SEEDS = [42, 7, 1, 2, 3, 4, 5, 6, 8, …, 19]`.
 - **Reason:** spec §5.0 writes "[42, 7, 1, 2, 3, ..., 18] (20 seeds)", which contains 7 twice (19 distinct seeds). The first c1 report counted seed 7 twice; found and fixed before the c1 numbers were used. 42 and 7 keep continuity with v1.1/v1.2.

@@ -8,7 +8,9 @@ lazy SparseMeanRevertingOracle could not guarantee.
 
 Path sources are plain functions ``generate(params, times_ns, rng) -> values``
 registered in PATH_SOURCES; adding a source (historical CSV replay, scripted
-scenarios) means writing one function. Only "synthetic_ou" exists in v1.2.
+scenarios) means writing one function. v1.2 has "synthetic_ou"; v1.3 (spec
+v1.3 §6.1) adds "scenario": the same path plus scripted events (value jumps,
+volatility windows) for the realism lab, with no extra random draws.
 """
 
 import logging
@@ -25,6 +27,45 @@ from .oracle import Oracle
 logger = logging.getLogger(__name__)
 
 PathFn = Callable[[Dict[str, Any], np.ndarray, np.random.RandomState], np.ndarray]
+
+
+def _ou_draws(params: Dict[str, Any], times: np.ndarray, rng: np.random.RandomState) -> Dict[str, Any]:
+    """Every random draw of the synthetic OU path, in the fixed order
+    (the full eps vector, then the shock count, times, sizes and signs),
+    plus the step constants a and sd. Shared by "synthetic_ou" and
+    "scenario" so the two can never draw differently."""
+    r_bar = float(params["r_bar"])
+    kappa = float(params["kappa"])
+    fund_vol = float(params["fund_vol"])
+    n = len(times)
+    d = float(times[1] - times[0]) if n > 1 else 1.0
+
+    kd = kappa * d
+    if kd < 1e-12:
+        a, sd = 1.0, fund_vol * sqrt(d)
+    else:
+        a = exp(-kd)
+        sd = sqrt(fund_vol ** 2 / (2.0 * kappa) * -expm1(-2.0 * kd))
+
+    eps = rng.normal(size=n - 1)
+
+    # megashocks: all from the dedicated rng, after eps
+    lam = float(params.get("megashock_lambda_a", 0.0))
+    span = float(times[-1] - times[0])
+    n_shocks = rng.poisson(lam * span) if lam > 0 and span > 0 else 0
+    shock_t = np.sort(rng.uniform(times[0], times[-1], size=n_shocks))
+    shock_v = rng.normal(params.get("megashock_mean", 0.0), sqrt(params.get("megashock_var", 0.0)), size=n_shocks)
+    shock_s = np.where(rng.randint(2, size=n_shocks) == 0, 1.0, -1.0)
+    return {"r_bar": r_bar, "a": a, "sd": sd, "eps": eps, "shocks": (shock_t, shock_v, shock_s)}
+
+
+def _add_shocks(innov: np.ndarray, times: np.ndarray, shocks) -> None:
+    """A megashock enters the OU state at the first grid point >= its time."""
+    n = len(times)
+    for t_s, v_s, sign in zip(*shocks):
+        k = int(np.searchsorted(times, t_s, side="left"))
+        if k < n:
+            innov[k] += sign * v_s
 
 
 def generate_synthetic_ou(params: Dict[str, Any], times: np.ndarray, rng: np.random.RandomState) -> np.ndarray:
@@ -47,46 +88,83 @@ def generate_synthetic_ou(params: Dict[str, Any], times: np.ndarray, rng: np.ran
     Draw order is fixed: the full eps vector, then the shock count, times,
     sizes and signs. Values are floats in cents.
     """
-    r_bar = float(params["r_bar"])
-    kappa = float(params["kappa"])
-    fund_vol = float(params["fund_vol"])
     n = len(times)
     if n == 0:
         return np.array([], dtype=float)
-    d = float(times[1] - times[0]) if n > 1 else 1.0
-
-    kd = kappa * d
-    if kd < 1e-12:
-        a, sd = 1.0, fund_vol * sqrt(d)
-    else:
-        a = exp(-kd)
-        sd = sqrt(fund_vol ** 2 / (2.0 * kappa) * -expm1(-2.0 * kd))
-
-    eps = rng.normal(size=n - 1)
-
-    # megashocks: all from the dedicated rng, after eps
-    lam = float(params.get("megashock_lambda_a", 0.0))
-    span = float(times[-1] - times[0])
-    n_shocks = rng.poisson(lam * span) if lam > 0 and span > 0 else 0
-    shock_t = np.sort(rng.uniform(times[0], times[-1], size=n_shocks))
-    shock_v = rng.normal(params.get("megashock_mean", 0.0), sqrt(params.get("megashock_var", 0.0)), size=n_shocks)
-    shock_s = np.where(rng.randint(2, size=n_shocks) == 0, 1.0, -1.0)
+    dr = _ou_draws(params, times, rng)
 
     # deviation from r_bar: x_{k+1} = a x_k + sd eps_k + jump_{k+1}
     innov = np.zeros(n)
-    innov[1:] = sd * eps
-    for t_s, v_s, sign in zip(shock_t, shock_v, shock_s):
-        k = int(np.searchsorted(times, t_s, side="left"))
-        if k < n:
-            innov[k] += sign * v_s
-    x = lfilter([1.0], [1.0, -a], innov)
-    return r_bar + x
+    innov[1:] = dr["sd"] * dr["eps"]
+    _add_shocks(innov, times, dr["shocks"])
+    x = lfilter([1.0], [1.0, -dr["a"]], innov)
+    return dr["r_bar"] + x
+
+
+def applied_events(events: List[Dict[str, Any]], times: np.ndarray) -> List[Dict[str, Any]]:
+    """Scenario events as applied to the grid: each jump records the grid
+    time it lands on (the first grid point >= t_ns); each volatility window
+    the number of grid steps it scales. Events outside the grid are kept with
+    t_grid_ns = None / n_steps = 0 (they change nothing)."""
+    out = []
+    for ev in events:
+        kind = ev.get("type")
+        if kind == "jump":
+            k = int(np.searchsorted(times, int(ev["t_ns"]), side="left"))
+            out.append({"type": "jump", "t_ns": int(ev["t_ns"]), "cents": float(ev["cents"]),
+                        "k": k if k < len(times) else None,
+                        "t_grid_ns": int(times[k]) if k < len(times) else None})
+        elif kind == "vol":
+            t0, t1 = int(ev["t0_ns"]), int(ev["t1_ns"])
+            ks = np.flatnonzero((times >= t0) & (times < t1))
+            ks = ks[ks >= 1]  # innov[0] is the start value, not a step
+            out.append({"type": "vol", "t0_ns": t0, "t1_ns": t1, "mult": float(ev["mult"]),
+                        "k0": int(ks[0]) if len(ks) else None, "n_steps": int(len(ks))})
+        else:
+            raise ValueError(f"unknown scenario event type {kind!r} (expected 'jump' or 'vol')")
+    return out
+
+
+def generate_scenario_ou(params: Dict[str, Any], times: np.ndarray, rng: np.random.RandomState) -> np.ndarray:
+    """"synthetic_ou" plus scripted events (spec v1.3 §6.1), no extra draws.
+
+    params["events"]: list of
+        {"type": "jump", "t_ns": int, "cents": float}              value step
+        {"type": "vol", "t0_ns": int, "t1_ns": int, "mult": float}  innovation scaling
+
+    1. the same draws as synthetic_ou, in the same order (_ou_draws);
+    2. innov[1:] = sd * eps; innov[k] *= mult for t0_ns <= times[k] < t1_ns;
+    3. megashocks as synthetic_ou;
+    4. innov[k] += cents at the first grid index with times[k] >= t_ns;
+    5. x = lfilter([1], [1, -a], innov); r_bar + x.
+    With no events the path is bit-identical to synthetic_ou. A jump of J adds
+    J * a^(k - k0) from k0 on (a = exp(-kappa d): permanent within a day).
+    """
+    n = len(times)
+    if n == 0:
+        return np.array([], dtype=float)
+    dr = _ou_draws(params, times, rng)
+    events = applied_events(list(params.get("events") or []), times)
+
+    innov = np.zeros(n)
+    innov[1:] = dr["sd"] * dr["eps"]
+    for ev in events:
+        if ev["type"] == "vol" and ev["n_steps"]:
+            ks = np.flatnonzero((times >= ev["t0_ns"]) & (times < ev["t1_ns"]))
+            ks = ks[ks >= 1]
+            innov[ks] *= ev["mult"]
+    _add_shocks(innov, times, dr["shocks"])
+    for ev in events:
+        if ev["type"] == "jump" and ev["k"] is not None:
+            innov[ev["k"]] += ev["cents"]
+    x = lfilter([1.0], [1.0, -dr["a"]], innov)
+    return dr["r_bar"] + x
 
 
 PATH_SOURCES: Dict[str, PathFn] = {
     "synthetic_ou": generate_synthetic_ou,
+    "scenario": generate_scenario_ou,  # spec v1.3 §6.1 (realism lab)
     # "csv": historical (time, value) shape rescaled to r_bar        (planned)
-    # "scenario": synthetic path + scripted value jumps / vol regimes (planned)
 }
 
 
@@ -103,8 +181,11 @@ class PregeneratedOracle(Oracle):
 
     symbols: {symbol: params}. params as for SparseMeanRevertingOracle (r_bar,
     kappa, fund_vol, megashock_lambda_a, megashock_mean, megashock_var,
-    random_state) plus optional "path_source" (default "synthetic_ou").
-    "random_state" is the ONLY RNG the path may use.
+    random_state) plus optional "path_source" (default "synthetic_ou") and,
+    for "scenario", "events". "random_state" is the ONLY RNG the path may use.
+
+    self.events[symbol]: the scenario events as applied to the grid (empty
+    for other sources), also logged at INFO level.
 
     Queries return the value at the last grid point <= t (a step function):
     an agent at time t never sees a value from after t.
@@ -126,8 +207,15 @@ class PregeneratedOracle(Oracle):
 
         self._values: Dict[str, np.ndarray] = {}
         self.f_log: Dict[str, List[Dict[str, Any]]] = {}
+        self.events: Dict[str, List[Dict[str, Any]]] = {}
         for symbol, params in symbols.items():
             v = generate_path(params, self.times, params["random_state"])
+            if params.get("path_source") == "scenario":
+                self.events[symbol] = applied_events(list(params.get("events") or []), self.times)
+                for ev in self.events[symbol]:
+                    logger.info("PregeneratedOracle: %s scenario event %s", symbol, ev)
+            else:
+                self.events[symbol] = []
             self._values[symbol] = v
             served = self._serve(v)
             self.f_log[symbol] = [

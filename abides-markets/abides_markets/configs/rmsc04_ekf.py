@@ -41,6 +41,22 @@ from abides_markets.oracles import PregeneratedOracle
 from abides_markets.utils import generate_latency_model
 
 
+def _oracle_events(events, mkt_open, r_bar):
+    """Lab events with "HH:MM:SS" offsets from the open and jumps in % of
+    r_bar -> the oracle's {t_ns, cents} / {t0_ns, t1_ns, mult} form."""
+    out = []
+    for ev in events:
+        if ev["type"] == "jump":
+            out.append({"type": "jump", "t_ns": mkt_open + str_to_ns(ev["at"]),
+                        "cents": float(ev["pct"]) / 100.0 * r_bar})
+        elif ev["type"] == "vol":
+            out.append({"type": "vol", "t0_ns": mkt_open + str_to_ns(ev["start"]),
+                        "t1_ns": mkt_open + str_to_ns(ev["end"]), "mult": float(ev["mult"])})
+        else:
+            raise ValueError(f"unknown oracle event type {ev['type']!r}")
+    return out
+
+
 def build_config(
     seed=int(datetime.now().timestamp() * 1_000_000) % (2**32 - 1),
     date="20210205",
@@ -92,6 +108,13 @@ def build_config(
     mom_ekf_initial_exposure=0.5,
     # 7) News events: list of (time_offset_str, symbol, sentiment, headline)
     news_events=None,
+    # 8) Realism-lab scenario switches (spec v1.3 Part 6). Every default is
+    #    inert: the market is bit-identical to v1.2 (invariant I8).
+    #    oracle_events: [{"type": "jump", "at": "HH:MM:SS", "pct": float},
+    #                    {"type": "vol", "start": "HH:MM:SS", "end": "HH:MM:SS",
+    #                     "mult": float}], offsets from the 09:30 open, jumps
+    #                   in % of r_bar. None -> path source "synthetic_ou".
+    oracle_events=None,
 ):
     np.random.seed(seed)
 
@@ -128,6 +151,10 @@ def build_config(
             ),
         }
     }
+    if oracle_events is not None:
+        # spec v1.3 §6.1: same draws, scripted events (no global RNG used)
+        symbols[ticker]["path_source"] = "scenario"
+        symbols[ticker]["events"] = _oracle_events(oracle_events, MKT_OPEN, r_bar)
 
     # Spec v1.2 Part 3: the whole true-value path (to 16:00, whatever end_time
     # is) is generated here from the symbol's own RandomState, drawn before any

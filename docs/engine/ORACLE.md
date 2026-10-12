@@ -123,10 +123,38 @@ markets on one seed give bit-identical paths) and by `test_path_is_pure_function
 Note: seed 42 in v1.2 gives a different true-value path from seed 42 in v1.1, because the
 path is now drawn in one block instead of query by query.
 
+## Path source "scenario" (v1.3, realism lab)
+
+Spec v1.3 §6.1. `generate_scenario_ou` is the `synthetic_ou` path plus scripted **events**,
+used only by the realism lab's scenarios ([REALISM_LAB.md](REALISM_LAB.md)):
+
+| Event | Form (oracle) | Effect |
+|---|---|---|
+| value jump | `{"type": "jump", "t_ns": int, "cents": float}` | adds J to the OU innovation at the first grid point at or after `t_ns`, so the value steps by J and then decays like any OU deviation: J · a^(k − k0) with a = e^(−κ · 1 s). Over 5 hours the jump loses less than 0.0003%: permanent in practice |
+| volatility window | `{"type": "vol", "t0_ns": int, "t1_ns": int, "mult": float}` | multiplies the innovations of every grid step with t0_ns ≤ t_k < t1_ns by `mult`; the path before t0_ns is unchanged |
+
+**No extra random draws.** Both sources call the same helper `_ou_draws` (the ε vector, then
+the megashock count, times, sizes and signs, from the symbol's RandomState), so they cannot
+diverge: with `events = []` the scenario path is bit-identical to `synthetic_ou` (test T-L1,
+20 seeds). Algorithm: (1) the draws; (2) innov[1:] = sd · ε, scaled inside volatility windows;
+(3) megashocks as before; (4) jumps; (5) x = lfilter([1], [1, −a], innov), value = r̄ + x.
+
+**What the oracle records.** `oracle.events[symbol]` holds the events as applied to the grid
+(for a jump the grid time `t_grid_ns` it landed on; for a window its first step and number of
+steps), and each one is logged at INFO level. The dashboard payload carries them as
+`oracle_events` (empty in normal runs).
+
+**How the lab asks for it.** `rmsc04_ekf.build_config(oracle_events=[...])` takes offsets from
+the 09:30 open and jumps in % of r̄: `{"type": "jump", "at": "01:30:00", "pct": 2.0}` (= +$20.00
+at 11:00) or `{"type": "vol", "start": "01:30:00", "end": "02:30:00", "mult": 3.0}`. With
+`oracle_events=None` (the default) the path source stays `synthetic_ou` and the market is
+bit-identical to v1.2 (invariant I8). Because the symbol's RandomState is drawn exactly as
+before, a scenario and its baseline share every agent's parameters and random stream
+(test T-L4): only the true value differs, and only from the event on.
+
 ## Future path sources (designed for, not built)
 
 New sources are one function `generate(params, times_ns, rng) -> values`, registered in
 `PATH_SOURCES` and selected by `params["path_source"]`:
 
-- `"csv"`: read a (time, value) series and rescale it to r̄ (replay the true-value shape of a real stock or event);
-- `"scenario"`: a synthetic path plus scripted events (value jumps for *information* news, calm/stressed volatility periods), each event logged.
+- `"csv"`: read a (time, value) series and rescale it to r̄ (replay the true-value shape of a real stock or event).
