@@ -274,3 +274,11 @@ Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt) (Part 1, Appendix B).
 ### 2026-10-12 (N2) Campaign runs use a committed engine: N2 is two commits
 - **Decision:** the N2 code (budget, tests, lab plumbing) is committed first. Campaign b then runs on that clean engine label, and its report is committed as a second N2 commit.
 - **Reason:** a campaign needs the code committed before it runs, or every run is labelled "+dirty" (the owner restored `sim_data.pkl` so that labels would be clean). From N3 on, a milestone's campaign runs on the previous milestone's commit, so N4 is again a single commit.
+
+### 2026-10-12 (N3) Informed mode: readings of the spec where it leaves a choice
+- **First cycle.** Step 0 goes straight to step 6, so the first cycle makes no market reading, no caution update and no target order, even with a two-sided book. It posts the two quotes only. W_ref = cash + shares·x̂ ("W if mid exists" refers to step 5's W, which is not computed). FUND_DECISION is logged with z…w_now = None and skipped_reason "first_cycle" (or "no_mid" for a later cycle with an empty book).
+- **EKF_UPDATE keys.** "R" is R_noise (the v1.2 R) and "K" is K_m; R_m, rho and K_m are added as §4.3 lists. The target uses R_noise in z (§4.3 step 5), and the agent's `R_last` stores R_noise.
+- **Draw order.** The informed draws (wake_mean, rho, m0, kappa_m, h0, theta_q, T_r, sigma_r) come right after the agent's FUNDAMENTAL_RANGES draws and before its RandomState seed (§4.6 "after the existing FUNDAMENTAL_RANGES draws"). In a price_only market nothing new is drawn (I8 holds; T-N6).
+- **Unchanged type.** The agent type string stays "EKF_Fundamentalist" and the class is unchanged, so the lab and the payload classify informed agents as FundamentalistAgent. The label "Fundamentalist (informed)" is a dashboard change (N6).
+- **Payload export deferred.** `INFORMED_RANGES` is defined but not yet in `ranges_for_export()`: the payload schema only accepts "fundamental" and "momentum" (13 export tests failed when it was added). Spec Part 6 changes the payload, schema and dashboard together in N6.
+- **Budget arithmetic is shared** with the ABIDES gross limit (`utils/budget.allowed_qty_wealth`); B and S count only this cycle's orders, as §4.5 says.

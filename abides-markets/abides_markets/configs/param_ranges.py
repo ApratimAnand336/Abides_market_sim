@@ -77,6 +77,21 @@ MOMENTUM_RANGES: Dict[str, Range] = {
 }
 
 
+# spec v1.4 §4.6: informed fundamentalists. Drawn per agent in THIS order,
+# after the agent's FUNDAMENTAL_RANGES draws (FUNDAMENTAL_RANGES are also
+# used; "mu" is drawn but unused in informed mode). T_r and sigma_r come
+# from the design level (spec v1.4 §7.3), per agent log-uniform in its range.
+INFORMED_RANGES: Dict[str, Range] = {
+    "wake_mean": (30.0, 120.0, "log"),  # s, mean Poisson wake gap
+    "rho": (3.0, 100.0, "log"),  # price distrust: R_m = rho * R_noise
+    "m0": (1.0, 3.0, "linear"),  # cents, base required edge
+    "kappa_m": (0.0, 0.5, "linear"),  # required edge per sd of belief
+    "h0": (1.0, 5.0, "linear"),  # cents, quote half-width beyond the edge
+    "theta_q": (0.005, 0.02, "linear"),  # quote size, fraction of wealth per side
+}
+INFORMED_DESIGN_KEYS = ("T_r_range_s", "sigma_r_range_c", "wealth_c")
+
+
 def draw(ranges: Dict[str, Range], name: str, low=None):
     """Draw one value with the global np.random (seeded by the config).
 
@@ -109,4 +124,6 @@ def ranges_for_export() -> Dict[str, Dict[str, Dict]]:
             out[name] = entry
         return out
 
+    # INFORMED_RANGES join the export with the payload schema change of
+    # spec v1.4 Part 6 (milestone N6); until then the payload is unchanged.
     return {"fundamental": fmt(FUNDAMENTAL_RANGES), "momentum": fmt(MOMENTUM_RANGES)}

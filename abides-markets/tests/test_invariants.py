@@ -7,7 +7,8 @@ api.jobs.build_run_config, the dashboard path.
 I1 determinism            two fresh processes -> identical executions and holdings
 I2 oracle stability       = T-O1 (test_oracle.py)
 I3 conservation           total shares and total cash unchanged by trading
-I4 long-only safety       our agents never hold < 0 shares or < 0 cash
+I4 long-only safety       our price-only / momentum agents never hold < 0 shares or < 0 cash;
+                          informed fundamentalists: the §4.5 bounds (= T-N5)
 I5 book sanity            bid < ask in every two-sided L1 snapshot; every fill price > 0
 I6 no value agents        = T-M6 (test_market_maker.py)
 I7 market-maker liveness  = T-M7 (test_market_maker.py)
@@ -142,11 +143,14 @@ def test_i3_conservation(market):
 
 
 def test_i4_long_only_safety(market):
-    """Our agents never hold negative shares or negative cash."""
+    """Our price-only fundamentalists and momentum EKF agents never hold
+    negative shares or negative cash. Spec v1.4 §10.4 splits I4: informed
+    fundamentalists may short and borrow within [w_min, w_max] x wealth,
+    checked at every fill by T-N5 (test_fundamental_informed.py)."""
     _, end_state, _ = market
     checked = 0
     for a in end_state["agents"]:
-        if type(a).__name__ not in OURS:
+        if type(a).__name__ not in OURS or getattr(a, "mode", "price_only") == "informed":
             continue
         for _, typ, ev in a.log:
             if typ == "HOLDINGS_UPDATED":
@@ -175,4 +179,10 @@ def test_i5_book_sanity(market):
 from .test_budget import (  # noqa: E402,F401
     budget_market,
     test_n13_fills_respect_the_gross_limit as test_i9_budget_respected,
+)
+
+# ── I4 (informed part, spec v1.4 §10.4) = T-N5 ───────────────────────────
+from .test_fundamental_informed import (  # noqa: E402,F401
+    informed_market,
+    test_n5_budget_holds_at_every_fill as test_i4_informed_within_bounds,
 )

@@ -22,7 +22,7 @@
 
 import logging
 from bisect import bisect_right
-from math import exp, floor, sqrt, tanh
+from math import ceil, exp, floor, sqrt, tanh
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -33,6 +33,7 @@ from abides_core.utils import str_to_ns
 from ..messages.query import QuerySpreadResponseMsg
 from ..messages.news import NewsSentimentMsg
 from ..orders import Side
+from ..utils.budget import allowed_qty_wealth
 from .trading_agent import TradingAgent
 from .utils import stable_sigmoid
 
@@ -47,6 +48,12 @@ SIGMA_F_EWMA_N = 60  # EWMA memory in updates (alpha = 1 / 60)
 
 # ── News (spec v1.1 F5) ───────────────────────────────────────────────────
 NEWS_HORIZON_S = 1800.0  # news is worth k_news "typical 30-minute moves"
+
+# ── Informed mode (spec v1.4 Part 4) ──────────────────────────────────────
+INFORMED_W_MIN = -0.5  # may short up to half its wealth
+INFORMED_W_MAX = 1.5  # may hold up to 150% of its wealth in stock
+INFORMED_W0 = 0.5  # neutral stock fraction of the target rule
+MODES = ("price_only", "informed")
 
 
 class FundamentalistAgent(TradingAgent):
@@ -98,8 +105,32 @@ class FundamentalistAgent(TradingAgent):
         # --- Initial share endowment ---
         initial_exposure: float = 0.5,    # e_0: fraction of wealth held in shares at start
         reference_price: int = 100_000,   # p_ref0 (cents) used to value the endowment
+        # --- spec v1.4 Part 4: informed mode. "price_only" is v1.3's agent,
+        #     byte for byte; every argument below is unused in that mode. ---
+        mode: str = "price_only",
+        wake_mean: float = 60.0,          # s, mean of the Poisson wake gap
+        rho: float = 10.0,                # price distrust: R_m = rho * R_noise
+        m0: float = 2.0,                  # cents, base required edge
+        kappa_m: float = 0.25,            # edge per sd of the belief
+        h0: float = 3.0,                  # cents, quote half-width beyond the edge
+        theta_q: float = 0.01,            # quote size, fraction of wealth per side
+        T_r: float = 300.0,               # s, mean research interval
+        sigma_r: float = 50.0,            # cents, research noise sd
     ) -> None:
         super().__init__(id, name, type, random_state, starting_cash, log_orders)
+        if mode not in MODES:
+            raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
+        self.mode: str = mode
+        self.wake_mean: float = wake_mean
+        self.rho: float = rho
+        self.m0: float = m0
+        self.kappa_m: float = kappa_m
+        self.h0: float = h0
+        self.theta_q: float = theta_q
+        self.T_r: float = T_r
+        self.sigma_r: float = sigma_r
+        self.t_last: Optional[NanosecondTime] = None  # informed: time of the last cycle
+        self.next_research: Optional[NanosecondTime] = None  # informed: research clock
 
         # Trading parameters
         self.symbol: str = symbol
@@ -658,8 +689,217 @@ class FundamentalistAgent(TradingAgent):
             if isinstance(message, QuerySpreadResponseMsg):
                 if self.mkt_closed:
                     return
-                self.execute_strategy()
+                if self.mode == "informed":
+                    self.informed_cycle()
+                else:
+                    self.execute_strategy()
                 self.state = "AWAITING_WAKEUP"
 
     def get_wake_frequency(self) -> NanosecondTime:
+        if self.mode == "informed":
+            # spec v1.4 §4.2: Poisson wakes, gap = max(1 s, Exp(wake_mean)),
+            # drawn from the agent's own RandomState
+            return int(max(1.0, self.random_state.exponential(self.wake_mean)) * 1e9)
         return self.wake_up_freq
+
+    # ══════════════════════════════════════════════════════════════════════
+    # INFORMED MODE  (spec v1.4 Part 4; price_only code paths untouched)
+    # ══════════════════════════════════════════════════════════════════════
+
+    def _draw_research_gap(self) -> NanosecondTime:
+        return int(self.random_state.exponential(self.T_r) * 1e9)
+
+    def research_update(self, y_r: float) -> float:
+        """Step 2 of §4.3: one scalar Kalman update with a research reading
+        of variance sigma_r^2. Returns K_r."""
+        R_r = self.sigma_r * self.sigma_r
+        K_r = self.P / (self.P + R_r) if self.P + R_r > 0 else 0.0
+        self.x_hat = self.x_hat + K_r * (y_r - self.x_hat)
+        self.P = (1.0 - K_r) * self.P
+        return K_r
+
+    def belief_prices(self) -> Dict[str, float]:
+        """Step 6 of §4.3: every price from the belief, none from the book.
+            m = m0 + kappa_m sqrt(P)   required edge (cents)
+            h = m + h0                 quote half-width (cents)
+        target BUY at floor(x_hat - m), SELL at ceil(x_hat + m); quotes at
+        floor(x_hat - h) / ceil(x_hat + h); every price >= 1 cent."""
+        m = self.m0 + self.kappa_m * sqrt(max(self.P, 0.0))
+        h = m + self.h0
+        x = self.x_hat
+        return {
+            "m": m, "h": h,
+            "buy": max(1, int(floor(x - m))), "sell": max(1, int(ceil(x + m))),
+            "bid": max(1, int(floor(x - h))), "ask": max(1, int(ceil(x + h))),
+        }
+
+    def informed_target(self, mid: float, confidence: float, R_noise: float) -> Dict:
+        """Step 5 of §4.3 (target position with leverage bounds):
+            z      = (x_hat - mid) / sqrt(P + R_noise)
+            w_star = clip(0.5 + a_max C tanh(z / z0), -0.5, 1.5)
+            W      = cash + shares * mid
+            d_star = round((w_star W - shares mid) / mid), step cap floor(s_max W / mid),
+            dead band |d| mid < b_f W or |d| < 1 -> 0."""
+        cash = self.holdings.get("CASH", 0)
+        shares = self.holdings.get(self.symbol, 0)
+        W = cash + shares * mid
+        var = self.P + R_noise
+        z_den = sqrt(var) if var > 0 else 0.0
+        z = (self.x_hat - mid) / z_den if var > 0 else 0.0
+        w_star = min(INFORMED_W_MAX, max(INFORMED_W_MIN,
+                                          INFORMED_W0 + self.a_max * confidence * tanh(z / self.z0)))
+        w_now = shares * mid / W if W > 0 else None
+        if W <= 0:
+            return {"z": z, "z_den": z_den, "w_star": w_star, "w_now": w_now, "d_star": 0, "d": 0,
+                    "skipped_reason": "no_wealth", "W": W}
+        d_star = int(round((w_star * W - shares * mid) / mid))
+        cap = int(floor(self.s_max * W / mid))
+        d = max(-cap, min(cap, d_star))
+        skipped_reason = None
+        if abs(d) < 1 or abs(d) * mid < self.b_f * W:
+            d, skipped_reason = 0, "dead_band"
+        return {"z": z, "z_den": z_den, "w_star": w_star, "w_now": w_now, "d_star": d_star, "d": d,
+                "skipped_reason": skipped_reason, "W": W}
+
+    def budget_qty(self, is_buy: bool, q: int, price: int, open_same_side: int) -> int:
+        """§4.5: largest allowed quantity <= q, worst case over this cycle's
+        own open orders on the same side (older orders were cancelled at the wake)."""
+        return allowed_qty_wealth(
+            is_buy, q, price, self.holdings.get("CASH", 0), self.holdings.get(self.symbol, 0),
+            open_same_side, INFORMED_W_MIN, INFORMED_W_MAX,
+        )
+
+    def informed_cycle(self) -> None:
+        """One decision cycle of the informed fundamentalist (spec v1.4 §4.3),
+        on the spread response at time t: predict -> research -> market ->
+        caution -> target -> belief-anchored prices -> budget -> send."""
+        t = self.current_time
+        bid, _, ask, _ = self.get_known_bid_ask(self.symbol)
+        has_mid = bool(bid) and bool(ask)
+        mid = (bid + ask) / 2.0 if has_mid else None
+        decision = None
+
+        if self.x_hat is None:
+            # Step 0: initial belief from one oracle observation (variance
+            # sigma_n); P = initial_uncertainty (set in __init__); first
+            # research time = first wake + Exp(T_r). Then straight to step 6.
+            self.x_hat = self.oracle.observe_price(
+                self.symbol, t, sigma_n=self.sigma_n, random_state=self.random_state
+            )
+            self.t_last = t
+            self.next_research = t + self._draw_research_gap()
+            skipped = "first_cycle"
+        else:
+            # Step 1: predict
+            dt = (t - self.t_last) / 1e9
+            Q = self.q * self.sigma_f2_hat * max(dt, 0.0)
+            self.P = self.P + Q
+
+            # Step 2: research (at most one reading per wake, at the wake time)
+            if self.next_research is not None and self.next_research <= t:
+                y_r = self.oracle.observe_price(
+                    self.symbol, t, random_state=self.random_state, sigma_n=self.sigma_r ** 2
+                )
+                x_before = self.x_hat
+                K_r = self.research_update(y_r)
+                self.next_research = t + self._draw_research_gap()
+                self.logEvent("RESEARCH_READING", {
+                    "y_r": y_r, "sigma_r": round(self.sigma_r, 4), "K_r": round(K_r, 6),
+                    "x_hat_before": round(x_before, 2), "x_hat_after": round(self.x_hat, 2),
+                    "P_after": round(self.P, 4),
+                })
+
+            # Step 3: market reading (only with a two-sided book)
+            if has_mid:
+                self.price_log.append(mid)
+                self.time_log.append(t)
+                self.update_sigma_f2(t, mid)
+                R_noise = self._compute_observation_variance(mid)
+                self.R_last = R_noise
+                R_m = self.rho * R_noise
+                er = self._compute_kaufman_er()
+                self.x_hat, self.P, K_m = self.correction(self.x_hat, self.P, mid, R_m)
+                self.logEvent("EKF_UPDATE", {
+                    "mid": mid, "x_hat": round(self.x_hat, 2), "P": round(self.P, 2),
+                    "R": round(R_noise, 2), "K": round(K_m, 4), "ER": round(er, 4),
+                    "Q": round(Q, 4), "dt": round(dt, 3), "sigma_f2": round(self.sigma_f2_hat, 4),
+                    "R_m": round(R_m, 2), "rho": round(self.rho, 4), "K_m": round(K_m, 6),
+                })
+
+            # Step 4: clock and caution (caution only with a mid)
+            self.t_last = t
+            if has_mid:
+                confidence = self.update_caution(mid)
+                self.logEvent("CAUTION_UPDATE", {
+                    "D_prev": self.D_prev, "E_t": round(self.E_t, 2), "C_t": round(confidence, 4)
+                })
+                diff = self.x_hat - mid
+                self.D_prev = 1.0 if diff > 0 else (-1.0 if diff < 0 else 0.0)
+                # Step 5: target position
+                decision = self.informed_target(mid, confidence, self.R_last)
+                skipped = decision["skipped_reason"]
+            else:
+                skipped = "no_mid"
+
+        # Step 6: prices from the belief
+        pr = self.belief_prices()
+        cash = self.holdings.get("CASH", 0)
+        shares = self.holdings.get(self.symbol, 0)
+        W_ref = decision["W"] if decision is not None else cash + shares * self.x_hat
+        q_q = max(1, int(floor(self.theta_q * W_ref / self.x_hat))) if self.x_hat > 0 else 1
+
+        # Step 7: budget per order, target first, then quotes
+        B = S = 0
+        d_req = decision["d"] if decision is not None else 0
+        d, side, limit_price = 0, None, None
+        if d_req > 0:
+            side, limit_price = "BUY", pr["buy"]
+            d = self.budget_qty(True, d_req, limit_price, B)
+            if d > 0:
+                self.place_limit_order(self.symbol, d, Side.BID, limit_price)
+                B += d
+            else:
+                skipped = "budget"
+        elif d_req < 0:
+            side, limit_price = "SELL", pr["sell"]
+            q = self.budget_qty(False, -d_req, limit_price, S)
+            if q > 0:
+                self.place_limit_order(self.symbol, q, Side.ASK, limit_price)
+                S += q
+                d = -q
+            else:
+                skipped = "budget"
+        blocked = []
+        bid_qty = self.budget_qty(True, q_q, pr["bid"], B)
+        if bid_qty > 0:
+            self.place_limit_order(self.symbol, bid_qty, Side.BID, pr["bid"])
+            B += bid_qty
+        else:
+            blocked.append("BID")
+        ask_qty = self.budget_qty(False, q_q, pr["ask"], S)
+        if ask_qty > 0:
+            self.place_limit_order(self.symbol, ask_qty, Side.ASK, pr["ask"])
+            S += ask_qty
+        else:
+            blocked.append("ASK")
+
+        r4 = lambda v: None if v is None else round(v, 4)  # noqa: E731
+        self.logEvent("FUND_DECISION", {
+            "z": r4(decision["z"]) if decision else None,
+            "z_den": r4(decision["z_den"]) if decision else None,
+            "w_star": r4(decision["w_star"]) if decision else None,
+            "w_now": r4(decision["w_now"]) if decision else None,
+            "d_star": decision["d_star"] if decision else 0,
+            "d": d,
+            "skipped_reason": skipped,
+            "side": side,
+            "limit_price": limit_price,
+            "mode": self.mode,
+            "m": round(pr["m"], 4),
+            "h": round(pr["h"], 4),
+            "x_hat": round(self.x_hat, 2),
+        })
+        self.logEvent("FUND_QUOTES", {
+            "bid_price": pr["bid"], "bid_qty": int(bid_qty), "ask_price": pr["ask"],
+            "ask_qty": int(ask_qty), "blocked_sides": blocked,
+        })

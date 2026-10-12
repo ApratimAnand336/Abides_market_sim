@@ -141,7 +141,111 @@ Plus the standard TradingAgent events (`HOLDINGS_UPDATED`, `ORDER_SUBMITTED`, `O
 
 ## Informed mode (v1.4, R3)
 
-Spec v1.4 Part 4. Filled in at milestone N3.
+Spec v1.4 Part 4. Switch: `mode="informed"` (constructor), or `build_config(fund_mode="informed",
+informed_design={...})`. `mode="price_only"` (the default) is the v1.3 agent byte for byte; its
+code paths are untouched (I8, T-N6). The informed code lives in new methods: `informed_cycle`,
+`research_update`, `belief_prices`, `informed_target`, `budget_qty`, and the informed branch of
+`get_wake_frequency`.
+
+### In plain language (§4.1)
+
+A fundamental investor with its own research. Every few minutes it gets a noisy reading of the
+company's true value (its *research*). It also learns from the market price, with less trust.
+It decides how much stock to HOLD from how mispriced the stock looks. The key change is that it
+prices every order from **what it believes the stock is worth**, not from the current quotes.
+It also keeps a small two-sided quote around its belief (the *quote layer*), so the market has
+liquidity at a price that reflects information, even when the book is empty. It may sell short
+and borrow, within limits.
+
+### Scheduling (§4.2)
+
+- **Wakes:** Poisson. The gap is max(1 s, Exp(wake_mean)), drawn from the agent's own
+  RandomState. The first wake is at the open + one such gap, through ABIDES' market-hours
+  handshake. At each wake the agent cancels its open orders and requests the spread.
+- **Research clock:** next_research = the time of the last reading + Exp(T_r), drawn from the
+  agent's RandomState. The first research time is the first wake + Exp(T_r). A reading is taken
+  at the first **wake** at or after next_research, not at next_research itself, and at most one
+  is taken per wake. The mean interval is therefore T_r plus about half a wake gap.
+
+### One decision cycle (§4.3), on the spread response at time t
+
+| step | what | formula |
+|---|---|---|
+| 0 (first cycle only) | initial belief | x̂ = oracle reading with variance σ_n; P = initial_uncertainty; t_last = t; next_research = t + Exp(T_r); go to step 6 (quotes only, even on an empty book) |
+| 1 | predict | dt = (t − t_last)/1e9; Q = q·σ̂_f²·dt; P ← P + Q |
+| 2 | research (if next_research ≤ t) | y_r = oracle reading with variance σ_r²; K_r = P/(P + σ_r²); x̂ ← x̂ + K_r(y_r − x̂); P ← (1 − K_r)P; next_research = t + Exp(T_r); log RESEARCH_READING |
+| 3 | market reading (two-sided book only) | mid = (bid + ask)/2; σ̂_f² update (unchanged); R_noise = (δ·mid)²·exp(λ(1 − ER)) (the v1.2 R); R_m = ρ·R_noise; K_m = P/(P + R_m); x̂ ← x̂ + K_m(mid − x̂); P ← (1 − K_m)P; log EKF_UPDATE |
+| 4 | clock, caution | t_last = t; C = update_caution(mid) (unchanged), only with a mid |
+| 5 | target position (only with a mid) | z = (x̂ − mid)/√(P + R_noise); w* = clip(0.5 + a_max·C·tanh(z/z0), −0.5, 1.5); W = cash + shares·mid; d* = round((w*·W − shares·mid)/mid); step cap ⌊s_max·W/mid⌋; dead band \|d\|·mid < b_f·W or \|d\| < 1 → 0 |
+| 6 | **prices from the belief** (no bid/ask) | m = m0 + κ_m·√P (required edge); h = m + h0 (quote half-width); target BUY at ⌊x̂ − m⌋, SELL at ⌈x̂ + m⌉; quotes: bid at ⌊x̂ − h⌋, ask at ⌈x̂ + h⌉, each of q_q = max(1, ⌊θ_q·W_ref/x̂⌋) shares (W_ref = W with a mid, else cash + shares·x̂); every price ≥ 1¢ |
+| 7 | budget, send | each order passes the §4.5 check (below); the target order is sent first, then the bid quote, then the ask quote; log FUND_DECISION and FUND_QUOTES |
+
+The order is predict → research → market: two standard scalar Kalman updates of the same state.
+A large ρ (price distrust) means the agent learns mainly from research; ρ near 1 makes it follow
+the price, like v1.3. A price that crosses the book executes against resting orders up to that
+price, and the remainder rests there. An agent that sees a large mispricing therefore buys
+aggressively up to its *reservation price* (x̂ − m) and then becomes the best bid: liquidity at
+the new, informed price. News is unchanged: `apply_news` shifts the belief, and the forced
+immediate cycle follows.
+
+### Why this fixes the R2 mechanism (§4.4)
+
+The ValueAgents knew the value but quoted near the book, so the price moved only when one side
+of the book ran out (book-creep; see AGENTS_ABIDES.md, "v1.4 finding"). Informed agents quote
+around their beliefs, so the book itself sits around the market's consensus belief. When
+research moves beliefs, the quotes move and orders cross at once. Disagreement between the
+agents' beliefs (different research noise, timing and trust in the price) makes them trade
+with each other. Volume then comes from information and disagreement, so it should rise when
+information arrives. For an optimal filter the belief is a martingale (its changes cannot be
+predicted), so belief-driven price changes should not be autocorrelated the way book-creep
+was. Whether the *consensus* of many partially informed agents keeps that property is exactly
+what targets T1/T2 test.
+
+### Budget (§4.5)
+
+Position limits are fractions of current wealth: `INFORMED_W_MIN = −0.5` (it may short up to
+half its wealth) and `INFORMED_W_MAX = 1.5` (it may hold up to 150% of its wealth in stock,
+borrowing the rest). Each order is checked for the worst case. Let n = shares held,
+B/S = this cycle's own BUY/SELL orders already sent (older orders were cancelled at the wake),
+p = the order's limit price, and W_p = cash + n·p:
+- a BUY of q is allowed only if (n + B + q)·p ≤ 1.5·W_p;
+- a SELL of q is allowed only if (n − S − q)·p ≥ −0.5·W_p;
+- otherwise q is reduced to the largest allowed integer; at 0 the order is skipped
+  (target: `skipped_reason = "budget"`; quote: the side is listed in `blocked_sides`);
+- if W_p ≤ 0, only orders that reduce |n| are allowed.
+
+The arithmetic is shared with the ABIDES gross limit (`utils/budget.allowed_qty_wealth`).
+
+### Parameters (§4.6, `param_ranges.INFORMED_RANGES`)
+
+They are drawn per agent with the global RNG of `build_config`, after the agent's
+FUNDAMENTAL_RANGES draws and before its RandomState seed, in this order:
+
+| name | range | meaning |
+|---|---|---|
+| wake_mean | 30–120 s, log | mean Poisson wake gap |
+| rho | 3–100, log | price distrust: R_m = ρ·R_noise |
+| m0 | 1–3¢ | base required edge |
+| kappa_m | 0–0.5 | extra edge per sd of the belief |
+| h0 | 1–5¢ | quote half-width beyond the edge |
+| theta_q | 0.005–0.02 | quote size, fraction of wealth per side |
+| T_r | design level, log-uniform | mean research interval (s) |
+| sigma_r | design level, log-uniform | research noise sd (¢) |
+
+The FUNDAMENTAL_RANGES (er_window, delta, lambda_er, sigma_n, initial_uncertainty, q, gamma, k,
+a_max, z0, s_max, b_f, k_news) are used as in price_only mode. `mu` is drawn, which keeps the
+draw order, but is unused. Starting wealth per agent is `informed_design["wealth_c"]`; the
+endowment is ⌊0.5·wealth/r̄⌋ shares as before.
+
+### Log events (informed mode)
+
+| event | keys |
+|---|---|
+| RESEARCH_READING | y_r, sigma_r, K_r, x_hat_before, x_hat_after, P_after |
+| EKF_UPDATE | the v1.3 keys (mid, x_hat, P, R = R_noise, K = K_m, ER, Q, dt, sigma_f2) + R_m, rho, K_m |
+| CAUTION_UPDATE | unchanged |
+| FUND_DECISION | the v1.3 keys (z, z_den, w_star, w_now, d_star, d, skipped_reason, side, limit_price) + mode, m, h, x_hat. z…w_now are None when there is no decision (skipped_reason first_cycle or no_mid) |
+| FUND_QUOTES | bid_price, bid_qty, ask_price, ask_qty, blocked_sides |
 
 ## History
 
@@ -150,5 +254,6 @@ Spec v1.4 Part 4. Filled in at milestone N3.
 | v1.0 (2026-09-25) | Scalar Kalman filter on the mid, no process noise; R = (δ·mid)²·exp(λ(1−ER)) with δ ∈ [0.002, 0.015], λ ∈ [1, 6]; flow sizing (buy a fraction of cash or sell a fraction of holdings, at least 1 share); after each order x̂ ×= 1.01 or 0.99; news x̂ ×= (1 + η·sentiment) | first version |
 | v1.1 (2026-10-08) | nudge removed; Q = q·σ̂_f²·dt; smaller δ, λ ranges; target-position sizing with z = gap/√P; volatility-scaled additive news with P += shift² | x̂ drifted to ≈$949; the gain fell to ≈0.0004; R claimed $2.6–70 of noise; 19 of 20 agents sold all 50 shares in 7–19 min; news moved beliefs by +$33 (spec v1.1 §0.5) |
 | v1.2 (2026-10-09) | **z = gap / √(P + R)** (`R_last` kept from the update); `z_den` logged | ≈1,900 shares/day per agent, holdings swinging 0 ↔ 100, all 20 in sync (spec v1.2 §0.4 P1) |
+| v1.4 (2026-10-12) | **informed mode** (`mode="informed"`): research readings every Exp(T_r), market readings down-weighted by ρ, leverage-bounded target w* ∈ [−0.5, 1.5], every order priced from the belief (x̂ ∓ m), a two-sided quote layer at x̂ ∓ h, worst-case budget, Poisson wakes. price_only unchanged | R2: the ValueAgents (87% of volume) priced from the book, so the price moved by book exhaustion; R3 replaces them with agents whose quotes carry information (spec v1.4 §0.3, D-R3-1) |
 
 Decisions and alternatives: [DECISIONS.md](DECISIONS.md).

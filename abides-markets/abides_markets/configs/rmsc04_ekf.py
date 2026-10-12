@@ -34,6 +34,8 @@ from abides_markets.agents.momentum_ekf import MomentumEKFAgent
 from abides_markets.agents.news_oracle_agent import NewsOracleAgent
 from abides_markets.configs.param_ranges import (
     FUNDAMENTAL_RANGES as FUND,
+    INFORMED_DESIGN_KEYS,
+    INFORMED_RANGES as INF,
     MOMENTUM_RANGES as MOM,
     draw,
 )
@@ -132,6 +134,11 @@ def build_config(
     #    agents (Noise, Value, ABIDES Momentum; market makers exempt in R3).
     #    None -> no limit (I8). {"L": 2.0} -> GrossLimit(2.0). No RNG draw.
     abides_budget=None,
+    # 10) spec v1.4 Part 4: "price_only" (v1.3, I8) or "informed". informed
+    #     needs informed_design = {"T_r_range_s": [lo, hi], "sigma_r_range_c":
+    #     [lo, hi], "wealth_c": int}. The count stays num_ekf_agents.
+    fund_mode="price_only",
+    informed_design=None,
 ):
     np.random.seed(seed)
 
@@ -261,37 +268,62 @@ def build_config(
     #      - different oracle noise (sigma_n)
     #      - different emotional memory (gamma)
     #      - different safety margins (mu)
+    assert fund_mode in ("price_only", "informed"), f"unknown fund_mode {fund_mode!r}"
+    if fund_mode == "informed":
+        assert informed_design is not None and set(INFORMED_DESIGN_KEYS) <= set(informed_design), \
+            f"fund_mode='informed' needs informed_design with {INFORMED_DESIGN_KEYS}"
+        _T = (*informed_design["T_r_range_s"], "log")
+        _S = (*informed_design["sigma_r_range_c"], "log")
     ekf_start_id = agent_count
     for j in range(agent_count, agent_count + num_ekf_agents):
+        # ── Randomized EKF Hyperparameters ──────────────────
+        # (ranges in param_ranges.py; the dict is built in this order, which
+        #  fixes the draw order: keep it unchanged)
+        fkw = dict(
+            er_window=draw(FUND, "er_window"),
+            delta=draw(FUND, "delta"),
+            lambda_er=draw(FUND, "lambda_er"),
+            sigma_n=draw(FUND, "sigma_n"),
+            initial_uncertainty=draw(FUND, "initial_uncertainty"),
+            # ── Randomized Caution Parameters ───────────────────
+            gamma=draw(FUND, "gamma"),
+            k=draw(FUND, "k"),
+            # ── Randomized Limit Price Parameters ───────────────
+            mu=draw(FUND, "mu"),
+            # ── spec v1.1: process noise, sizing, news ──────────
+            q=draw(FUND, "q"),
+            a_max=draw(FUND, "a_max"),
+            z0=draw(FUND, "z0"),
+            s_max=draw(FUND, "s_max"),
+            b_f=draw(FUND, "b_f"),
+            k_news=draw(FUND, "k_news"),
+        )
+        cash_j = starting_cash
+        if fund_mode == "informed":
+            # spec v1.4 §4.6: after the agent's FUNDAMENTAL_RANGES draws,
+            # before its RandomState seed; then the design's T_r and sigma_r
+            fkw.update(
+                mode="informed",
+                wake_mean=draw(INF, "wake_mean"),
+                rho=draw(INF, "rho"),
+                m0=draw(INF, "m0"),
+                kappa_m=draw(INF, "kappa_m"),
+                h0=draw(INF, "h0"),
+                theta_q=draw(INF, "theta_q"),
+                T_r=draw({"T_r": _T}, "T_r"),
+                sigma_r=draw({"sigma_r": _S}, "sigma_r"),
+            )
+            cash_j = int(informed_design["wealth_c"])
         agents.append(
             FundamentalistAgent(
                 id=j,
                 name="EKF_Fund_{}".format(j),
                 type="EKF_Fundamentalist",
                 symbol=ticker,
-                starting_cash=starting_cash,
+                starting_cash=cash_j,
                 log_orders=True,  # Always log our agents
                 wake_up_freq=str_to_ns("10S"),
-                # ── Randomized EKF Hyperparameters ──────────────────
-                # (ranges in param_ranges.py; keyword-argument evaluation
-                #  order fixes the draw order, keep it unchanged)
-                er_window=draw(FUND, "er_window"),
-                delta=draw(FUND, "delta"),
-                lambda_er=draw(FUND, "lambda_er"),
-                sigma_n=draw(FUND, "sigma_n"),
-                initial_uncertainty=draw(FUND, "initial_uncertainty"),
-                # ── Randomized Caution Parameters ───────────────────
-                gamma=draw(FUND, "gamma"),
-                k=draw(FUND, "k"),
-                # ── Randomized Limit Price Parameters ───────────────
-                mu=draw(FUND, "mu"),
-                # ── spec v1.1: process noise, sizing, news ──────────
-                q=draw(FUND, "q"),
-                a_max=draw(FUND, "a_max"),
-                z0=draw(FUND, "z0"),
-                s_max=draw(FUND, "s_max"),
-                b_f=draw(FUND, "b_f"),
-                k_news=draw(FUND, "k_news"),
+                **fkw,
                 # ── Initial share endowment ─────────────────────────
                 initial_exposure=ekf_initial_exposure,
                 reference_price=r_bar,
