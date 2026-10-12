@@ -205,7 +205,7 @@ def test_pnl_vs_hold_arithmetic():
 
 def test_payload_v1_1_fields(sim):
     _, _, payload = sim
-    assert payload["schema_version"] == "1.1"
+    assert payload["schema_version"] == "1.2"
     close = payload["stats"]["close"]
     for a in payload["agents"]["fundamental"] + payload["agents"]["momentum"]:
         s, f = a["start"], a["final"]
@@ -299,3 +299,25 @@ def test_gap_half_life_no_qualifying_lag():
     white = np.random.RandomState(0).normal(size=20_000)  # rho ~ 0 at every lag
     assert gap_half_life(white)["half_life_min"] is None
     assert gap_half_life(np.zeros(100))["half_life_min"] is None
+
+
+# ── spec v1.3 Part 9: realism block ───────────────────────────────────────
+
+
+def test_payload_realism_block(sim):
+    """The single-run realism block is the lab's own computation, carries the
+    bands and grades G1, G3-G11, and stays far below the 50 KB budget."""
+    from api import realism
+
+    end_state, config, payload = sim
+    r = payload["realism"]
+    assert [b["id"] for b in r["bands"]] == [b["id"] for b in realism.BANDS]
+    assert set(r["grades"]) == set(realism.RUN_GRADES)
+    assert all(g in (None, "PASS", "WARN", "FAIL") for g in r["grades"].values())
+    m = realism.run_metrics(realism.series_from_end_state(end_state, config))
+    assert r["metrics"]["sigma_1m_bps"] == pytest.approx(m["sigma_1m_bps"], rel=1e-6)
+    assert r["metrics"]["sigma_1m_bps"] == pytest.approx(1e4 * payload["stats"]["returns_1m"]["std"], rel=1e-6)
+    assert r["metrics"]["ac1"] == pytest.approx(payload["stats"]["returns_1m"]["acf"][0], rel=1e-6, abs=1e-9)
+    assert payload["oracle_events"] == []
+    size = len(json.dumps({"realism": r, "oracle_events": payload["oracle_events"]}, separators=(",", ":")))
+    assert size < 50_000, size

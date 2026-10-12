@@ -81,3 +81,26 @@ def test_population_defaults_and_bounds():
 
     q = RunParams(seed=1, end_time="10:00:00", num_fund=5, num_mom=5, num_value=50)
     assert make_run_id(p, "e") != make_run_id(q, "e")
+
+
+# ── spec v1.3 §9.3: the realism lab summary ───────────────────────────────
+
+
+def test_lab_summary_404_when_absent(client, monkeypatch, tmp_path):
+    from api import server
+
+    monkeypatch.setattr(server, "LAB_SUMMARY_PATH", tmp_path / "missing.json")
+    r = client.get("/api/lab/summary")
+    assert r.status_code == 404
+    assert "realism" in r.json()["detail"]
+
+
+def test_lab_summary_served_when_present(client, monkeypatch, tmp_path):
+    from api import server
+
+    p = tmp_path / "summary.json"
+    p.write_text('{"seeds": [42, 7], "configs": {}}', encoding="utf-8")
+    monkeypatch.setattr(server, "LAB_SUMMARY_PATH", p)
+    r = client.get("/api/lab/summary")
+    assert r.status_code == 200
+    assert r.json() == {"seeds": [42, 7], "configs": {}}

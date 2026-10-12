@@ -11,7 +11,7 @@ the dashboard must never invent one.
 """
 
 import re
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -442,8 +442,32 @@ class Range(Strict):
     scale: Optional[Literal["log"]] = None
 
 
+class RealismBand(Strict):
+    """One band of api/realism.py:BANDS (spec v1.3 Part 4)."""
+    id: str
+    key: str
+    label: str
+    unit: str
+    pass_: List[Tuple[Optional[float], Optional[float]]] = Field(alias="pass")
+    warn: List[Tuple[Optional[float], Optional[float]]]
+    text: str
+    note: str
+    scope: Literal["run", "lab"]
+    source: str
+    transform: Optional[Literal["abs"]] = None
+    rule: Optional[Literal["clustering", "spread"]] = None
+    metrics: Optional[List[str]] = None
+
+
+class Realism(Strict):
+    """Spec v1.3 §9.1: single-run realism metrics (Part 3) and grades G1, G3-G11."""
+    bands: List[RealismBand]
+    metrics: Dict[str, Union[None, float, int, List[float]]]
+    grades: Dict[str, Optional[Literal["PASS", "WARN", "FAIL"]]]
+
+
 class SimPayload(Strict):
-    schema_version: Literal["1.1"]
+    schema_version: Literal["1.2"]
     meta: Meta
     market: Market
     stats: MarketStats
@@ -451,3 +475,6 @@ class SimPayload(Strict):
     agents: Agents
     population: List[PopulationRow]
     hyperparam_ranges: Dict[Literal["fundamental", "momentum"], Dict[str, Range]]
+    realism: Realism
+    # spec v1.3 §6.1: scripted true-value events as applied (empty normally)
+    oracle_events: List[Dict[str, Any]]

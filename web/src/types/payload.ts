@@ -11,7 +11,7 @@
 export type Seconds = number;
 
 /** Payload schema this dashboard renders (api/__init__.py SCHEMA_VERSION). */
-export const SCHEMA_VERSION = '1.1';
+export const SCHEMA_VERSION = '1.2';
 
 export type EndTime = '10:00:00' | '11:00:00' | '12:00:00' | '14:00:00' | '16:00:00';
 
@@ -34,7 +34,7 @@ export interface RunParams {
 }
 
 export interface SimPayload {
-  schema_version: '1.1';
+  schema_version: '1.2';
   meta: {
     run_id: string;
     params: RunParams;
@@ -51,6 +51,74 @@ export interface SimPayload {
   agents: { fundamental: FundamentalAgent[]; momentum: MomentumAgent[] };
   population: PopulationRow[];
   hyperparam_ranges: Record<'fundamental' | 'momentum', Record<string, ParamRange>>;
+  /** spec v1.3 §9.1: single-run realism metrics and grades (api/realism.py). */
+  realism: Realism;
+  /** spec v1.3 §6.1: scripted true-value events as applied (empty in dashboard runs). */
+  oracle_events: OracleEvent[];
+}
+
+// ── realism (schema 1.2, spec v1.3 Part 9) ─────────────────────────────────
+
+export type Grade = 'PASS' | 'WARN' | 'FAIL';
+/** Closed interval [lo, hi]; null = open end. */
+export type Interval = [number | null, number | null];
+
+export interface Band {
+  id: string; // G1 … G13
+  key: string; // metric key in realism.metrics
+  label: string;
+  unit: string;
+  pass: Interval[];
+  warn: Interval[];
+  text: string; // human-readable band
+  note: string; // "what it means"
+  scope: 'run' | 'lab';
+  source: string;
+  transform?: 'abs';
+  rule?: 'clustering' | 'spread';
+  metrics?: string[];
+}
+
+export interface Realism {
+  bands: Band[];
+  /** Part 3 values of this run (scalars; ac_1_5, acf_abs and gap_rho are lists). */
+  metrics: Record<string, number | null | number[]>;
+  /** G1, G3–G11 of this single run (null: not computable, e.g. too short a session). */
+  grades: Record<string, Grade | null>;
+}
+
+export interface OracleEvent {
+  type: 'jump' | 'vol';
+  [k: string]: number | string | null;
+}
+
+/** GET /api/lab/summary (docs/v1.3/lab/summary.json), the parts the Realism tab reads. */
+export interface LabAgg {
+  median: number | null;
+  p10: number | null;
+  p90: number | null;
+  min: number | null;
+  max: number | null;
+  n_seeds: number;
+  status: 'OK' | 'INCOMPLETE';
+}
+export interface LabGrade {
+  id: string;
+  label: string;
+  unit: string;
+  band: string;
+  stats: Record<string, LabAgg> | { value: number | null; n_seeds: number; status: string };
+  grade: Grade | 'INCOMPLETE' | null;
+  pass_share: number | null;
+}
+export interface LabSummary {
+  generated: string;
+  seeds: number[];
+  configs: Record<string, { label: string; n_runs: number; engine_versions: string[]; dates: string[]; scorecard: Record<string, LabGrade> }>;
+  impact: null | {
+    G12: { value: number | null; ci: [number, number] | null; grade: Grade | 'N/A' | null };
+    G13: { value: number | null; grade: Grade | 'INCOMPLETE' | null };
+  };
 }
 
 /** One row per agent class in the market (spec v1.1 D4). Money in $. */

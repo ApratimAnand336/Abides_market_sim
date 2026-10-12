@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, BarChart2, Cpu, Newspaper, Play } from 'lucide-react';
+import { Activity, BarChart2, Cpu, Gauge, Newspaper, Play } from 'lucide-react';
 import { useHealth, usePayload, usePresets, useRunController, useRunList } from './hooks/useSimulation';
 import { useQueryParam, useTab, type TabId } from './lib/urlState';
 import { SCHEMA_VERSION, type SimPayload } from './types/payload';
@@ -13,6 +13,7 @@ import { MarketOverview } from './tabs/MarketOverview';
 import { AgentPerformance } from './tabs/AgentPerformance';
 import { NewsSentiment } from './tabs/NewsSentiment';
 import { MarketHealth } from './tabs/MarketHealth';
+import { Realism } from './tabs/Realism';
 import { cn } from './lib/cn';
 
 const DEFAULT_FORM: SimForm = { seed: 42, end_time: '16:00:00', num_fund: 5, num_mom: 5, ...POPULATION_DEFAULTS, news: [] };
@@ -22,6 +23,7 @@ const TAB_DEFS: { id: TabId; label: string; icon: typeof BarChart2; iconClass: s
   { id: 'agents', label: 'Agent Performance', icon: Cpu, iconClass: 'text-mid' },
   { id: 'news', label: 'News & Sentiment', icon: Newspaper, iconClass: 'text-spread' },
   { id: 'health', label: 'Market Health', icon: Activity, iconClass: 'text-warn' },
+  { id: 'realism', label: 'Realism', icon: Gauge, iconClass: 'text-accent' },
 ];
 
 export function App() {
@@ -128,6 +130,8 @@ export function App() {
         return <NewsSentiment payload={payload} finbertAvailable={!!health.data?.finbert_available} />;
       case 'health':
         return <MarketHealth payload={payload} />;
+      case 'realism':
+        return <Realism payload={payload} />;
     }
   }, [payload, tab, health.data?.finbert_available]);
 

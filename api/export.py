@@ -17,6 +17,7 @@ import pandas as pd
 from abides_markets.configs.param_ranges import ranges_for_export
 
 from . import SCHEMA_VERSION
+from . import realism
 from .downsample import change_points, downsample_columns, lttb_indices
 from .schema import RunParams, SimPayload
 from .stats import gap_series, market_stats, value_at
@@ -660,6 +661,15 @@ def build_payload(
         del a["_kf_full"]
 
     stats_rounded = _round_tree(stats)
+
+    # ── realism (spec v1.3 §9.1): the lab's metrics on this single run ────
+    r_series = realism.series_from_end_state(end_state, config, ticker)
+    r_metrics = realism.run_metrics(r_series)
+    realism_block = {
+        "bands": realism.BANDS,
+        "metrics": _round_tree(r_metrics),
+        "grades": realism.grade_run(r_metrics),
+    }
     payload = {
         "schema_version": SCHEMA_VERSION,
         "meta": {
@@ -678,6 +688,8 @@ def build_payload(
         "agents": {"fundamental": fund, "momentum": mom},
         "population": population(agents, ob.history, close),
         "hyperparam_ranges": ranges_for_export(),
+        "realism": realism_block,
+        "oracle_events": _round_tree(r_series["oracle_events"]),
     }
     SimPayload.model_validate(payload)
     return payload
