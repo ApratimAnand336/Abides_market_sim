@@ -105,10 +105,10 @@ def _atomic_write_json(path: Path, obj) -> None:
 # ── the simulation itself ─────────────────────────────────────────────────
 
 
-def build_run_config(params: RunParams) -> Dict:
-    from abides_markets.configs.rmsc04_ekf import build_config
-
-    return build_config(
+def run_config_kwargs(params: RunParams) -> Dict:
+    """The build_config keyword arguments for one RunParams (shared with the
+    realism lab, api/lab.py, which adds its scenario switches to them)."""
+    return dict(
         seed=params.seed,
         end_time=params.end_time,
         ticker=TICKER,
@@ -124,6 +124,12 @@ def build_run_config(params: RunParams) -> Dict:
         stdout_log_level="WARNING",
         news_events=[(n.offset, TICKER, n.sentiment, n.headline) for n in params.news] or None,
     )
+
+
+def build_run_config(params: RunParams) -> Dict:
+    from abides_markets.configs.rmsc04_ekf import build_config
+
+    return build_config(**run_config_kwargs(params))
 
 
 def execute(params: RunParams, run_id: str, engine: str, runs_dir: Path = RUNS_DIR) -> Dict:

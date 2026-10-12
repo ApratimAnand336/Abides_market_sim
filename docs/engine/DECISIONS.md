@@ -178,6 +178,19 @@ Appendix B. Implementation decisions follow under "Decisions made while implemen
 
 (Added by milestone; each with its evidence.)
 
+### 2026-10-12 (L2) — 20 distinct seeds: 42, 7, 1–6, 8–19
+- **Decision:** `api.lab.SEEDS = [42, 7, 1, 2, 3, 4, 5, 6, 8, …, 19]`.
+- **Reason:** spec §5.0 writes "[42, 7, 1, 2, 3, ..., 18] (20 seeds)", which contains 7 twice (19 distinct seeds). The first c1 report counted seed 7 twice; found and fixed before the c1 numbers were used. 42 and 7 keep continuity with v1.1/v1.2.
+- **Alternatives:** 19 seeds (literal list).  **Evidence:** c1 heavy-trader table listed seed 7 twice.
+
+### 2026-10-12 (L2) — The lab schedules its own processes instead of a multiprocessing Pool
+- **Decision:** `scripts/realism_lab.py` starts one spawned `Process` per simulation, at most `--workers` at once, and terminates one that runs over 15 minutes.
+- **Reason:** spec §7.1 asks for one simulation per process (Pool with maxtasksperchild = 1) **and** a per-run timeout. A Pool cannot kill one stuck task: its AsyncResult never completes when a worker is killed. The manual scheduler gives the same one-run-per-process isolation with a working timeout.
+
+### 2026-10-12 (L2) — Workers sized by memory
+- **Decision:** c1 ran with 4 workers, not the default 6.
+- **Reason:** a full day uses ≈ 470 MB per process; the development laptop had 2.1–2.9 GB free with 16 cores.
+
 ### 2026-10-12 (L1) — The half-life estimator is kept as specified; its bias is reported
 - **Decision:** `gap_half_life_min` is `api.stats.gap_half_life(gap, LAB_GAP_LAGS)` exactly as spec v1.3 §3.7 defines it. T-R8's 45-min and 90-min cases are strict xfails with the measured bias in the reason.
 - **Reason:** on one 6.5 h day the de-meaned sample ACF is biased low for long half-lives: a true 45 min reads as 20.8 min (−54%), 90 min as 27.1 min (−70%) (median of 20 synthetic AR(1) paths). This is the estimator's mean-removal bias, not a coding error. Changing the estimator would change what G10 grades, which is the owner's call (bands are revisited before R5).

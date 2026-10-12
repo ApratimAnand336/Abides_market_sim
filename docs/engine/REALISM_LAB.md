@@ -134,7 +134,27 @@ normal days, test T-R7), so 2–3× means "no regimes".
 
 ## Configurations and scenarios
 
-(to be completed with the runner, L2–L5)
+Defined once in `api/lab.py:CONFIGS` (spec v1.3 Part 5, Appendix C). Every run is a full day
+(09:30–16:00) with 20 fundamentalists and 12 momentum EKF agents, 1000 noise agents, 2 market
+makers and 97 value agents unless stated, on **20 seeds: 42, 7, 1–6, 8–19**. Event time
+t0 = 11:00.
+
+| Id | Campaign | Difference from C-DEF | Baseline (same seed) |
+|---|---|---|---|
+| C-DEF | c1 | none (= S1, a quiet day) | — |
+| C-V20 | c1 | 20 value agents (a different market with the same true value: compare distributions, not seeds) | — |
+| S4 / S4n | c1 | headline ±0.9 at 11:00 ("hype": beliefs only) | C-DEF |
+| S2 / S2n | c2 | true value jumps ±2% of r̄ (±$20) at 11:00 | C-DEF |
+| S3 | c2 | S2 + the S4 headline at the same second | C-DEF (and S2) |
+| S5 | c2 | true-value innovations ×3, 11:00–12:00 | C-DEF |
+| IMP-0 … IMP-5, IMP-1s | c3 | impact probe: BUY 100 / 600 / 3,000 / 6,000 / 30,000, SELL 6,000, from 11:00 over 300 s in 30 market orders | C-DEF (C-NULL if the null probe were not neutral) |
+| S6 | c4 | both market makers paused 13:00–13:30 | C-DEF |
+| S7a / S7b | c4 | our momentum agents' starting wealth ×3 / ×10 | C-DEF |
+| S7c | c4 | S7b + the S2 jump | S7b (jump), C-DEF (deltas) |
+
+`api.lab.lab_config(config_id, seed)` returns the `build_config(...)` dict of one entry, built
+from the same keyword arguments as the dashboard (`api.jobs.run_config_kwargs`) plus the
+scenario switches.
 
 ## Scenario analysis definitions (spec v1.3 §7.3)
 
@@ -153,7 +173,35 @@ centred 30 s rolling mean. Times are minutes after the trigger t0 (11:00 unless 
 
 ## How to run
 
-(to be completed with the runner, L2)
+```bash
+python scripts/realism_lab.py --campaign c1            # C-DEF, C-V20, S4, S4n x 20 seeds
+python scripts/realism_lab.py --campaign c2|c3|c4|all
+python scripts/realism_lab.py --campaign c1 --configs C-DEF --seeds 42,7 --workers 2
+python scripts/realism_lab.py --report-only           # re-aggregate what is in runs/_lab
+python scripts/realism_lab.py --campaign regression   # 9 runs vs the stored baseline (§7.6)
+```
+
+One simulation per spawned process, at most `--workers` at a time (default
+min(cpu − 1, 6)), each killed after 15 minutes. A full day takes about 25 s and **≈ 470 MB**
+of memory per process (measured 2026-10-12): choose `--workers` from free memory, not only
+from cores (c1's 80 runs took 9 minutes with 4 workers). Runs are resumable: a run whose
+`metrics.json` has the same engine version and config hash is skipped unless `--force`.
+Every report step aggregates **all** runs present in `runs/_lab/`, whatever the campaign.
+
+## How to read the outputs
+
+| File | Contents |
+|---|---|
+| `runs/_lab/<config>/<seed>/metrics.json` | every Part 3 metric of the run, agent sanity per class, zero_sum, invariant flags (conservation, book sanity, long-only), the I1 fingerprint (EXEC and holdings sha256), news belief shifts, probe summary, oracle events, config, config hash, engine version, wall time, peak memory |
+| `runs/_lab/<config>/<seed>/series.npz` | float32 `mid_1s`, `val_1s`, `spr_1s`, `close_1m`, `vol_1m`, `net_1m` (net shares bought per class per minute), `fund_xhat_10s`, `mom_states` (≈ 160 KB) |
+| `runs/_lab/tables.md` | the markdown tables of the last report step (pasted into the reports) |
+| `docs/v1.3/lab/summary.json` | committed: per config the scorecard (median, p10, p90, min, max, n, grade, pass_share), reported diagnostics, class tables, heavy-trader watch; per scenario the §7.3 statistics, per-seed values and response curves; the impact summary; the bands |
+| `docs/v1.3/lab/figures/*.png` | scorecard, jump / news / impact responses, volatility burst, MM pause |
+| `docs/v1.3/lab/BASELINE.md` | the findings report |
+
+Grades are those of the 20-seed **median**; `pass_share` says how many seeds pass on their
+own. "INCOMPLETE" means fewer than 15 valid seeds. A scenario statistic is a distribution
+over seeds of a *treated − baseline* difference on the same seed.
 
 ## How to read the outputs
 
