@@ -14,7 +14,7 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 |---|---|---|---|
 | N0 | done | 9537703 | sim_data.pkl clean (owner, 2026-10-12) |
 | N1 | done | 9e6b063 | G10 key now gap_half_life_corr_min; T-N9 coverage strict xfail (spec issue, 59%) |
-| N2 | code done (this); campaign b running | | 2 commits: code, then campaign-b report |
+| N2 | done | ce7beae + (this) | campaign b: volume −28%, grades unchanged |
 | N3 | todo | | |
 | N4 | todo | | STOP here for owner review |
 | N5 | todo | | |
@@ -36,6 +36,7 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 - (sim_data.pkl: clean, owner-confirmed; HANDOFF.md tracked from N0; CLAUDE.md/.claude stay untracked.)
 
 ## Log (newest first, one line each)
+- 2026-10-12 N2 campaign b: 40/40 runs, 5 min; CAMPAIGN_b.md, RESULTS.md §2.
 - 2026-10-12 N2 code: GrossLimit, budget switch, I9, lab_v14 (b/s1/s1r2, selection). Suite 300 passed.
 - 2026-10-12 N1: corrected half-life + table, jump-window metrics, r3_scorecard; v1.3 HL recomputed (1.6/4.0 min).
 - 2026-10-12 N0: spec copy, D-R3-1..6, doc skeletons.
