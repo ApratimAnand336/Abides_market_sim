@@ -43,14 +43,23 @@ class NewsItem(Strict):
 
 
 class RunParams(Strict):
+    """Defaults = the v1.4 default market P0 (spec v1.4 §6.1, v1.4.2 D-R3-7):
+    60 informed fundamentalists (design D-60fl2M, learning off), 0 value
+    agents, budget on. The v1.3 market is num_value=97, num_fund=20,
+    fund_mode="price_only" (budget then off by default)."""
+
     seed: int = Field(ge=0, le=2**31 - 1)
     end_time: Literal["10:00:00", "11:00:00", "12:00:00", "14:00:00", "16:00:00"]
-    num_fund: int = Field(ge=0, le=20)
+    num_fund: int = Field(default=60, ge=0, le=200)
     # the config takes momentum agents from the 12 momentum slots
-    num_mom: int = Field(ge=0, le=12)
+    num_mom: int = Field(default=12, ge=0, le=12)
+    fund_mode: Literal["informed", "price_only"] = "informed"
+    # gross budget on Noise/Value/ABIDES-Momentum agents (spec v1.4 Part 5);
+    # None = on for "informed", off for "price_only" (reproduces v1.3)
+    budget: Optional[bool] = None
     # market population (spec v1.1 D4); part of the canonical params, so the
     # cache key changes with them
-    num_value: int = Field(default=97, ge=0, le=150)
+    num_value: int = Field(default=0, ge=0, le=150)
     num_noise: int = Field(default=1000, ge=0, le=2000)
     num_mm: int = Field(default=2, ge=0, le=2)
     news: List[NewsItem] = []
@@ -298,6 +307,10 @@ class FundEkf(Strict):
     ER_smooth: List[float]
     Q: List[float]  # $^2, spec v1.1 F3
     sigma_f2: List[float]  # $^2 / s
+    # spec v1.4.1: learning from prices (present only when it is on)
+    eps: Optional[List[float]] = None
+    g: Optional[List[float]] = None
+    rho_eff: Optional[List[float]] = None
 
 
 class FundCaution(Strict):
@@ -319,8 +332,16 @@ class FundNews(Strict):
     P_after: float  # $^2
 
 
+class FundResearch(Strict):
+    t: List[float]
+    y_r: List[float]  # $
+
+
 class FundamentalAgent(AgentBase):
     kind: Literal["fundamental"]
+    mode: Literal["informed", "price_only"]  # spec v1.4 Part 4
+    detail: bool  # spec v1.4 §6.3: False -> series not stored
+    research: FundResearch
     ekf: FundEkf
     caution: FundCaution
     news: List[FundNews]
@@ -467,14 +488,16 @@ class Realism(Strict):
 
 
 class SimPayload(Strict):
-    schema_version: Literal["1.2"]
+    schema_version: Literal["1.3"]
     meta: Meta
     market: Market
     stats: MarketStats
     news: List[NewsRecord]
     agents: Agents
     population: List[PopulationRow]
-    hyperparam_ranges: Dict[Literal["fundamental", "momentum"], Dict[str, Range]]
+    hyperparam_ranges: Dict[Literal["fundamental", "momentum", "informed", "price_learning"], Dict[str, Range]]
+    # spec v1.4 §6.3: detailed series for at most 20 fundamentalists
+    agents_detail_note: Optional[str]
     realism: Realism
     # spec v1.3 §6.1: scripted true-value events as applied (empty normally)
     oracle_events: List[Dict[str, Any]]

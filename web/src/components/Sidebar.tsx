@@ -12,6 +12,7 @@ export interface SimForm {
   seed: number;
   end_time: EndTime;
   num_fund: number;
+  fund_mode: 'informed' | 'price_only'; // spec v1.4 §6.2
   num_mom: number;
   // market population (spec v1.1 D4)
   num_value: number;
@@ -20,7 +21,8 @@ export interface SimForm {
   news: NewsInput[];
 }
 
-export const POPULATION_DEFAULTS = { num_value: 97, num_noise: 1000, num_mm: 2 } as const;
+// spec v1.4 §6.1: the default market has no value agents (informed fundamentalists replace them)
+export const POPULATION_DEFAULTS = { num_value: 0, num_noise: 1000, num_mm: 2 } as const;
 
 const END_TIMES: { value: EndTime; label: string }[] = [
   { value: '10:00:00', label: '10:00:00 (30 min)' },
@@ -176,7 +178,23 @@ export function Sidebar({
             />
             {!seedValid && <p className="-mt-2 text-[11px] text-rose-300">Seed must be an integer 0 – 2,147,483,647</p>}
             <Select label="Market Close Time" value={form.end_time} options={END_TIMES} onChange={(v) => setForm({ ...form, end_time: v })} />
-            <Slider label="Fundamental EKF" value={form.num_fund} min={0} max={20} onChange={(v) => setForm({ ...form, num_fund: v })} />
+            <SegmentedControl
+              label="Fundamentalist mode"
+              value={form.fund_mode}
+              options={[
+                { value: 'informed', label: 'Informed (v1.4)' },
+                { value: 'price_only', label: 'Price-only (v1.3)' },
+              ]}
+              onChange={(v) => setForm({ ...form, fund_mode: v })}
+            />
+            <Slider
+              label={form.fund_mode === 'informed' ? 'Fundamentalists (informed)' : 'Fundamentalists (price-only)'}
+              value={form.num_fund}
+              min={0}
+              max={200}
+              onChange={(v) => setForm({ ...form, num_fund: v })}
+              help={form.fund_mode === 'informed' ? 'Own research + quotes around their beliefs; default 60' : 'v1.3 agent: learns only from the price'}
+            />
             <Slider
               label="Momentum EKF"
               value={form.num_mom}
@@ -212,7 +230,7 @@ export function Sidebar({
                     min={0}
                     max={150}
                     onChange={(v) => setForm({ ...form, num_value: v })}
-                    help="See the hidden true value; default 97"
+                    help="ABIDES value agents (v1.3 market: 97); default 0"
                   />
                   <Slider
                     label="Noise agents"

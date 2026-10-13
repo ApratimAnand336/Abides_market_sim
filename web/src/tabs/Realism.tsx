@@ -5,8 +5,8 @@
 import { useMemo } from 'react';
 import type { EChartsOption } from 'echarts';
 import { useQuery } from '@tanstack/react-query';
-import { FlaskConical, Gauge, Microscope } from 'lucide-react';
-import type { Band, Grade, LabAgg, LabGrade, LabSummary, SimPayload } from '../types/payload';
+import { FlaskConical, Gauge, Microscope, Target } from 'lucide-react';
+import type { Band, Grade, LabAgg, LabGrade, LabSummary, R3Item, SimPayload } from '../types/payload';
 import { api, ApiError } from '../lib/api';
 import { EChart } from '../charts/EChart';
 import { C, TOOLTIP_BASE, categoryAxis, grid, tipHtml, valueAxis } from '../charts/theme';
@@ -64,6 +64,7 @@ function bandValue(b: Band, get: (k: string) => number | null): string {
   }
   const v = get(b.key);
   if (b.id === 'G10' && v == null) return 'none (no lag qualifies)';
+  if (b.id === 'G10') return `${fmtVal(v, b.unit)}`;
   return fmtVal(b.transform === 'abs' && v != null ? Math.abs(v) : v, b.unit);
 }
 
@@ -80,6 +81,7 @@ export function Realism({ payload }: { payload: SimPayload }) {
   return (
     <div className="space-y-6">
       <ThisRun bands={runBands} metrics={metrics} grades={grades} duration={payload.meta.session.duration_s} />
+      {lab.data?.r3 && <R3Targets summary={lab.data} metrics={metrics} />}
       {lab.data && <LabBaseline bands={bands} summary={lab.data} />}
       <Diagnostics metrics={metrics} />
     </div>
@@ -123,10 +125,103 @@ function ThisRun({ bands, metrics, grades, duration }: { bands: Band[]; metrics:
                     </span>
                   </Tooltip>
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-text">{bandValue(b, (k) => num(metrics, k))}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-text">
+                  {b.id === 'G10' ? <HalfLife metrics={metrics} band={b} /> : bandValue(b, (k) => num(metrics, k))}
+                </td>
                 <td className="px-3 py-2 font-mono text-[12px] text-muted">{b.text}</td>
                 <td className="px-3 py-2">
                   <GradeChip grade={grades[b.id]} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/** G10 (spec v1.4 §3.1): corrected half-life with the range of true half-lives
+ *  consistent with the reading; the v1.3 (de-meaned) reading in the tooltip. */
+function HalfLife({ metrics, band }: { metrics: Metrics; band: Band }) {
+  const corr = num(metrics, band.key);
+  const read = num(metrics, 'gap_half_life_read_min');
+  const old = num(metrics, 'gap_half_life_min');
+  const above = metrics['gap_half_life_corr_above'] === 1 || (metrics['gap_half_life_corr_above'] as unknown) === true;
+  const r = metrics['gap_half_life_range'];
+  const range = Array.isArray(r) && r.length === 2 ? ` (range ${r[0]}–${r[1]} min)` : '';
+  const text = above ? '>240 min' : corr == null ? 'none (no lag qualifies)' : `${fmtVal(corr, 'min')}${range}`;
+  const tip =
+    `Corrected reading (no de-meaning + synthetic correction table). Uncorrected reading ${fmtVal(read, 'min')}; ` +
+    `v1.3 estimator (biased for slow mispricing) ${fmtVal(old, 'min')}.`;
+  return (
+    <Tooltip text={tip}>
+      <span tabIndex={0} className="cursor-help border-b border-dotted border-dim">
+        {text}
+      </span>
+    </Tooltip>
+  );
+}
+
+const R3_RUN_KEYS: Record<string, string> = {
+  ac1: 'ac1',
+  vr5: 'vr5',
+  vol_ratio_price_value: 'vol_ratio_price_value',
+  vv_corr: 'vv_corr',
+  spread_med_bps: 'spread_med_bps',
+  spread_p95_bps: 'spread_p95_bps',
+  shares_executed: 'shares_executed',
+  max_abs_gap: 'max_abs_gap',
+};
+
+/** spec v1.4 §6.4: the R3 targets and limits of the final market (lab, 20 seeds),
+ *  with this run's value where a single run defines it. Words, not colour alone. */
+function R3Targets({ summary, metrics }: { summary: LabSummary; metrics: Metrics }) {
+  const r3 = summary.r3!;
+  const items: R3Item[] = [...Object.values(r3.targets), ...Object.values(r3.limits)];
+  const thisRun = (it: R3Item): string => {
+    const cs = it.checks.filter((c) => c.scope === 'C' && R3_RUN_KEYS[c.key]);
+    if (!cs.length) return '—';
+    return cs
+      .map((c) => {
+        const v = num(metrics, R3_RUN_KEYS[c.key]);
+        return v == null ? '—' : fmtVal(c.op === 'abs<=' ? Math.abs(v) : v, '');
+      })
+      .join(' / ');
+  };
+  return (
+    <Card>
+      <SectionHeader
+        icon={Target}
+        title="R3 targets (final market, lab)"
+        caption={`${r3.config} · ${r3.seeds} seeds · ${r3.date.join(', ')} · ${r3.engine.join(', ')}`}
+      />
+      <p className="mb-4 text-[13px] text-muted">
+        Spec v1.4 Part 2 with the corrected units of v1.4.1. The lab value is the 20-seed median; T5 and T6 use the ±2% value-jump runs. T3 and
+        T6 are open issues carried into R4 (K14, K15).
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-border text-left text-muted">
+              <th className="micro px-3 py-2 font-semibold">#</th>
+              <th className="micro px-3 py-2 font-semibold">Target / limit</th>
+              <th className="micro px-3 py-2 font-semibold">Lab check (median)</th>
+              <th className="micro px-3 py-2 text-right font-semibold">This run</th>
+              <th className="micro px-3 py-2 font-semibold">Lab result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it.id} className="border-b border-border/60 last:border-0">
+                <td className="px-3 py-2 font-mono text-dim">{it.id}</td>
+                <td className="px-3 py-2 text-text">{it.label}</td>
+                <td className="px-3 py-2 font-mono text-[12px] text-muted">
+                  {it.checks.map((c) => `${c.scope} ${c.key} ${fmtVal(c.value, '')} ${c.op.replace('abs<=', '|·| ≤').replace('<=', '≤').replace('>=', '≥')} ${c.threshold}`).join(' · ')}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-text">{thisRun(it)}</td>
+                <td className="px-3 py-2">
+                  <GradeChip grade={it.status === 'MISSING' ? 'N/A' : it.status} />
                 </td>
               </tr>
             ))}
@@ -143,7 +238,8 @@ function aggText(a: LabAgg | undefined, unit: string): string {
 }
 
 function LabBaseline({ bands, summary }: { bands: Band[]; summary: LabSummary }) {
-  const cfg = summary.configs['C-DEF'];
+  const cfgId = summary.baseline_config ?? 'C-DEF';
+  const cfg = summary.configs[cfgId];
   if (!cfg) return null;
   const sc = cfg.scorecard;
   const rows = bands.filter((b) => b.scope === 'run' || b.id === 'G2');
@@ -167,11 +263,11 @@ function LabBaseline({ bands, summary }: { bands: Band[]; summary: LabSummary })
       <SectionHeader
         icon={FlaskConical}
         title="Lab baseline (20 seeds)"
-        caption={`C-DEF · ${cfg.n_runs} runs · ${cfg.dates.join(', ')} · ${cfg.engine_versions.join(', ')}`}
+        caption={`${cfgId} · ${cfg.n_runs} runs · ${cfg.dates.join(', ')} · ${cfg.engine_versions.join(', ')}`}
       />
       <p className="mb-4 text-[13px] text-muted">
-        The default market (97 value agents, 20 + 12 of our agents, full day) over {summary.seeds.length} seeds: median [p10–p90]. The grade
-        is that of the median; pass share is how many seeds pass on their own.
+        {summary.baseline_label ?? 'The v1.3 default market (97 value agents, 20 + 12 of our agents, full day)'} over {summary.seeds.length} seeds:
+        median [p10–p90]. The grade is that of the median; pass share is how many seeds pass on their own.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-[13px]">

@@ -17,7 +17,8 @@ from .jobs import REPO_ROOT, JobManager, QueueFull, engine_version, list_runs, p
 from .schema import RunParams
 
 # spec v1.3 §9.3: the realism lab's committed 20-seed summary
-LAB_SUMMARY_PATH = REPO_ROOT / "docs" / "v1.3" / "lab" / "summary.json"
+LAB_SUMMARY_PATH = REPO_ROOT / "docs" / "v1.4" / "lab" / "summary.json"  # spec v1.4 §6.4 (P0, 20 seeds)
+LAB_SUMMARY_V13 = REPO_ROOT / "docs" / "v1.3" / "lab" / "summary.json"
 
 manager: Optional[JobManager] = None
 
@@ -103,9 +104,10 @@ def lab_summary():
     """The realism lab's 20-seed summary (docs/v1.3/lab/summary.json), 404 if
     the lab has not been run. Read on every request: it changes only when the
     lab report is regenerated."""
-    if not LAB_SUMMARY_PATH.exists():
+    path = LAB_SUMMARY_PATH if LAB_SUMMARY_PATH.exists() else LAB_SUMMARY_V13
+    if not path.exists():
         raise HTTPException(404, "no realism-lab summary (run scripts/realism_lab.py)")
-    return Response(content=LAB_SUMMARY_PATH.read_bytes(), media_type="application/json")
+    return Response(content=path.read_bytes(), media_type="application/json")
 
 
 class SentimentRequest(BaseModel):

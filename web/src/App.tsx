@@ -16,7 +16,8 @@ import { MarketHealth } from './tabs/MarketHealth';
 import { Realism } from './tabs/Realism';
 import { cn } from './lib/cn';
 
-const DEFAULT_FORM: SimForm = { seed: 42, end_time: '16:00:00', num_fund: 5, num_mom: 5, ...POPULATION_DEFAULTS, news: [] };
+// spec v1.4 §6.1: the default market is P0 (60 informed fundamentalists, no value agents)
+const DEFAULT_FORM: SimForm = { seed: 42, end_time: '16:00:00', num_fund: 60, fund_mode: 'informed', num_mom: 12, ...POPULATION_DEFAULTS, news: [] };
 
 const TAB_DEFS: { id: TabId; label: string; icon: typeof BarChart2; iconClass: string }[] = [
   { id: 'overview', label: 'Market Overview', icon: BarChart2, iconClass: 'text-up' },
@@ -59,6 +60,7 @@ export function App() {
         seed: p.seed,
         end_time: p.end_time,
         num_fund: p.num_fund,
+        fund_mode: p.fund_mode ?? 'informed',
         num_mom: p.num_mom,
         num_value: p.num_value ?? POPULATION_DEFAULTS.num_value,
         num_noise: p.num_noise ?? POPULATION_DEFAULTS.num_noise,

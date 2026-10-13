@@ -22,7 +22,7 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 | N4c | done, STOPPED | 78deb78 | selected D-60fl2M fails T3, T6 -> STOP (§3.5); learning slows jumps |
 | N4d | done | 89a4f20 | v1.4.2: OrderBook totals, bit-identical, about −23% |
 | N5 | done | c1dfa51 + (this) | 245 runs; P0 20 seeds: T1,T2,T4,T5,T7,L1-L6 PASS; T3,T6 FAIL (open, R4) |
-| N6 | todo | | default switch; re-record I8; add I8-legacy |
+| N6 | IN PROGRESS (WIP commit) | | applied: versions 1.3/1.4, RunParams defaults = P0, run kwargs, payload detail/research/learning, population label, lab summary endpoint, lab legacy pinning, dashboard. TODO: tests, I8 re-record + I8-legacy, payload size, regression, npm build, screenshot, docs |
 | N7 | todo | | |
 
 ## Key facts you would otherwise re-derive
@@ -36,6 +36,8 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 - I8 hash = v1.3 default market; must hold until N6.
 
 ## Open issues / owner decisions pending
+- **Resume N6 from the WIP commit**: see runs/_n6_wip/RESUME.md and the N6 TODO list below. Tests are EXPECTED to fail until updated (I8 hash, sim_helpers invariant market num_fund=30, test_scenarios fingerprint base, T-N6/T-N13 -> legacy hash, test_server bounds, test_export).
+- New K16: informed budget exceeded by <=0.9 pp of wealth right after jumps (RESULTS.md 4-6); owner decides.
 - Owner answered N4c with spec v1.4.2: D-60fl2M (learning off) is the R3 design; T3/T6 open -> R4 (K14/K15); trimmed campaigns; then N6, N7, STOP.
 - git stash holds 2 entries of stale generated reports (safe to drop) and the applied N4c code stash.
 - Owner answered N4 with spec v1.4.1 (docs/specs/spec_v1.4.1.txt): bps limits, L6, price learning, campaign s2.
@@ -45,6 +47,7 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 - (sim_data.pkl: clean, owner-confirmed; HANDOFF.md tracked from N0; CLAUDE.md/.claude stay untracked.)
 
 ## Log (newest first, one line each)
+- 2026-10-14 N6 WIP commit (default switch applied, tests/docs pending).
 - 2026-10-14 N5: step + final campaigns (245 runs), RESULTS_n5.md, figures, docs/v1.4/lab/summary.json.
 - 2026-10-13 N4d: OrderBook running totals (T-S1/T-S2 pass), 63 s -> 48 s per D-60fl2M day.
 - 2026-10-13 N4c: s2 240 runs + s2r 50 runs; selection D-60fl2M; STOP.

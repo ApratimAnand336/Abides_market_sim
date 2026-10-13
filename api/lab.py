@@ -276,7 +276,12 @@ def run_params(config_id: str, seed: int) -> RunParams:
     """The RunParams part of one entry: full day, 20 + 12 of our agents."""
     d = CONFIGS[config_id]
     news = [NewsItem(offset=T0_OFFSET, headline=h, sentiment=s) for h, s in d.get("news", [])]
-    return RunParams(seed=seed, end_time="16:00:00", num_fund=20, num_mom=12, news=news, **d.get("params", {}))
+    # spec v1.4 N6: RunParams defaults are now the v1.4 market; the lab pins
+    # the v1.3 market as its base (as before), and every v1.4 config sets its
+    # population through "params" / "extra" (num_value, informed design, budget)
+    base = dict(num_fund=20, num_mom=12, num_value=97, fund_mode="price_only", budget=False)
+    base.update(d.get("params", {}))
+    return RunParams(seed=seed, end_time="16:00:00", news=news, **base)
 
 
 def config_spec(config_id: str, seed: int) -> Dict[str, Any]:

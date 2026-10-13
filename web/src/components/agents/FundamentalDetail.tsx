@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
-import { Banknote, Cpu, Gauge, Layers, LineChart, ShieldCheck } from 'lucide-react';
+import { Banknote, Cpu, FlaskConical, Gauge, Layers, LineChart, ShieldCheck } from 'lucide-react';
 import type { FundamentalAgent, SimPayload } from '../../types/payload';
 import { EChart } from '../../charts/EChart';
 import { C, axisTooltip, grid, insideZoom, pairs, robustDomain, timeAxis, tipHtml, valueAxis } from '../../charts/theme';
 import { bisectRight, clipToDomain, markersNear, offScaleMarkerSeries } from '../../charts/series';
 import { clockHMS, fmtInt, fmtNum, fmtPct, fmtPrice, fmtSci } from '../../lib/format';
-import { FUNDAMENTAL_PARAMS } from '../../config/agentParams';
+import { FUNDAMENTAL_PARAMS, INFORMED_PARAMS, PRICE_LEARNING_PARAMS } from '../../config/agentParams';
 import { Card, LegendItem, SectionHeader } from '../ui/Card';
 import { Select, Toggle } from '../ui/controls';
 import { EmptyState } from '../ui/feedback';
@@ -44,6 +44,11 @@ export function FundamentalDetail({
     return [lo - pad, hi + pad];
   }, [fullRange, midDomain, e.x_hat]);
   const offScale = useMemo(() => e.x_hat.filter((v) => v < midDomain[0] || v > midDomain[1]).length, [e.x_hat, midDomain]);
+  const informed = agent.mode === 'informed';
+  const research = agent.research ?? { t: [], y_r: [] };
+  const learning = !!(e.g && e.g.length);
+  const informedRanges = { ...(payload.hyperparam_ranges.informed ?? {}), ...(payload.hyperparam_ranges.price_learning ?? {}) };
+  const informedParams = 'n_pl' in agent.hyperparams ? [...INFORMED_PARAMS, ...PRICE_LEARNING_PARAMS] : INFORMED_PARAMS;
 
   const xhatOption = useMemo<EChartsOption>(() => {
     // off-scale x̂ becomes a gap, with one edge marker per off-scale run
@@ -64,6 +69,10 @@ export function FundamentalDetail({
           { label: `x̂${off && !fullRange ? ' (off-scale)' : ''}`, value: fmtPrice(e.x_hat[i]), color },
           { label: 'x̂ − mid', value: fmtPrice(e.x_hat[i] - e.mid[i]) },
         ];
+        const ri = bisectRight(research.t, t);
+        if (ri >= 0 && Math.abs(research.t[ri] - t) <= Math.max(30, duration / 300)) {
+          rows.push({ label: `research reading ${clockHMS(research.t[ri])}`, value: fmtPrice(research.y_r[ri]), color: C.warn });
+        }
         for (const m of markersNear(markers, t, Math.max(30, duration / 300))) {
           if (m.t !== e.t[i]) rows.push({ label: `${m.edge === 'top' ? '▲' : '▼'} run peak at ${clockHMS(m.t)}`, value: fmtPrice(m.v), color });
         }
@@ -73,9 +82,39 @@ export function FundamentalDetail({
         { type: 'line', name: 'Mid', data: pairs(e.t, e.mid), showSymbol: false, lineStyle: { color: C.mid, width: 1.5 } },
         { type: 'line', name: 'x̂', data: clipped ? clipped.data : pairs(e.t, e.x_hat), connectNulls: false, showSymbol: false, lineStyle: { color, width: 2 } },
         ...(markers.length ? [offScaleMarkerSeries(markers, domain, 'x̂ off-scale')] : []),
+        // spec v1.4 §6.3: research readings as markers (time, y_r)
+        ...(research.t.length
+          ? [{ type: 'scatter' as const, name: 'research', data: pairs(research.t, research.y_r), symbol: 'diamond', symbolSize: 8, clip: true,
+               itemStyle: { color: C.warn, borderColor: '#0b1020', borderWidth: 1 }, z: 5 }]
+          : []),
       ],
     };
-  }, [e, duration, domain, fullRange, color, midDomain, agent.name]);
+  }, [e, duration, domain, fullRange, color, midDomain, agent.name, research]);
+
+  // spec v1.4.1: learning from prices (trust boost g and effective price distrust)
+  const learnOption = useMemo<EChartsOption | null>(() => {
+    if (!learning) return null;
+    return {
+      grid: grid({ top: 14, bottom: 26, right: 44 }),
+      xAxis: timeAxis(duration, {}, true),
+      yAxis: [valueAxis((v: number) => v.toFixed(0), { type: 'log', scale: false, logBase: 10 })],
+      dataZoom: insideZoom(),
+      tooltip: axisTooltip((params: any[]) => {
+        const t = params?.[0]?.axisValue;
+        const i = bisectRight(e.t, t);
+        if (i < 0) return '';
+        return tipHtml(clockHMS(e.t[i]), [
+          { label: 'trust boost g', value: fmtNum(e.g![i], 2), color: C.up },
+          { label: 'effective distrust ρ/g', value: fmtNum(e.rho_eff![i], 2), color: C.warn },
+          { label: 'surprise ε', value: fmtNum(e.eps![i], 2) },
+        ]);
+      }),
+      series: [
+        { type: 'line', name: 'g', data: pairs(e.t, e.g!), showSymbol: false, lineStyle: { color: C.up, width: 1.5 } },
+        { type: 'line', name: 'rho_eff', data: pairs(e.t, e.rho_eff!), showSymbol: false, lineStyle: { color: C.warn, width: 1.5 } },
+      ],
+    };
+  }, [e, duration, learning]);
 
   const kOption = useMemo<EChartsOption>(
     () => ({
@@ -163,7 +202,12 @@ export function FundamentalDetail({
               {agent.name}
               <span className="rounded-[8px] border border-accent/40 bg-accent/10 px-2 py-0.5 font-mono text-[11px] text-indigo-200">ID: {agent.id}</span>
             </h3>
-            <p className="text-[12px] text-muted">Extended Kalman Filter with Emotional Caution &amp; Dynamic Allocation</p>
+            <p className="text-[12px] text-muted">
+              {informed
+                ? 'Informed: own research readings, belief-anchored orders and a two-sided quote layer (spec v1.4)'
+                : 'Price-only: Kalman filter on the market price with emotional caution & dynamic allocation'}
+              <span className="ml-2 rounded-[6px] border border-border px-1.5 py-px font-mono text-[10px] text-muted">{agent.mode}</span>
+            </p>
           </div>
         </div>
         <Select
@@ -189,8 +233,14 @@ export function FundamentalDetail({
       </div>
 
       <PersonalityProfile params={FUNDAMENTAL_PARAMS} values={agent.hyperparams} ranges={payload.hyperparam_ranges.fundamental} />
+      {informed && <PersonalityProfile params={informedParams} values={agent.hyperparams} ranges={informedRanges} />}
 
-      {e.t.length === 0 ? (
+      {!agent.detail ? (
+        <EmptyState
+          title="Detailed series not stored for this agent"
+          body={payload.agents_detail_note ?? 'This payload keeps the detailed series of a subset of the fundamentalists; summary results are in the leaderboard.'}
+        />
+      ) : e.t.length === 0 ? (
         <EmptyState title="No filter updates recorded for this agent" body="The agent never observed a two-sided book during the session." />
       ) : (
         <>
@@ -204,6 +254,7 @@ export function FundamentalDetail({
               <div className="mb-2 flex flex-wrap items-center gap-4">
                 <LegendItem color={C.mid} label="Market mid" />
                 <LegendItem color={color} label="EKF estimate x̂" />
+                {research.t.length > 0 && <LegendItem color={C.warn} label={`Research readings (${research.t.length})`} />}
                 {offScale > 0 && !fullRange && (
                   <span className="rounded-[8px] border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[11px] text-amber-200">
                     ▲▼ x̂ off-scale at {offScale} of {e.t.length} points
@@ -229,6 +280,20 @@ export function FundamentalDetail({
             </div>
             <EChart option={cautionOption} height={220} group={GROUP} ariaLabel={`${agent.name} caution confidence and memory over time`} />
           </Card>
+          {learnOption && (
+            <Card>
+              <SectionHeader
+                icon={FlaskConical}
+                title="Learning from prices"
+                caption="g = trust boost when the price persistently disagrees with the belief; ρ/g = effective price distrust (spec v1.4.1; off by default)"
+              />
+              <div className="mb-2 flex flex-wrap items-center gap-4">
+                <LegendItem color={C.up} label="trust boost g (log scale)" />
+                <LegendItem color={C.warn} label="effective distrust ρ/g" />
+              </div>
+              <EChart option={learnOption} height={200} group={GROUP} ariaLabel={`${agent.name} learning from prices: trust boost and effective distrust`} />
+            </Card>
+          )}
         </>
       )}
 

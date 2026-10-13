@@ -35,6 +35,10 @@ FUND_HYPERPARAMS = [
     "er_window", "delta", "lambda_er", "sigma_n", "gamma", "k", "mu",
     "q", "a_max", "z0", "s_max", "b_f", "k_news", "initial_exposure",
 ]
+# spec v1.4 Part 4 / v1.4.1 Part 2: informed-mode and learning hyperparameters
+INFORMED_HYPERPARAMS = ["wake_mean", "rho", "m0", "kappa_m", "h0", "theta_q", "T_r", "sigma_r"]
+LEARNING_HYPERPARAMS = ["n_pl", "eps_thr", "a_pl"]
+MAX_FUND_DETAIL = 20  # spec v1.4 §6.3
 # tau is realised as tau_ratio * wake_mean (spec v1.1 M3); both are exported
 MOM_HYPERPARAMS = [
     "initial_exposure", "N_w", "n_er", "lambda_er", "kappa_R", "c_P", "tau_ratio", "tau",
@@ -255,8 +259,36 @@ def _agent_common(agent, clock: _Clock, ticker: str, candles: Dict, close: float
     }
 
 
-def _fundamental(agent, clock, ticker, candles, close) -> Dict:
-    d = _agent_common(agent, clock, ticker, candles, close, FUND_HYPERPARAMS)
+def fund_detail_ids(ids: List[int], n_max: int = MAX_FUND_DETAIL) -> List[int]:
+    """spec v1.4 §6.3: at most n_max fundamentalists keep detailed series,
+    chosen as evenly spaced indices over the sorted ids (deterministic)."""
+    ids = sorted(ids)
+    if len(ids) <= n_max:
+        return ids
+    return sorted({ids[int(round(x))] for x in np.linspace(0, len(ids) - 1, n_max)})
+
+
+def _fundamental(agent, clock, ticker, candles, close, detail: bool = True) -> Dict:
+    mode = getattr(agent, "mode", "price_only")
+    learning = mode == "informed" and getattr(agent, "price_learning", "off") != "off"
+    keys = FUND_HYPERPARAMS + (INFORMED_HYPERPARAMS if mode == "informed" else []) + (LEARNING_HYPERPARAMS if learning else [])
+    d = _agent_common(agent, clock, ticker, candles, close, keys)
+    if mode == "informed":
+        from abides_markets.agents.fundamental import INFORMED_W_MAX, INFORMED_W_MIN
+
+        d["hyperparams"].update(w_min=float(INFORMED_W_MIN), w_max=float(INFORMED_W_MAX))
+    d.update(kind="fundamental", mode=mode, detail=bool(detail))
+    if not detail:
+        d.update(research={"t": [], "y_r": []},
+                 ekf={k: [] for k in ["t", "mid", "x_hat", "P", "R", "K", "ER", "ER_smooth", "Q", "sigma_f2"]},
+                 caution={"t": [], "D": [], "E": [], "C": []}, news=[])
+        return d
+    research = {"t": [], "y_r": []}
+    for t_ns, _, ev in _events(agent, "RESEARCH_READING"):
+        t = clock.s(t_ns)
+        if clock.in_session(t):
+            research["t"].append(_t(t))
+            research["y_r"].append(_price(ev["y_r"] / 100.0))
     ekf = defaultdict(list)
     for t_ns, _, ev in _events(agent, "EKF_UPDATE"):
         t = clock.s(t_ns)
@@ -271,8 +303,12 @@ def _fundamental(agent, clock, ticker, candles, close) -> Dict:
         ekf["ER"].append(ev["ER"])
         ekf["Q"].append(ev["Q"] / 1e4)  # cents^2 -> $^2
         ekf["sigma_f2"].append(ev["sigma_f2"] / 1e4)  # cents^2/s -> $^2/s
+        if learning:
+            ekf["eps"].append(ev.get("eps", 0.0))
+            ekf["g"].append(ev.get("g", 1.0))
+            ekf["rho_eff"].append(ev.get("rho_eff", getattr(agent, "rho", 1.0)))
     ekf["ER_smooth"] = _rolling_mean(ekf["ER"], ER_SMOOTH_WINDOW)
-    keys = ["t", "mid", "x_hat", "P", "R", "K", "ER", "ER_smooth", "Q", "sigma_f2"]
+    keys = ["t", "mid", "x_hat", "P", "R", "K", "ER", "ER_smooth", "Q", "sigma_f2"] + (["eps", "g", "rho_eff"] if learning else [])
     ekf = downsample_columns({k: ekf[k] for k in keys}, "x_hat", MAX_AGENT_POINTS)
 
     caution = defaultdict(list)
@@ -301,12 +337,13 @@ def _fundamental(agent, clock, ticker, candles, close) -> Dict:
         })
 
     d.update(
-        kind="fundamental",
+        research=research,
         ekf={
             "t": [_t(x) for x in ekf["t"]],
             "mid": [round(x, 4) for x in ekf["mid"]],
             "x_hat": [round(x, 4) for x in ekf["x_hat"]],
             **{k: [_sig(x) for x in ekf[k]] for k in ["P", "R", "K", "ER", "ER_smooth", "Q", "sigma_f2"]},
+            **({k: [_sig(x) for x in ekf[k]] for k in ["eps", "g", "rho_eff"]} if learning else {}),
         },
         caution={
             "t": [_t(x) for x in caution["t"]],
@@ -529,6 +566,16 @@ def _start_position(agent):
     return w0, 0
 
 
+def _fund_label(members) -> str:
+    """spec v1.4 §6.4: "Fundamentalist (informed)" when the run uses informed mode."""
+    modes = {getattr(a, "mode", "price_only") for a in members}
+    if modes == {"informed"}:
+        return "Fundamentalist (informed)"
+    if modes == {"price_only"}:
+        return "Fundamentalist (price-only)"
+    return "Fundamentalist (ours)"
+
+
 def population(agents, history, close: float, ticker: str = "ABM") -> List[Dict]:
     """One row per agent class present. close in $.
 
@@ -570,7 +617,7 @@ def population(agents, history, close: float, ticker: str = "ABM") -> List[Dict]
         hold_value = sum(c + n * close_c for c, n in starts)
         cash_each = [c / 100.0 for c, _ in starts]
         rows.append({
-            "label": POPULATION_LABELS.get(cls, cls),
+            "label": _fund_label(members) if cls == "FundamentalistAgent" else POPULATION_LABELS.get(cls, cls),
             "class_name": cls,
             "count": len(members),
             "starting_cash_each": {"min": round(min(cash_each), 2), "max": round(max(cash_each), 2)},
@@ -653,7 +700,12 @@ def build_payload(
     }
 
     # ── agents ────────────────────────────────────────────────────────────
-    fund = [_fundamental(agents[i], clock, ticker, candles, close) for i in config.get("_ekf_agent_ids", [])]
+    fund_ids = list(config.get("_ekf_agent_ids", []))
+    detail_ids = set(fund_detail_ids(fund_ids))
+    fund = [_fundamental(agents[i], clock, ticker, candles, close, detail=i in detail_ids) for i in fund_ids]
+    detail_note = (None if len(detail_ids) == len(fund_ids) else
+                   f"Detailed series are stored for {len(detail_ids)} of {len(fund_ids)} fundamentalists "
+                   f"(evenly spaced ids); every agent is in the leaderboard and the population table.")
     mom = [_momentum(agents[i], clock, ticker, candles, close) for i in config.get("_mom_ekf_agent_ids", [])]
     news_agent = agents[config["_news_oracle_id"]] if "_news_oracle_id" in config else None
     news = _news(news_agent, clock, q_t, q_mid, fund, mom, None)
@@ -687,7 +739,8 @@ def build_payload(
         "news": news,
         "agents": {"fundamental": fund, "momentum": mom},
         "population": population(agents, ob.history, close),
-        "hyperparam_ranges": ranges_for_export(),
+        "hyperparam_ranges": ranges_for_export(config.get("_informed_design")),
+        "agents_detail_note": detail_note,
         "realism": realism_block,
         "oracle_events": _round_tree(r_series["oracle_events"]),
     }

@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from abides_markets.configs.param_ranges import DEFAULT_INFORMED_DESIGN
+
 from . import ENGINE_VERSION
 from .schema import RunParams
 
@@ -123,6 +125,11 @@ def run_config_kwargs(params: RunParams) -> Dict:
         log_orders=None,
         stdout_log_level="WARNING",
         news_events=[(n.offset, TICKER, n.sentiment, n.headline) for n in params.news] or None,
+        # spec v1.4 §6.1 / v1.4.2: the informed design and the budget
+        fund_mode=params.fund_mode,
+        informed_design=dict(DEFAULT_INFORMED_DESIGN) if params.fund_mode == "informed" else None,
+        abides_budget=({"L": 2.0} if (params.budget if params.budget is not None else params.fund_mode == "informed")
+                       else None),
     )
 
 

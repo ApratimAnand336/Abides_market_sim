@@ -72,3 +72,25 @@ export const MOMENTUM_PARAMS: ParamDef[] = [
   { key: 'N_w', symbol: 'N_w', label: 'Warm-up length', description: 'Observations before it starts trading', format: { kind: 'int', unit: 'obs' }, color: '#64748B' },
   { key: 'n_er', symbol: 'n_ER', label: 'Efficiency-ratio memory', description: 'Observations used to judge trend vs noise', format: { kind: 'int', unit: 'obs' }, color: '#0EA5E9' },
 ];
+
+// spec v1.4 Part 4 (informed mode) and v1.4.1 Part 2 (learning from prices).
+// Ranges: payload.hyperparam_ranges.informed / .price_learning.
+export const INFORMED_PARAMS: ParamDef[] = [
+  { key: 'wake_mean', symbol: 'w̄', label: 'Decision interval', description: 'Average time between decisions (random, Poisson)', format: { kind: 'seconds' }, color: '#38BDF8' },
+  { key: 'T_r', symbol: 'T_r', label: 'Research interval', description: 'Average time between its own research readings of the true value', format: { kind: 'seconds' }, color: '#34D399' },
+  { key: 'sigma_r', symbol: 'σ_r', label: 'Research noise', description: 'Typical error of one research reading, in cents', format: { kind: 'float', digits: 0 }, color: '#C084FC' },
+  { key: 'rho', symbol: 'ρ', label: 'Price distrust', description: 'How much less it trusts the market price than normal noise implies', format: { kind: 'float', digits: 1 }, color: '#818CF8' },
+  { key: 'm0', symbol: 'm₀', label: 'Required edge', description: 'Cents of mispricing it needs before it trades (its reservation price)', format: { kind: 'float', digits: 2 }, color: '#FB7185' },
+  { key: 'kappa_m', symbol: 'κ_m', label: 'Edge per uncertainty', description: 'Extra edge it asks for when unsure of its belief', format: { kind: 'float', digits: 2 }, color: '#F59E0B' },
+  { key: 'h0', symbol: 'h₀', label: 'Quote width', description: 'Cents beyond its edge where it keeps a small two-sided quote', format: { kind: 'float', digits: 2 }, color: '#2DD4BF' },
+  { key: 'theta_q', symbol: 'θ_q', label: 'Quote size', description: 'Shares quoted per side, as a share of its wealth', format: { kind: 'percent', digits: 2 }, color: '#4ADE80' },
+  { key: 'w_min', symbol: 'w_min', label: 'Short limit', description: 'Most it may sell short, as a share of wealth (fixed)', format: { kind: 'percent', digits: 0 }, color: '#F43F5E' },
+  { key: 'w_max', symbol: 'w_max', label: 'Long limit', description: 'Most it may hold in stock, as a share of wealth, borrowing the rest (fixed)', format: { kind: 'percent', digits: 0 }, color: '#10B981' },
+];
+
+export const PRICE_LEARNING_PARAMS: ParamDef[] = [
+  { key: 'n_pl', symbol: 'n_pl', label: 'Persistence gate', description: 'Looks in a row the price must disagree before it learns from it', format: { kind: 'int', unit: 'looks' }, color: '#94A3B8' },
+  { key: 'eps_thr', symbol: 'ε_thr', label: 'Surprise threshold', description: 'How surprising the price must be (in normal-noise units) to raise its trust', format: { kind: 'float', digits: 2 }, color: '#E879F9' },
+  { key: 'a_pl', symbol: 'a_pl', label: 'Surprise memory', description: 'Weight of the newest gated surprise in its running average', format: { kind: 'float', digits: 2 }, color: '#22D3EE' },
+];
+

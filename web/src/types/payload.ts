@@ -11,7 +11,7 @@
 export type Seconds = number;
 
 /** Payload schema this dashboard renders (api/__init__.py SCHEMA_VERSION). */
-export const SCHEMA_VERSION = '1.2';
+export const SCHEMA_VERSION = '1.3';
 
 export type EndTime = '10:00:00' | '11:00:00' | '12:00:00' | '14:00:00' | '16:00:00';
 
@@ -24,17 +24,21 @@ export interface NewsInput {
 export interface RunParams {
   seed: number;
   end_time: EndTime;
-  num_fund: number; // FundamentalistAgent count (0–20)
+  num_fund: number; // FundamentalistAgent count (0–200; spec v1.4 §6.2)
   num_mom: number; // MomentumEKFAgent count (0–12)
   // market population (spec v1.1 D4); the server defaults to 97 / 1000 / 2
   num_value?: number; // ValueAgent count (0–150)
   num_noise?: number; // NoiseAgent count (0–2000)
   num_mm?: number; // market makers (0–2)
+  // spec v1.4 §6.2: the default market (v1.4) is informed fundamentalists with
+  // no value agents; "price_only" + num_value 97 + num_fund 20 is the v1.3 market
+  fund_mode?: 'informed' | 'price_only';
+  budget?: boolean | null; // gross budget on stock agents; null = auto (on for informed)
   news: NewsInput[];
 }
 
 export interface SimPayload {
-  schema_version: '1.2';
+  schema_version: '1.3';
   meta: {
     run_id: string;
     params: RunParams;
@@ -50,7 +54,13 @@ export interface SimPayload {
   news: NewsRecord[];
   agents: { fundamental: FundamentalAgent[]; momentum: MomentumAgent[] };
   population: PopulationRow[];
-  hyperparam_ranges: Record<'fundamental' | 'momentum', Record<string, ParamRange>>;
+  // spec v1.4: "informed" (incl. this run's research design T_r, sigma_r) and
+  // "price_learning" are present from schema 1.3
+  hyperparam_ranges: { fundamental: Record<string, ParamRange>; momentum: Record<string, ParamRange> } & Partial<
+    Record<'informed' | 'price_learning', Record<string, ParamRange>>
+  >;
+  /** spec v1.4 §6.3: detailed series are stored for at most 20 fundamentalists. */
+  agents_detail_note: string | null;
   /** spec v1.3 §9.1: single-run realism metrics and grades (api/realism.py). */
   realism: Realism;
   /** spec v1.3 §6.1: scripted true-value events as applied (empty in dashboard runs). */
@@ -111,9 +121,29 @@ export interface LabGrade {
   grade: Grade | 'INCOMPLETE' | null;
   pass_share: number | null;
 }
+export interface R3Check {
+  scope: string;
+  key: string;
+  op: string;
+  threshold: number;
+  value: number | null;
+  result: 'PASS' | 'FAIL' | null;
+}
+export interface R3Item {
+  id: string;
+  label: string;
+  status: 'PASS' | 'FAIL' | 'MISSING';
+  checks: R3Check[];
+}
+
 export interface LabSummary {
   generated: string;
   seeds: number[];
+  /** spec v1.4: the config the baseline card shows (default "C-DEF", v1.3) and its description. */
+  baseline_config?: string;
+  baseline_label?: string;
+  /** spec v1.4 Part 2: the R3 scorecard of the final market (20 seeds). */
+  r3?: { targets: Record<string, R3Item>; limits: Record<string, R3Item>; config: string; seeds: number; engine: string[]; date: string[] };
   configs: Record<string, { label: string; n_runs: number; engine_versions: string[]; dates: string[]; scorecard: Record<string, LabGrade> }>;
   impact: null | {
     G12: { value: number | null; ci: [number, number] | null; grade: Grade | 'N/A' | null };
@@ -232,6 +262,10 @@ export interface AgentBase {
 
 export interface FundamentalAgent extends AgentBase {
   kind: 'fundamental';
+  mode: 'informed' | 'price_only'; // spec v1.4 Part 4
+  detail: boolean; // false: series not stored (spec v1.4 §6.3); summary fields only
+  // spec v1.4: research readings (informed mode), $
+  research: { t: Seconds[]; y_r: number[] };
   ekf: {
     t: Seconds[];
     mid: number[];
@@ -243,6 +277,10 @@ export interface FundamentalAgent extends AgentBase {
     ER_smooth: number[];
     Q: number[]; // $², process noise added at each prediction (spec v1.1 F3)
     sigma_f2: number[]; // $²/s, the agent's estimate of how fast value moves
+    // spec v1.4.1 learning from prices (only when it is on)
+    eps?: number[];
+    g?: number[];
+    rho_eff?: number[];
   };
   caution: { t: Seconds[]; D: number[]; E: number[]; C: number[] }; // E in $
   news: {

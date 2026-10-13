@@ -14,7 +14,7 @@
 #             seeded runs reproduce exactly.
 #   "fixed"   min == max, never drawn (listed for display only)
 
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -91,6 +91,14 @@ INFORMED_RANGES: Dict[str, Range] = {
 }
 INFORMED_DESIGN_KEYS = ("T_r_range_s", "sigma_r_range_c", "wealth_c")
 
+# spec v1.4.2 D-R3-7: the R3 design (D-60fl2M, learning off), used by the
+# default market (api.jobs.run_config_kwargs, spec v1.4 §6.1) with 60 agents.
+# No "price_learning" key: absent = "off" (identical to the lab's D-60fl2M).
+DEFAULT_INFORMED_DESIGN: Dict = {"T_r_range_s": [60.0, 300.0], "sigma_r_range_c": [10.0, 50.0],
+                                 "wealth_c": 200_000_000}
+DEFAULT_NUM_INFORMED = 60
+INFORMED_W_BOUNDS = (-0.5, 1.5)  # = fundamental.INFORMED_W_MIN / _MAX (spec v1.4 §4.5)
+
 # spec v1.4.1 §2.3: learning from prices. n_pl fixed per level; eps_thr and
 # a_pl drawn per agent AFTER all its other informed draws; "off" draws nothing.
 PRICE_LEARNING_LEVELS: Dict[str, Dict] = {
@@ -120,8 +128,11 @@ def draw(ranges: Dict[str, Range], name: str, low=None):
     raise ValueError(f"unknown scale {scale!r} for {name}")
 
 
-def ranges_for_export() -> Dict[str, Dict[str, Dict]]:
-    """{"fundamental"|"momentum": {name: {min, max[, scale]}}} for the dashboard."""
+def ranges_for_export(informed_design: Optional[Dict] = None) -> Dict[str, Dict[str, Dict]]:
+    """{"fundamental"|"momentum"|"informed"[|"price_learning"]: {name: {min, max[, scale]}}}
+    for the dashboard. "informed" holds INFORMED_RANGES, the fixed w_min/w_max
+    and this run's design ranges of T_r and sigma_r (default design if None);
+    "price_learning" the drawn ranges of the run's learning level (if on)."""
 
     def fmt(ranges: Dict[str, Range]) -> Dict[str, Dict]:
         out = {}
@@ -132,6 +143,16 @@ def ranges_for_export() -> Dict[str, Dict[str, Dict]]:
             out[name] = entry
         return out
 
-    # INFORMED_RANGES join the export with the payload schema change of
-    # spec v1.4 Part 6 (milestone N6); until then the payload is unchanged.
-    return {"fundamental": fmt(FUNDAMENTAL_RANGES), "momentum": fmt(MOMENTUM_RANGES)}
+    d = informed_design or DEFAULT_INFORMED_DESIGN
+    informed = fmt(INFORMED_RANGES)
+    informed["T_r"] = {"min": float(d["T_r_range_s"][0]), "max": float(d["T_r_range_s"][1]), "scale": "log"}
+    informed["sigma_r"] = {"min": float(d["sigma_r_range_c"][0]), "max": float(d["sigma_r_range_c"][1]), "scale": "log"}
+    informed["w_min"] = {"min": INFORMED_W_BOUNDS[0], "max": INFORMED_W_BOUNDS[0]}
+    informed["w_max"] = {"min": INFORMED_W_BOUNDS[1], "max": INFORMED_W_BOUNDS[1]}
+    out = {"fundamental": fmt(FUNDAMENTAL_RANGES), "momentum": fmt(MOMENTUM_RANGES), "informed": informed}
+    level = d.get("price_learning", "off")
+    if level != "off":
+        lv = PRICE_LEARNING_LEVELS[level]
+        out["price_learning"] = {"n_pl": {"min": float(lv["n_pl"]), "max": float(lv["n_pl"])},
+                                 **fmt({k: lv[k] for k in ("eps_thr", "a_pl")})}
+    return out

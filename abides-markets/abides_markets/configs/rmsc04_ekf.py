@@ -558,6 +558,9 @@ def build_config(
             range(mom_ekf_start_id, mom_ekf_start_id + num_mom_ekf_agents)
         ),
         "_news_oracle_id": news_oracle_id,
+        # spec v1.4 §6.3: the export shows the informed design's ranges
+        "_fund_mode": fund_mode,
+        "_informed_design": informed_design if fund_mode == "informed" else None,
         "_probe_id": probe_id,
         "_mkt_open_ns": MKT_OPEN,
         "_mkt_close_ns": MKT_CLOSE,
