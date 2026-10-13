@@ -95,3 +95,50 @@ Full tables, selection printouts and E11–E15 verdicts: [RESULTS_s2.md](RESULTS
   T6, and it slowed jump pricing: learning makes researched agents follow the stale price.
 - The mechanical selection ends at D-60fl2M (no learning): 5/7 targets, T3 and T6 fail.
   Per §3.5 the work STOPPED for the owner.
+
+## 4–6. Step-down and final campaigns (N5, interim; full tables in [RESULTS_n5.md](RESULTS_n5.md))
+
+Campaign setup (spec v1.4.2 Part 2):
+- Design D-60fl2M, learning off, budget on.
+- Engine v1.3-c1dfa51, 2026-10-13/14.
+- 245 runs, all valid; zero_sum = 0 in every run.
+- P97/50/20 use 10 seeds (they show the trend and decide nothing); P0 and the final campaign
+  use 20 seeds.
+
+**R3 confirmed on P0 (20 seeds).**
+- PASS: T1 (ac1 −0.005), T2 (VR(5) 1.2488, inside the 1.25 limit by 0.001; 10 of 20 seeds
+  are above 1.25), T4 (vv_corr +0.53), T5 (volume uplift 2.54 / 2.58), T7 (informed P&L
+  total +$1,023, median +$112) and L1–L6.
+- L3 part 2: without market makers there are 19.6–23.3k executions per day on 5 seeds.
+- FAIL, as in screening: T3 (1-min vol ratio 0.49) and T6 (spread_jump_ratio 14.8 / 16.0;
+  the book never empties).
+
+**Step-down 97 → 0 ValueAgents.** T1 and T2 improve monotonically: ac1 0.29 → 0.17 → 0.04 →
+−0.005, VR(5) 2.0 → 1.59 → 1.36 → 1.25. The jump is priced within about 5–6 min at every
+step (v1.3: about 12 min); see `figures/jump_response_r3.png`. While ValueAgents remain, the
+informed agents lose money to them (P97: −$12,418, ValueAgents +$12,340 per run). Only at
+P0 do they earn their information.
+
+**Impact on P0.**
+- β = 0.94 [0.81–1.12], over sizes 0.5/1/5 only (the trim dropped IMP-0.1). G12 FAIL, as in
+  v1.3 (0.90).
+- Recovery I_perm/I_peak = 0.23, so G13 PASS (v1.3 −0.02 FAIL). A permanent impact of about
+  0.3 bps after a 1% probe now appears: informed agents move their beliefs with the order
+  flow.
+- Buy vs sell (6,000 shares): I_end 0.56 vs 0.89 bps, shortfall 0.72 vs 1.14 bps. Selling is
+  dearer, an asymmetry that v1.3 did not have.
+
+**News +0.9 (S4).** A fast overreaction and reversal: peak +5.5 bps at 0.27 min, half
+reverted in 1.1 min. In v1.3 the response was +0.9 bps at 22 min.
+
+**Run-flag finding (new K16).** In 13 of the 100 P-step and P0 jump runs, the lab flag
+`informed_bounds` fails. 1–3 fills by 1–2 informed agents end up beyond the §4.5 leverage
+bounds, at most 1.507× and −0.509× of wealth, always right after the jump. Diagnostic:
+`scripts/diag_informed_bounds.py`. Two mechanisms, both inherent to §4.5 as written:
+- The rule is checked at the order's limit price, but a borrowing (or short) agent fills at
+  better prices, which leaves it slightly more leveraged.
+- Fills of the previous cycle's orders whose cancellation is still in flight; §4.5 assumes
+  those orders are already gone.
+
+Quiet markets are within ±1 share (T-N5 / I4 pass). No code change was made; the owner
+decides.

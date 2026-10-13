@@ -747,9 +747,46 @@ def report_n5(engine: str) -> str:
     out = {"steps": steps, "v13": v13, "final": {k: v for k, v in fin.items() if k != "lines"}}
     DOC.mkdir(parents=True, exist_ok=True)
     (DOC / "summary_n5.json").write_text(json.dumps(RL._jsonable(out), separators=(",", ":")), encoding="utf-8")
+    write_lab_summary(P0, fin)
     md = "\n".join(L)
     (DOC / "RESULTS_n5.md").write_text(md, encoding="utf-8")
     return md
+
+
+def write_lab_summary(P0: Dict[str, Any], fin: Dict[str, Any]) -> None:
+    """docs/v1.4/lab/summary.json (spec v1.4 §6.4, §10.5): the final market's
+    lab summary in the v1.3 LabSummary format (served to the dashboard by
+    /api/lab/summary, and the stored baseline of the v1.4 regression set),
+    plus the R3 scorecard."""
+    seeds = lab.SEEDS
+    ms = R.MIN_VALID_SEEDS
+    configs = {c: RL.config_block(ROOT, c, seeds, ms) for c in ("P0-C",)}
+    scen = {c: RL.scenario_block(ROOT, c, seeds, ms) for c in ("P0-S2", "P0-S2n", "P0-IMP-1", "P0-IMP-1s", "P0-S4")}
+    imp = None
+    if fin.get("beta"):
+        b = fin["beta"]["I_end"]
+        imp = {"G12": {"value": b["beta"], "ci": b["ci"],
+                       "grade": R.grade_value(R.BANDS_BY_ID["G12"], {"impact_beta": b["beta"]}) if b["beta"] is not None else "N/A"},
+               "G13": {"value": fin.get("recovery_IMP1"),
+                       "grade": R.grade_value(R.BANDS_BY_ID["G13"], {"impact_recovery": fin["recovery_IMP1"]})
+                       if fin.get("recovery_IMP1") is not None else "N/A"},
+               "sizes_note": "beta over IMP-0.5, IMP-1, IMP-5 (spec v1.4.2 trim; v1.3 also had IMP-0.1)"}
+    out = {
+        "spec": "FinVerse spec v1.4 / v1.4.2 (R3 final market P0)",
+        "generated": date.today().isoformat(),
+        "seeds": list(seeds),
+        "min_valid_seeds": ms,
+        "bands": R.BANDS,
+        "baseline_config": "P0-C",
+        "baseline_label": (f"The v1.4 default market P0 (0 value agents, 60 informed fundamentalists {lab.P_DESIGN}, "
+                           "12 momentum EKF, 1000 noise, 2 market makers, budget on, full day)"),
+        "configs": {k: v for k, v in configs.items() if v},
+        "scenarios": {k: v for k, v in scen.items() if v},
+        "impact": imp,
+        "r3": {"targets": P0["r3"]["targets"], "limits": P0["r3"]["limits"], "config": f"P0 ({lab.P_DESIGN})",
+               "seeds": P0["n_seeds"], "engine": P0["engines"], "date": P0["dates"]},
+    }
+    (DOC / "summary.json").write_text(json.dumps(RL._jsonable(out), separators=(",", ":")), encoding="utf-8")
 
 
 IMP_SIZES = {"P0-IMP-0.5": "IMP-0.5", "P0-IMP-1": "IMP-1", "P0-IMP-5": "IMP-5"}
