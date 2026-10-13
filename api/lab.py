@@ -237,7 +237,39 @@ def register_refinement(winner: str) -> List[str]:
     return ds
 
 
-V14_CAMPAIGNS = {"b", "s1", "s1r2", "s2", "s2r"}
+# ── spec v1.4.2 Part 2: trimmed step-down and final campaigns ───────────
+# Design D-60fl2M (learning off, D-R3-7), budget on, full day. P<k> = the
+# same population with k ValueAgents; P0 is the final market.
+P_DESIGN = "D-60fl2M"
+STEP_SEEDS: List[int] = SEEDS[:10]  # 42, 7, 1-6, 8, 9 (spec v1.4.2 §2.1)
+MM0_SEEDS: List[int] = SEEDS[:5]
+CONFIG_SEEDS: Dict[str, List[int]] = {}  # per-config seed lists (default: the campaign's)
+
+
+def _p_config(cid, label, k, extra=None, campaign="step", **more):
+    CONFIGS[cid] = {"campaign": campaign, "label": label, "params": {"num_value": k, **more.pop("params", {})},
+                    "extra": {**design_extra(P_DESIGN), **(extra or {})}, "design": P_DESIGN, **more}
+
+
+for _k in (97, 50, 20, 0):
+    _p_config(f"P{_k}-C", f"P{_k}: {_k} value agents + {P_DESIGN} (no trigger)", _k)
+    _p_config(f"P{_k}-S2", f"P{_k}: value jump +2%", _k, {"oracle_events": [JUMP_UP]},
+              baseline=f"P{_k}-C", kind="jump", jump_pct=2.0)
+    if _k:
+        CONFIG_SEEDS[f"P{_k}-C"] = CONFIG_SEEDS[f"P{_k}-S2"] = STEP_SEEDS
+_p_config("P0-S2n", "P0: value jump -2%", 0, {"oracle_events": [JUMP_DOWN]}, baseline="P0-C", kind="jump", jump_pct=-2.0)
+CAMPAIGNS["step"] = [f"P{k}-{c}" for k in (97, 50, 20) for c in ("C", "S2")] + ["P0-C", "P0-S2", "P0-S2n"]
+
+for _id, _side, _q in (("0", "BUY", 100), ("0.5", "BUY", 3000), ("1", "BUY", 6000), ("5", "BUY", 30000), ("1s", "SELL", 6000)):
+    _p_config(f"P0-IMP-{_id}", f"P0: probe {_side} {_q:,}", 0, {"probe": _probe(_side, _q)}, campaign="final",
+              baseline="P0-C", kind="impact")
+_p_config("P0-S4", "P0: hype news +0.9", 0, campaign="final", baseline="P0-C", kind="news", sentiment=0.9,
+          news=[NEWS_POS])
+_p_config("P0-MM0", "P0 without market makers (L3 part 2)", 0, campaign="final", params={"num_mm": 0})
+CONFIG_SEEDS["P0-MM0"] = MM0_SEEDS
+CAMPAIGNS["final"] = ["P0-IMP-0", "P0-IMP-0.5", "P0-IMP-1", "P0-IMP-5", "P0-IMP-1s", "P0-S4", "P0-MM0"]
+
+V14_CAMPAIGNS = {"b", "s1", "s1r2", "s2", "s2r", "step", "final"}
 
 
 def run_params(config_id: str, seed: int) -> RunParams:

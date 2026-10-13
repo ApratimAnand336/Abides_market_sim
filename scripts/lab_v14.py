@@ -619,6 +619,338 @@ def report_s1(engine: str, seeds) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════
+# spec v1.4.2 Part 2: step-down and final campaigns (report + figures)
+# ══════════════════════════════════════════════════════════════════════════
+
+STEPS = (97, 50, 20, 0)
+FIG = DOC / "figures"
+# reference categorical palette (dataviz skill, references/palette.md), fixed order
+PAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
+GREY, INK, MUTED = "#8a8985", "#0b0b0b", "#52514e"
+
+
+def _seeds_of(cid):
+    return lab.CONFIG_SEEDS.get(cid, lab.SEEDS)
+
+
+def _min_seeds(n):
+    return 9 if n <= 10 else R.MIN_VALID_SEEDS
+
+
+def step_summary(k: int) -> Dict[str, Any]:
+    cid = f"P{k}-C"
+    seeds = _seeds_of(cid)
+    ms = _min_seeds(len(seeds))
+    rc = runs(ROOT, cid, seeds)
+    allr = rc + runs(ROOT, f"P{k}-S2", seeds) + (runs(ROOT, "P0-S2n", seeds) if k == 0 else [])
+    C = c_summary(rc, allr)
+    S2 = jump_summary(ROOT, f"P{k}-S2", seeds, ms) or {}
+    S2n = (jump_summary(ROOT, "P0-S2n", seeds, ms) or {}) if k == 0 else {}
+    sc13 = R.scorecard([r["metrics"] for r in rc], ms) if rc else {}
+    r3 = R.r3_scorecard({"C": C, "S2": S2, "S2n": S2n}, screening=(k != 0))
+    fund = [r["sanity"]["classes"].get("FundamentalistAgent", {}) for r in rc]
+    vshare = {c: _med([r["sanity"]["classes"].get(c, {}).get("volume_share_pct") for r in rc]) for c in R.CLASSES}
+    pnl = {c: _med([r["sanity"]["classes"].get(c, {}).get("pnl_vs_hold_total") for r in rc]) for c in R.CLASSES}
+    sb = RL.scenario_block(ROOT, f"P{k}-S2", seeds, ms)
+    return {"k": k, "n_seeds": len(rc), "seeds": seeds, "C": C, "S2": S2, "S2n": S2n, "v13": sc13, "r3": r3,
+            "volume_share_pct": vshare, "pnl_vs_hold_total": pnl, "fund_n": len(fund),
+            "curve_S2": (sb or {}).get("curve"), "engines": sorted({r["engine_version"] for r in allr}),
+            "dates": sorted({r["date"] for r in allr})}
+
+
+def _v13_reference() -> Dict[str, Any]:
+    rows = runs(V13, "C-DEF", lab.SEEDS)
+    C = c_summary(rows, rows)
+    S2 = jump_summary(V13, "S2", lab.SEEDS, R.MIN_VALID_SEEDS) or {}
+    S2n = jump_summary(V13, "S2n", lab.SEEDS, R.MIN_VALID_SEEDS) or {}
+    sb = RL.scenario_block(V13, "S2", lab.SEEDS, R.MIN_VALID_SEEDS)
+    return {"C": C, "S2": S2, "S2n": S2n, "r3": R.r3_scorecard({"C": C, "S2": S2, "S2n": S2n}),
+            "v13": R.scorecard([r["metrics"] for r in rows]), "curve_S2": (sb or {}).get("curve")}
+
+
+STEP_ROWS = [("T1 ac1", "C", "ac1"), ("T2 VR(5)", "C", "vr5"), ("T3 vol ratio 1 min", "C", "vol_ratio_price_value"),
+             ("T4 vv_corr", "C", "vv_corr"), ("T5 volume uplift S2", "S2", "volume_uplift"),
+             ("T5 volume uplift S2n", "S2n", "volume_uplift"), ("T6 one-sided S2", "S2", "one_sided_share_jump"),
+             ("T6 spread_jump_ratio S2", "S2", "spread_jump_ratio"), ("T6 spread_jump_ratio S2n", "S2n", "spread_jump_ratio"),
+             ("T7 fund P&L total $", "C", "fund_pnl_total"), ("T7 fund P&L median $", "C", "fund_pnl_median"),
+             ("L1 spread median bps", "C", "spread_med_bps"), ("L1 spread p95 bps", "C", "spread_p95_bps"),
+             ("L2 shares/day", "C", "shares_executed"), ("L5 wall time s", "C", "wall_time_s"),
+             ("L6 max |gap| $", "C", "max_abs_gap"),
+             ("σ 1 min bps (G1)", "C", "sigma_1m_bps"), ("VR(30)", "C", "vr30"),
+             ("vol ratio 15 / 30 / 60 min", "C", ("vol_ratio_15m", "vol_ratio_30m", "vol_ratio_60m")),
+             ("gap std $", "C", "gap_std"), ("half-life read → corrected (min)", "C", ("gap_half_life_read_min", "gap_hl_corr_of_median_read")),
+             ("gap mean $", "C", "gap_mean"), ("t50 / t90 S2 min", "S2", ("t50", "t90")),
+             ("informed updated +2 / +5 / +10 min (S2)", "S2", ("informed_share_updated_2m", "informed_share_updated_5m", "informed_share_updated_10m"))]
+
+
+def _cell(d, scope, key):
+    D = d.get(scope) or {}
+    if isinstance(key, tuple):
+        return " / ".join(_fmt(D.get(k)) for k in key)
+    return _fmt(D.get(key))
+
+
+def report_n5(engine: str) -> str:
+    steps = [step_summary(k) for k in STEPS]
+    v13 = _v13_reference()
+    fin = final_summary()
+    P0 = steps[-1]
+    L = ["# N5: step-down and final campaigns (spec v1.4.2 Part 2)", "",
+         f"Design {lab.P_DESIGN} (learning off), budget L=2, full day. Runs: engines "
+         f"{sorted({e for st in steps for e in st['engines']})}, dates {sorted({d for st in steps for d in st['dates']})}; "
+         f"report generated {date.today().isoformat()}. **Seeds: P97, P50, P20 use 10 seeds ({lab.STEP_SEEDS}); "
+         f"P0 uses the 20 lab seeds.** The 10-seed medians are about 1.4× noisier; they show the trend and decide nothing. "
+         "Every R3 pass/fail is judged on P0 with 20 seeds. v1.3 reference = C-DEF/S2/S2n (97 ValueAgents, "
+         "20 price-only fundamentalists, no budget, 20 seeds).", "",
+         "## 1. R3 scorecard on the final market P0 (20 seeds)", "",
+         "| item | check | value | threshold | result |", "|---|---|---|---|---|"]
+    for grp in ("targets", "limits"):
+        for kid, it in P0["r3"][grp].items():
+            for c in it["checks"]:
+                L.append(f"| **{kid}** {it['label']} | {c['scope']} {c['key']} {c['op']} | {_fmt(c['value'])} | "
+                         f"{c['threshold']:g} | {c['result']} |")
+    L += ["", "Summary: " + ", ".join(f"{k} {it['status']}" for g in ("targets", "limits")
+                                      for k, it in P0["r3"][g].items()),
+          f"L3 part 2 (P0 without market makers, {fin['mm0']['n']} seeds): executions per day "
+          f"{fin['mm0']['execs']} → {'PASS (trades > 0)' if fin['mm0']['ok'] else 'FAIL'}.", "",
+          "## 2. Step-down 97 → 50 → 20 → 0 ValueAgents", "",
+          "| measure | v1.3 C-DEF (20 seeds) | " + " | ".join(f"P{st['k']} ({st['n_seeds']} seeds)" for st in steps) + " |",
+          "|---|" + "---|" * (len(steps) + 1)]
+    for lbl, scope, key in STEP_ROWS:
+        L.append(f"| {lbl} | {_cell(v13, scope, key)} | " + " | ".join(_cell(st, scope, key) for st in steps) + " |")
+    L += ["", "R3 targets per step (P97/50/20: T5, T6 on S2 only; P0: S2 and S2n):", "",
+          "| step (seeds) | T1 | T2 | T3 | T4 | T5 | T6 | T7 | limits failed |", "|---|---|---|---|---|---|---|---|---|"]
+    for name, st in [("v1.3 C-DEF (20)", v13)] + [(f"P{x['k']} ({x['n_seeds']})", x) for x in steps]:
+        t = st["r3"]["targets"]
+        lf = [k for k, it in st["r3"]["limits"].items() if it["status"] != "PASS"]
+        L.append(f"| {name} | " + " | ".join(t[k]["status"] for k in SCREEN_TARGETS) + f" | {', '.join(lf) or 'none'} |")
+    L += ["", "v1.3 scorecard (bands G1, G3–G11; median, grade):", "",
+          "| band | v1.3 C-DEF | " + " | ".join(f"P{st['k']} ({st['n_seeds']})" for st in steps) + " |",
+          "|---|" + "---|" * (len(steps) + 1)]
+    for gid in ["G1"] + [f"G{i}" for i in range(3, 12)]:
+        def g(st):
+            b = st["v13"].get(gid)
+            if not b:
+                return "—"
+            keys = R.BANDS_BY_ID[gid].get("metrics", [R.BANDS_BY_ID[gid]["key"]])
+            return "; ".join(_fmt(b["stats"][k]["median"]) for k in keys) + f" {b['grade']}"
+        L.append(f"| {gid} {R.BANDS_BY_ID[gid]['label']} | {g(v13)} | " + " | ".join(g(st) for st in steps) + " |")
+    L += ["", "Per-class volume share % and P&L vs holding ($, total per run; medians):", "",
+          "| class | " + " | ".join(f"P{st['k']} vol % | P{st['k']} P&L" for st in steps) + " |",
+          "|---|" + "---|" * (2 * len(steps))]
+    for c in R.CLASSES:
+        L.append(f"| {c} | " + " | ".join(f"{_fmt(st['volume_share_pct'].get(c))} | {_fmt(st['pnl_vs_hold_total'].get(c))}"
+                                         for st in steps) + " |")
+    L += ["", "## 3. Final campaign on P0 (20 seeds; MM0 5 seeds)", "", *fin["lines"], ""]
+    figs = n5_figures(steps, v13, fin)
+    L += ["## 4. Figures", ""] + [f"![{f}](figures/{f})" for f in figs] + [""]
+    out = {"steps": steps, "v13": v13, "final": {k: v for k, v in fin.items() if k != "lines"}}
+    DOC.mkdir(parents=True, exist_ok=True)
+    (DOC / "summary_n5.json").write_text(json.dumps(RL._jsonable(out), separators=(",", ":")), encoding="utf-8")
+    md = "\n".join(L)
+    (DOC / "RESULTS_n5.md").write_text(md, encoding="utf-8")
+    return md
+
+
+IMP_SIZES = {"P0-IMP-0.5": "IMP-0.5", "P0-IMP-1": "IMP-1", "P0-IMP-5": "IMP-5"}
+
+
+def final_summary() -> Dict[str, Any]:
+    seeds = lab.SEEDS
+    ms = R.MIN_VALID_SEEDS
+    scen = {c: RL.scenario_block(ROOT, c, seeds, ms) for c in ("P0-IMP-0", *IMP_SIZES, "P0-IMP-1s", "P0-S4")}
+    s13 = json.loads((RL.DOC_DIR / "summary.json").read_text(encoding="utf-8"))
+    v13s, v13i = s13["scenarios"], s13["impact"]
+    L = []
+    out: Dict[str, Any] = {}
+    if all(scen.values()):
+        pl = scen["P0-IMP-0"]["per_seed"]
+        floor = R.noise_floor([r["I_end"] for r in pl], [r["I_perm"] for r in pl])
+        sizes = list(IMP_SIZES)
+        common = sorted(set.intersection(*[{r["seed"] for r in scen[k]["per_seed"]} for k in sizes]))
+        q = {k: [next(r["q"] for r in scen[k]["per_seed"] if r["seed"] == s) for s in common] for k in sizes}
+        beta = {}
+        for key in ("I_end", "I_peak"):
+            v = {k: [next(r[key] for r in scen[k]["per_seed"] if r["seed"] == s) for s in common] for k in sizes}
+            beta[key] = R.impact_beta(q, v)
+        b = beta["I_end"]["beta"]
+        rec1 = scen["P0-IMP-1"]["stats"]["recovery"]
+        out.update(noise_floor=floor, beta=beta, recovery_IMP1=rec1["median"], recovery_IMP5=scen["P0-IMP-5"]["stats"]["recovery"]["median"])
+        g12 = R.grade_value(R.BANDS_BY_ID["G12"], {"impact_beta": b}) if b is not None else "N/A"
+        g13 = R.grade_value(R.BANDS_BY_ID["G13"], {"impact_recovery": rec1["median"]}) if rec1["median"] is not None else "N/A"
+        L += ["Impact (probe of 5 min at 11:00; I in bps against the trader; treated − P0-C on the same seed):", "",
+              "| config | q (share of daily volume) | I_end | I_peak | I_perm | recovery | fill rate | shortfall bps | v1.3 I_end / I_perm |",
+              "|---|---|---|---|---|---|---|---|---|"]
+        for c in ("P0-IMP-0", *IMP_SIZES, "P0-IMP-1s"):
+            st = scen[c]["stats"]
+            v = v13s.get(c.replace("P0-", ""), {}).get("stats", {})
+            L.append(f"| {c} | {_fmt(st['q']['median'])} | {_fmt(st['I_end']['median'])} | {_fmt(st['I_peak']['median'])} | "
+                     f"{_fmt(st['I_perm']['median'])} | {_fmt(st['recovery']['median'])} | {_fmt(st['fill_rate']['median'])} | "
+                     f"{_fmt(st['shortfall_bps']['median'])} | {_fmt(v.get('I_end', {}).get('median'))} / {_fmt(v.get('I_perm', {}).get('median'))} |")
+        L += ["", f"Noise floor (IMP-0 placebo): I_end {_fmt(floor['I_end'])} bps, I_perm {_fmt(floor['I_perm'])} bps. "
+              f"Impact β (I_end on q, sizes 0.5/1/5 on {len(common)} common seeds; v1.3 also had IMP-0.1, dropped by the trim): "
+              f"**{_fmt(b)}** [{_fmt(beta['I_end']['ci'][0])}–{_fmt(beta['I_end']['ci'][1])}] → G12 {g12} "
+              f"(v1.3: {_fmt(v13i['G12']['value'])}, {v13i['G12']['grade']}). Recovery IMP-1 (I_perm / I_peak): "
+              f"**{_fmt(rec1['median'])}** → G13 {g13} (v1.3: {_fmt(v13i['G13']['value'])}, {v13i['G13']['grade']}).", ""]
+        absorbed = {}
+        for c in ("P0-IMP-1", "P0-IMP-1s", "P0-IMP-5"):
+            rows = [r.get("absorbed") or {} for r in scen[c]["per_seed"]]
+            classes = sorted({k for r in rows for k in r})
+            absorbed[c] = {k: _med([r.get(k) for r in rows]) for k in classes}
+        out["absorbed"] = absorbed
+        cls = sorted({k for v in absorbed.values() for k in v})
+        L += ["Who absorbed the probe (median shares per class):", "", "| class | " + " | ".join(absorbed) + " |",
+              "|---|" + "---|" * len(absorbed)]
+        for k in cls:
+            L.append(f"| {k} | " + " | ".join(_fmt(absorbed[c].get(k)) for c in absorbed) + " |")
+        b1, s1 = scen["P0-IMP-1"]["stats"], scen["P0-IMP-1s"]["stats"]
+        L += ["", f"Buy vs sell, 6,000 shares: I_end {_fmt(b1['I_end']['median'])} vs {_fmt(s1['I_end']['median'])} bps; "
+              f"I_peak {_fmt(b1['I_peak']['median'])} vs {_fmt(s1['I_peak']['median'])}; shortfall "
+              f"{_fmt(b1['shortfall_bps']['median'])} vs {_fmt(s1['shortfall_bps']['median'])} bps.", ""]
+        n4 = scen["P0-S4"]["stats"]
+        v4 = v13s.get("S4", {}).get("stats", {})
+        L += ["News +0.9 (S4), P0 vs v1.3:", "", "| measure | P0 | v1.3 |", "|---|---|---|"]
+        for k in ("R_peak", "t_peak", "t_half_rev", "R_60", "belief_shift_fund_median", "mom_dv_median"):
+            L.append(f"| {k} | {_fmt((n4.get(k) or {}).get('median'))} | {_fmt((v4.get(k) or {}).get('median'))} |")
+        out["S4"] = {k: (n4.get(k) or {}).get("median") for k in ("R_peak", "t_peak", "t_half_rev", "R_60")}
+        out["impact_curves"] = {c: scen[c].get("curve_I") for c in ("P0-IMP-1", "P0-IMP-1s", "P0-IMP-5")}
+        out["v13_impact_curve"] = v13s.get("IMP-1", {}).get("curve_I")
+    else:
+        L.append("Final campaign runs incomplete: " + ", ".join(c for c, v in scen.items() if not v))
+    mm = runs(ROOT, "P0-MM0", lab.MM0_SEEDS)
+    ex = [r["fingerprint"]["n_execs"] for r in mm]
+    out["mm0"] = {"n": len(mm), "execs": ex, "ok": bool(mm) and all(e > 0 for e in ex),
+                  "shares": [r["metrics"]["shares_executed"] for r in mm]}
+    L += ["", f"P0-MM0 (no market makers): executions {ex}, shares {out['mm0']['shares']}."]
+    out["lines"] = L
+    return out
+
+
+def n5_figures(steps, v13, fin) -> List[str]:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    FIG.mkdir(parents=True, exist_ok=True)
+    plt.rcParams.update({"font.size": 9, "axes.edgecolor": MUTED, "axes.labelcolor": INK, "xtick.color": MUTED,
+                         "ytick.color": MUTED, "axes.spines.top": False, "axes.spines.right": False})
+    made = []
+    xs = [st["k"] for st in steps]
+    lab_seeds = [f"{st['k']} ({st['n_seeds']} seeds)" for st in steps]
+
+    # stepdown_lines.png: key measures vs num_value, with target bands
+    panels = [("ac1 (T1: |ac1| ≤ 0.10)", "C", "ac1", (-0.10, 0.10)), ("VR(5) (T2: 0.80–1.25)", "C", "vr5", (0.80, 1.25)),
+              ("vol ratio 1 min (T3: ≥ 0.90)", "C", "vol_ratio_price_value", (0.90, None)),
+              ("vv_corr (T4: > 0)", "C", "vv_corr", (0.0, None)), ("volume uplift S2 (T5: > 1)", "S2", "volume_uplift", (1.0, None)),
+              ("spread_jump_ratio S2 (T6: ≤ 3)", "S2", "spread_jump_ratio", (None, 3.0)),
+              ("shares/day (L2: ≥ 295,500)", "C", "shares_executed", (295500, None)), ("spread median bps (L1: ≤ 2.5)", "C", "spread_med_bps", (None, 2.5))]
+    fig, axes = plt.subplots(2, 4, figsize=(13, 5.6))
+    for ax, (title, scope, key, band) in zip(axes.flat, panels):
+        ys = [(st.get(scope) or {}).get(key) for st in steps]
+        lo, hi = band
+        if lo is not None or hi is not None:
+            ax.axhspan(lo if lo is not None else min([y for y in ys if y is not None] + [hi]) - 1e9,
+                       hi if hi is not None else max([y for y in ys if y is not None] + [lo]) + 1e9, color="#e6f2e6", zorder=0)
+        ax.plot(xs, ys, color=PAL[0], lw=2, marker="o", ms=8, mec="white", mew=2, zorder=3)
+        v = (v13.get(scope) or {}).get(key)
+        if v is not None:
+            ax.axhline(v, color=GREY, lw=1.5, ls="--", zorder=2)
+        vals = [y for y in ys if y is not None] + ([v] if v is not None else []) + [b for b in band if b is not None]
+        if vals:
+            pad = 0.15 * (max(vals) - min(vals) or abs(max(vals)) or 1)
+            ax.set_ylim(min(vals) - pad, max(vals) + pad)
+        ax.set_title(title, fontsize=9, color=INK, loc="left")
+        ax.set_xticks(xs)
+        ax.set_xticklabels([str(x) for x in xs])
+        ax.invert_xaxis()
+        ax.grid(axis="y", color="#e5e4e0", lw=0.8)
+    axes[1, 0].set_xlabel("ValueAgents (step-down →)")
+    from matplotlib.lines import Line2D
+    fig.legend([Line2D([], [], color=PAL[0], marker="o", lw=2), Line2D([], [], color=GREY, ls="--", lw=1.5),
+                matplotlib.patches.Patch(color="#e6f2e6")],
+               [f"step median — seeds: {', '.join(lab_seeds)}", "v1.3 C-DEF / S2 (20 seeds)", "target / limit zone"],
+               loc="lower center", ncol=3, frameon=False)
+    fig.suptitle(f"Step-down with {lab.P_DESIGN}: R3 measures vs number of ValueAgents", x=0.01, ha="left", color=INK)
+    fig.tight_layout(rect=(0, 0.07, 1, 0.95))
+    fig.savefig(FIG / "stepdown_lines.png", dpi=130)
+    plt.close(fig)
+    made.append("stepdown_lines.png")
+
+    # r3_scorecard.png: T1-T7 status per step (label + colour, never colour alone)
+    rows = [("v1.3 C-DEF (20)", v13)] + [(f"P{st['k']} ({st['n_seeds']})", st) for st in steps]
+    fig, ax = plt.subplots(figsize=(8, 0.5 * len(rows) + 1.2))
+    col = {"PASS": "#0ca30c", "FAIL": "#e34948", "MISSING": "#c3c2b7"}
+    for i, (name, st) in enumerate(rows):
+        for j, k in enumerate(SCREEN_TARGETS):
+            stt = st["r3"]["targets"][k]["status"]
+            ax.add_patch(matplotlib.patches.FancyBboxPatch((j + 0.06, i + 0.08), 0.88, 0.84, boxstyle="round,pad=0,rounding_size=0.08",
+                                                           color=col.get(stt, "#c3c2b7"), alpha=0.85))
+            ax.text(j + 0.5, i + 0.5, "✓" if stt == "PASS" else ("✗" if stt == "FAIL" else "?"), ha="center", va="center",
+                    color="white", fontsize=11, fontweight="bold")
+    ax.set_xlim(0, len(SCREEN_TARGETS))
+    ax.set_ylim(len(rows), 0)
+    ax.set_xticks([j + 0.5 for j in range(len(SCREEN_TARGETS))])
+    ax.set_xticklabels(SCREEN_TARGETS)
+    ax.set_yticks([i + 0.5 for i in range(len(rows))])
+    ax.set_yticklabels([r[0] for r in rows])
+    ax.tick_params(length=0)
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+    ax.set_title("R3 targets per step (✓ pass, ✗ fail; P97/50/20: T5/T6 on S2 only)", fontsize=9, loc="left", color=INK)
+    fig.tight_layout()
+    fig.savefig(FIG / "r3_scorecard.png", dpi=130)
+    plt.close(fig)
+    made.append("r3_scorecard.png")
+
+    # jump_response_r3.png: f(t) after +2% at each step vs v1.3
+    fig, ax = plt.subplots(figsize=(8, 4))
+    for c, st, nm in zip(PAL, steps, lab_seeds):
+        cv = st.get("curve_S2")
+        if cv:
+            t = np.array(cv["t_min"])
+            ax.plot(t, cv["median"], color=c, lw=2, label=f"P{nm}")
+    cv = v13.get("curve_S2")
+    if cv:
+        ax.plot(np.array(cv["t_min"]), cv["median"], color=GREY, lw=2, ls="--", label="v1.3 S2 (20 seeds)")
+    ax.axhline(1.0, color=MUTED, lw=0.8)
+    ax.axvline(0.0, color=MUTED, lw=0.8)
+    ax.set_xlim(-5, 60)
+    ax.set_xlabel("minutes after the +2% value jump (11:00)")
+    ax.set_ylabel("share of the jump priced in (median)")
+    ax.grid(color="#e5e4e0", lw=0.8)
+    ax.legend(frameon=False, fontsize=8)
+    ax.set_title("Pricing of a +2% value jump: step-down vs v1.3", fontsize=9, loc="left", color=INK)
+    fig.tight_layout()
+    fig.savefig(FIG / "jump_response_r3.png", dpi=130)
+    plt.close(fig)
+    made.append("jump_response_r3.png")
+
+    # impact_curve_r3.png
+    curves = fin.get("impact_curves") or {}
+    if curves:
+        fig, ax = plt.subplots(figsize=(8, 4))
+        for c, (k, cv) in zip(PAL, curves.items()):
+            if cv:
+                ax.plot(np.array(cv["t_min"]), cv["median"], color=c, lw=2, label=f"{k} (20 seeds)")
+        cv = fin.get("v13_impact_curve")
+        if cv:
+            ax.plot(np.array(cv["t_min"]), cv["median"], color=GREY, lw=2, ls="--", label="v1.3 IMP-1 (20 seeds)")
+        ax.axvspan(0, 5, color="#f0efec", zorder=0)
+        ax.axhline(0, color=MUTED, lw=0.8)
+        ax.set_xlabel("minutes after the probe start (11:00; probe runs 5 min, shaded)")
+        ax.set_ylabel("impact I (bps, against the trader; median)")
+        ax.grid(color="#e5e4e0", lw=0.8)
+        ax.legend(frameon=False, fontsize=8)
+        ax.set_title("Price impact of a 5-minute probe on P0 vs v1.3", fontsize=9, loc="left", color=INK)
+        fig.tight_layout()
+        fig.savefig(FIG / "impact_curve_r3.png", dpi=130)
+        plt.close(fig)
+        made.append("impact_curve_r3.png")
+    return made
+
+
+# ══════════════════════════════════════════════════════════════════════════
 # entry point
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -627,6 +959,9 @@ def main_v14(a, engine: str) -> int:
     if a.campaign == "b":
         seeds = lab.SEEDS
         configs = lab.CAMPAIGNS["b"]
+    elif a.campaign in ("step", "final"):  # spec v1.4.2 Part 2 (per-config seeds)
+        seeds = lab.SEEDS
+        configs = lab.CAMPAIGNS[a.campaign]
     elif a.campaign in ("s2", "s2r"):  # spec v1.4.1
         seeds = lab.SCREEN_SEEDS
         if a.campaign == "s2":
@@ -656,8 +991,10 @@ def main_v14(a, engine: str) -> int:
         print("note: engine_version is +dirty (tracked files have uncommitted changes)")
     failed = []
     if not a.report_only:
-        tasks = [(c, s) for c in configs for s in seeds if a.force or not RL.is_done(ROOT, c, s, engine)]
-        print(f"{len(tasks)} runs to do, {len(configs) * len(seeds) - len(tasks)} already done", flush=True)
+        per = {c: (lab.CONFIG_SEEDS.get(c, seeds) if not a.seeds else seeds) for c in configs}
+        tasks = [(c, s) for c in configs for s in per[c] if a.force or not RL.is_done(ROOT, c, s, engine)]
+        total = sum(len(v) for v in per.values())
+        print(f"{len(tasks)} runs to do, {total - len(tasks)} already done", flush=True)
         t0 = time.time()
         _, failed = RL.run_all(tasks, ROOT, a.workers, engine)
         print(f"runs finished in {(time.time() - t0) / 60:.1f} min; {len(failed)} failed")
@@ -666,6 +1003,9 @@ def main_v14(a, engine: str) -> int:
     if a.campaign == "b":
         report_b(engine)
         print(f"report: {(DOC / 'CAMPAIGN_b.md').relative_to(RL.REPO)}")
+    elif a.campaign in ("step", "final"):
+        report_n5(engine)
+        print(f"report: {(DOC / 'RESULTS_n5.md').relative_to(RL.REPO)}")
     elif a.campaign in ("s2", "s2r"):
         report_s2(engine, lab.SCREEN_SEEDS if not a.seeds else seeds)
         print(f"report: {(DOC / 'RESULTS_s2.md').relative_to(RL.REPO)}")
