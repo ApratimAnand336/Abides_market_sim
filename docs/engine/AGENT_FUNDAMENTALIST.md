@@ -247,6 +247,50 @@ endowment is ⌊0.5·wealth/r̄⌋ shares as before.
 | FUND_DECISION | the v1.3 keys (z, z_den, w_star, w_now, d_star, d, skipped_reason, side, limit_price) + mode, m, h, x_hat. z…w_now are None when there is no decision (skipped_reason first_cycle or no_mid) |
 | FUND_QUOTES | bid_price, bid_qty, ask_price, ask_qty, blocked_sides |
 
+### Learning from prices (v1.4.1, `price_learning`)
+
+Spec v1.4.1 Part 2. Informed mode only. With `"off"` (the default) the behaviour is exactly v1.4.
+
+**Plain language.** An informed agent normally trusts its own research much more than the
+market price. But if the price keeps sitting far from its belief (farther than normal price
+noise can explain, on several looks in a row), the agent concludes that other traders probably
+know something it does not. It then trusts the price more until the disagreement is gone. One
+odd print does nothing; a persistent move does. Research keeps every agent anchored to the true
+value, so prices cannot drift away for long. Economically this is learning from prices
+(Grossman–Stiglitz); technically it is innovation-based adaptive Kalman filtering (covariance
+matching).
+
+**Maths** (`price_learning_step`). It runs in step 3 before the market update, with x̂ and P as
+they are after the predict and research steps:
+
+| quantity | formula |
+|---|---|
+| innovation | y = mid − x̂ |
+| surprise | ε = y² / (P + R_noise), measured against normal price noise, not against R_m |
+| persistence gate | e_pers = min of the last n_pl ε once n_pl looks exist, else 0 (the price must disagree n_pl looks in a row) |
+| memory | ε̄ ← (1 − a_pl)·ε̄ + a_pl·e_pers |
+| trust boost | g = clip(ε̄ / ε_thr, 1, ρ) |
+| covariance matching (if g > 1) | P ← max(P, (ε̄ − ε_thr)·(P + R_noise)) |
+| market noise | ρ_eff = ρ / g ≥ 1; R_m = ρ_eff·R_noise (replaces ρ·R_noise) |
+
+The v1.4 update K_m = P/(P + R_m) then follows. Both parts are needed. Lowering R_m alone
+barely moves a belief with a small P. The P inflation is what lets a persistent gap be
+adopted: in T-N18, "mod" adopts 59–96% of the gap at the first gated look and ≥ 95% one look
+later.
+
+**Levels** (`param_ranges.PRICE_LEARNING_LEVELS`). Set through `informed_design["price_learning"]`.
+`eps_thr` and `a_pl` are drawn per agent after all its other informed draws; nothing is drawn
+for "off".
+
+| level | n_pl | ε_thr | a_pl | note |
+|---|---|---|---|---|
+| off | — | — | — | v1.4 behaviour |
+| mod | 3 | 1–4, log | 0.2–0.4 | ignores a two-look blip |
+| strong | 2 | 0.5–2, log | 0.2–0.4 | reacts one look earlier and follows two-look blips (herding-prone; judged by L6) |
+
+**Log.** With learning on, EKF_UPDATE also carries eps, e_pers, epsbar, g, rho_eff and
+P_inflated (true when the covariance matching raised P). With "off" the event is unchanged.
+
 ## History
 
 | Version | Change | Why |
@@ -255,5 +299,6 @@ endowment is ⌊0.5·wealth/r̄⌋ shares as before.
 | v1.1 (2026-10-08) | nudge removed; Q = q·σ̂_f²·dt; smaller δ, λ ranges; target-position sizing with z = gap/√P; volatility-scaled additive news with P += shift² | x̂ drifted to ≈$949; the gain fell to ≈0.0004; R claimed $2.6–70 of noise; 19 of 20 agents sold all 50 shares in 7–19 min; news moved beliefs by +$33 (spec v1.1 §0.5) |
 | v1.2 (2026-10-09) | **z = gap / √(P + R)** (`R_last` kept from the update); `z_den` logged | ≈1,900 shares/day per agent, holdings swinging 0 ↔ 100, all 20 in sync (spec v1.2 §0.4 P1) |
 | v1.4 (2026-10-12) | **informed mode** (`mode="informed"`): research readings every Exp(T_r), market readings down-weighted by ρ, leverage-bounded target w* ∈ [−0.5, 1.5], every order priced from the belief (x̂ ∓ m), a two-sided quote layer at x̂ ∓ h, worst-case budget, Poisson wakes. price_only unchanged | R2: the ValueAgents (87% of volume) priced from the book, so the price moved by book exhaustion; R3 replaces them with agents whose quotes carry information (spec v1.4 §0.3, D-R3-1) |
+| v1.4.1 (2026-10-13) | **learning from prices** (`price_learning` mod/strong): a persistent, gated disagreement between the price and the belief lowers the price distrust (ρ_eff = ρ/g) and inflates P (covariance matching) | N4 (D-60fl2M, seed 42): after a +2% jump only 15% of agents had updated at +5 min; the book split into old-belief and new-belief clusters, and the price lagged value by tens of minutes (spec v1.4.1 §0.2) |
 
 Decisions and alternatives: [DECISIONS.md](DECISIONS.md).

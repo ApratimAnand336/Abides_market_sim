@@ -17,8 +17,8 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 | N2 | done | ce7beae + (this) | campaign b: volume −28%, grades unchanged |
 | N3 | done | 344fcbf | informed mode; T-N1..7 pass; I8 unchanged |
 | N4 | done, STOPPED | 73734ef | s1: NO design passes L1/L2 -> no winner; owner decides |
-| N4a | done | (this) | v1.4.1: bps limits, L6, diagnostics; round 1 re-evaluated (D-60fl2M, 5/7) |
-| N4b | todo | | price learning (spec v1.4.1 Part 2) |
+| N4a | done | 153f032 | v1.4.1: bps limits, L6, diagnostics; round 1 re-evaluated (D-60fl2M, 5/7) |
+| N4b | done | (this) | price learning + T-N16..19; s2/s2r plumbing |
 | N4c | todo | | campaign s2 (+S2n), 32-candidate selection; continue to N5 or STOP per §3.5 |
 | N5 | todo | | |
 | N6 | todo | | default switch; re-record I8; add I8-legacy |
@@ -42,6 +42,7 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 - (sim_data.pkl: clean, owner-confirmed; HANDOFF.md tracked from N0; CLAUDE.md/.claude stay untracked.)
 
 ## Log (newest first, one line each)
+- 2026-10-13 N4b: price learning mechanism, tests; suite 332 passed.
 - 2026-10-13 N4a: v1.4.1 Part 1 metrics/limits, housekeeping, corrected round 1.
 - 2026-10-12 N4: s1 160 runs (80 min, 2 workers), selection: no winner; long_only flag split.
 - 2026-10-12 N3: informed mode + tests; suite 311 passed.

@@ -881,7 +881,7 @@ def regression(workers, engine, rebaseline=False, force=True) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--campaign", default="c1",
-                    choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression", "b", "s1", "s1r2"])
+                    choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression", "b", "s1", "s1r2", "s2", "s2r"])
     ap.add_argument("--winner", default=None, help="s1r2: the round-1 winner (default: from docs/v1.4/lab/selection_s1.json)")
     ap.add_argument("--seeds", default=None, help="comma-separated (default: the 20 lab seeds)")
     ap.add_argument("--workers", type=int, default=min((os.cpu_count() or 2) - 1, 6))

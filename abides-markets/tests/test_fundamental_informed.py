@@ -281,3 +281,128 @@ def test_n7_oracle_path_unchanged_and_runs_reproducible(tmp_path):
     a = fingerprint(tmp_path, extra)
     b = fingerprint(tmp_path, extra)
     assert a == b and a["n_execs"] > 0
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# spec v1.4.1 Part 2: learning from prices (T-N16 .. T-N19)
+# ══════════════════════════════════════════════════════════════════════════
+
+R_NOISE = 45_000.0
+Q_LOOK = 180.0  # q * sigma_f2 * dt per look
+
+
+def pl_agent(level, rho, eps_thr, a_pl=0.3):
+    n_pl = {"mod": 3, "strong": 2}[level]
+    a = make_agent(rho=rho, price_learning=level, n_pl=n_pl, eps_thr=eps_thr, a_pl=a_pl)
+    a.x_hat, a.P = 0.0, 900.0
+    return a
+
+
+def look(a, mid):
+    """One market look as in informed_cycle step 1 + 3 (fixed R_noise)."""
+    a.P += Q_LOOK
+    R_m, pl = a.price_learning_step(mid, R_NOISE)
+    a.x_hat, a.P, K = a.correction(a.x_hat, a.P, mid, R_m)
+    return pl, K
+
+
+def test_n16_off_is_v14_informed(tmp_path):
+    """Absent key and "price_learning": "off" give identical agents and markets."""
+    from abides_markets.configs.rmsc04_ekf import build_config
+
+    from .test_scenarios import fingerprint
+
+    base = _kw()
+    off = _kw()
+    off["informed_design"] = {**DESIGN, "price_learning": "off"}
+    ca, cb = build_config(**base), build_config(**off)
+    keys = ["er_window", "delta", "sigma_n", "rho", "m0", "kappa_m", "h0", "theta_q", "T_r", "sigma_r",
+            "wake_mean", "price_learning", "starting_cash"]
+    for i, j in zip(ca["_ekf_agent_ids"], cb["_ekf_agent_ids"]):
+        A, B = ca["agents"][i], cb["agents"][j]
+        assert all(getattr(A, k) == getattr(B, k) for k in keys)
+        assert A.price_learning == "off"
+    ex = {"num_value_agents": 0, "num_ekf_agents": 20, "fund_mode": "informed", "abides_budget": {"L": 2.0}}
+    fa = fingerprint(tmp_path, {**ex, "informed_design": DESIGN})
+    fb = fingerprint(tmp_path, {**ex, "informed_design": {**DESIGN, "price_learning": "off"}})
+    assert fa == fb and fa["n_execs"] > 0
+
+
+def test_n17_maths_exact():
+    a = pl_agent("mod", rho=20.0, eps_thr=1.5, a_pl=0.25)
+    mids = [300.0, 2000.0, 2100.0, 1900.0, -50.0, 2050.0, 2000.0, 2000.0, 400.0]
+    x, P, hist, eb = 0.0, 900.0, [], 0.0
+    for mid in mids:
+        P += Q_LOOK
+        a.P += Q_LOOK
+        R_m, pl = a.price_learning_step(mid, R_NOISE)
+        # reference, spec v1.4.1 §2.2
+        y = mid - x
+        eps = y * y / (P + R_NOISE)
+        hist = (hist + [eps])[-3:]
+        e_pers = min(hist) if len(hist) == 3 else 0.0
+        eb = 0.75 * eb + 0.25 * e_pers
+        g = min(20.0, max(1.0, eb / 1.5))
+        if g > 1:
+            P = max(P, (eb - 1.5) * (P + R_NOISE))
+        rho_eff = 20.0 / g
+        Rm = rho_eff * R_NOISE
+        assert abs(a.P - P) < 1e-9 * max(1.0, P) and abs(R_m - Rm) < 1e-9 * Rm
+        assert abs(a.epsbar - eb) < 1e-12 and abs(pl["g"] - round(g, 6)) < 1e-12
+        assert 1.0 <= g <= 20.0 and rho_eff >= 1.0
+        K = P / (P + Rm)
+        a.x_hat, a.P, K_a = a.correction(a.x_hat, a.P, mid, R_m)
+        x, P = x + K * y, (1 - K) * P
+        assert abs(K_a - K) < 1e-12 and abs(a.x_hat - x) < 1e-9 * max(1.0, abs(x)) and abs(a.P - P) < 1e-9 * P
+
+
+@pytest.mark.parametrize("rho", [3.0, 100.0])
+@pytest.mark.parametrize("eps_thr", [1.0, 4.0])
+def test_n18_mod_behaviour(rho, eps_thr):
+    a = pl_agent("mod", rho, eps_thr)
+    adopted = []
+    for _ in range(4):
+        look(a, 2000.0)
+        adopted.append(a.x_hat / 2000.0)
+    print(f"mod rho {rho} eps_thr {eps_thr}: adopted {[round(v, 3) for v in adopted]}")
+    assert adopted[2] >= 0.50 and adopted[3] >= 0.90
+    b = pl_agent("mod", rho, eps_thr)  # two-look blip, then the price returns to the belief
+    look(b, 800.0)
+    look(b, 800.0)
+    for _ in range(5):
+        look(b, b.x_hat)
+    assert abs(b.x_hat) < 20.0
+
+
+@pytest.mark.parametrize("rho", [3.0, 100.0])
+@pytest.mark.parametrize("eps_thr", [0.5, 2.0])
+def test_n18_strong_behaviour(rho, eps_thr):
+    a = pl_agent("strong", rho, eps_thr)
+    look(a, 2000.0)
+    look(a, 2000.0)
+    print(f"strong rho {rho} eps_thr {eps_thr}: adopted {a.x_hat / 2000.0:.3f} at look 2")
+    assert a.x_hat / 2000.0 >= 0.70
+
+
+@pytest.mark.parametrize("level,eps_thr", [("mod", 1.0), ("mod", 4.0), ("strong", 0.5), ("strong", 2.0)])
+def test_n18_normal_noise_never_triggers(level, eps_thr):
+    rng = np.random.default_rng(18)
+    for rho in (3.0, 100.0):
+        a = pl_agent(level, rho, eps_thr)
+        for gap in rng.normal(0.0, 40.0, 3000):
+            pl, _ = look(a, a.x_hat + gap)
+            assert pl["g"] == 1.0 and not pl["P_inflated"]
+
+
+def test_n18_learning_logged_in_a_market(tmp_path):
+    """A 1-hour market with "mod" learning runs, draws eps_thr/a_pl in range and
+    logs the §2.2 keys in EKF_UPDATE."""
+    kw = _kw()
+    kw["informed_design"] = {**DESIGN, "price_learning": "mod"}
+    config, es, _ = _run(kw, tmp_path)
+    funds = [es["agents"][i] for i in config["_ekf_agent_ids"]]
+    assert all(a.price_learning == "mod" and a.n_pl == 3 and 1.0 <= a.eps_thr <= 4.0 and 0.2 <= a.a_pl <= 0.4
+               for a in funds)
+    ev = [e for a in funds for _, t, e in a.log if t == "EKF_UPDATE"]
+    assert ev and {"eps", "e_pers", "epsbar", "g", "rho_eff", "P_inflated"} <= set(ev[-1])
+    assert all(1.0 <= e["g"] for e in ev) and all(e["rho_eff"] >= 1.0 - 1e-9 for e in ev)

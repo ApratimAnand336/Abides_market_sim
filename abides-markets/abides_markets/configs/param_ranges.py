@@ -91,6 +91,14 @@ INFORMED_RANGES: Dict[str, Range] = {
 }
 INFORMED_DESIGN_KEYS = ("T_r_range_s", "sigma_r_range_c", "wealth_c")
 
+# spec v1.4.1 §2.3: learning from prices. n_pl fixed per level; eps_thr and
+# a_pl drawn per agent AFTER all its other informed draws; "off" draws nothing.
+PRICE_LEARNING_LEVELS: Dict[str, Dict] = {
+    "off": {},
+    "mod": {"n_pl": 3, "eps_thr": (1.0, 4.0, "log"), "a_pl": (0.2, 0.4, "linear")},
+    "strong": {"n_pl": 2, "eps_thr": (0.5, 2.0, "log"), "a_pl": (0.2, 0.4, "linear")},
+}
+
 
 def draw(ranges: Dict[str, Range], name: str, low=None):
     """Draw one value with the global np.random (seeded by the config).

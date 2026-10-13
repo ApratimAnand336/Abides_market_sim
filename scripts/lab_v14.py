@@ -505,6 +505,14 @@ def main_v14(a, engine: str) -> int:
     if a.campaign == "b":
         seeds = lab.SEEDS
         configs = lab.CAMPAIGNS["b"]
+    elif a.campaign in ("s2", "s2r"):  # spec v1.4.1
+        seeds = lab.SCREEN_SEEDS
+        if a.campaign == "s2":
+            configs = lab.CAMPAIGNS["s2"]
+        else:
+            winner = a.winner or json.loads((DOC / "selection_s2.json").read_text(encoding="utf-8"))["winner_32"]
+            lab.register_refinement(winner)
+            configs = lab.CAMPAIGNS["s2r"]
     else:
         seeds = lab.SCREEN_SEEDS
         if a.campaign == "s1":
@@ -536,6 +544,9 @@ def main_v14(a, engine: str) -> int:
     if a.campaign == "b":
         report_b(engine)
         print(f"report: {(DOC / 'CAMPAIGN_b.md').relative_to(RL.REPO)}")
+    elif a.campaign in ("s2", "s2r"):
+        report_s2(engine, lab.SCREEN_SEEDS if not a.seeds else seeds)
+        print(f"report: {(DOC / 'RESULTS_s2.md').relative_to(RL.REPO)}")
     else:
         report_s1(engine, lab.SCREEN_SEEDS if not a.seeds else seeds)
         print(f"report: {(DOC / 'RESULTS_s1.md').relative_to(RL.REPO)}")

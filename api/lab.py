@@ -114,19 +114,23 @@ DIAL_W = {"250k": 25_000_000, "500k": 50_000_000, "2M": 200_000_000, "5M": 500_0
 DIAL_ORDER = {"N": ["30", "60", "120", "240"], "T": ["vf", "f", "s", "vs"],
               "S": ["vl", "l", "h", "vh"], "W": ["250k", "500k", "2M", "5M"]}
 ROUND1 = {"N": ["60", "120"], "T": ["f", "s"], "S": ["l", "h"], "W": ["500k", "2M"]}
-_DESIGN_RE = re.compile(r"^D-(\d+)(vf|vs|f|s)(vl|vh|l|h)(\d+(?:k|M))$")
+# spec v1.4.1 §3.2: an optional learning level suffix, e.g. D-60fl2M-mod
+_DESIGN_RE = re.compile(r"^D-(\d+)(vf|vs|f|s)(vl|vh|l|h)(\d+(?:k|M))(?:-(mod|strong))?$")
+LEARNING = ("mod", "strong")
 
 
-def design_id(n: str, t: str, s: str, w: str) -> str:
-    """D-<N><T><S><W>, e.g. D-60fl500k (spec v1.4 §7.3)."""
-    return f"D-{n}{t}{s}{w}"
+def design_id(n: str, t: str, s: str, w: str, l: str = "off") -> str:
+    """D-<N><T><S><W>[-<L>], e.g. D-60fl500k (spec v1.4 §7.3) or D-60fl2M-mod (v1.4.1)."""
+    return f"D-{n}{t}{s}{w}" + ("" if l == "off" else f"-{l}")
 
 
 def parse_design(did: str) -> Dict[str, str]:
     m = _DESIGN_RE.match(did)
     if not m:
         raise ValueError(f"not a design id: {did}")
-    return dict(zip("NTSW", m.groups()))
+    d = dict(zip("NTSWL", m.groups()))
+    d["L"] = d["L"] or "off"
+    return d
 
 
 def design_extra(did: str) -> Dict[str, Any]:
@@ -139,16 +143,27 @@ def design_extra(did: str) -> Dict[str, Any]:
         "informed_design": {"T_r_range_s": list(DIAL_T[d["T"]]), "sigma_r_range_c": list(DIAL_S[d["S"]]),
                             "wealth_c": DIAL_W[d["W"]]},
         "abides_budget": BUDGET,
+    } if d["L"] == "off" else {  # "off" designs keep their v1.4 config hash
+        "num_ekf_agents": DIAL_N[d["N"]],
+        "fund_mode": "informed",
+        "informed_design": {"T_r_range_s": list(DIAL_T[d["T"]]), "sigma_r_range_c": list(DIAL_S[d["S"]]),
+                            "wealth_c": DIAL_W[d["W"]], "price_learning": d["L"]},
+        "abides_budget": BUDGET,
     }
 
 
-def _register_design(did: str, campaign: str) -> None:
+def _register_design(did: str, campaign: str, s2n: bool = False) -> None:
     CONFIGS[did] = {"campaign": campaign, "label": f"design {did} (no trigger)",
                     "params": {"num_value": 0}, "extra": design_extra(did), "design": did}
     CONFIGS[did + "-S2"] = {"campaign": campaign, "label": f"design {did} + value jump +2%",
                             "params": {"num_value": 0},
                             "extra": {**design_extra(did), "oracle_events": [JUMP_UP]},
                             "baseline": did, "kind": "jump", "jump_pct": 2.0, "design": did}
+    if s2n:  # spec v1.4.1 §3.2: the -2% jump as well
+        CONFIGS[did + "-S2n"] = {"campaign": campaign, "label": f"design {did} + value jump -2%",
+                                 "params": {"num_value": 0},
+                                 "extra": {**design_extra(did), "oracle_events": [JUMP_DOWN]},
+                                 "baseline": did, "kind": "jump", "jump_pct": -2.0, "design": did}
 
 
 ROUND1_DESIGNS: List[str] = [design_id(n, t, s, w) for n in ROUND1["N"] for t in ROUND1["T"]
@@ -188,7 +203,41 @@ def register_round2(winner: str) -> List[str]:
     return ds
 
 
-V14_CAMPAIGNS = {"b", "s1", "s1r2"}
+# ── spec v1.4.1 §3.2-3.4: learning sweep s2 and the refinement round s2r ──
+def design_id_d(d: Dict[str, str]) -> str:
+    return design_id(d["N"], d["T"], d["S"], d["W"], d.get("L", "off"))
+
+
+S2_DESIGNS: List[str] = [design_id(n, t, s, "2M", lv) for n in ("60", "120") for t in ("f", "s")
+                         for s in ("l", "h") for lv in LEARNING]
+for _d in S2_DESIGNS:
+    _register_design(_d, "s2", s2n=True)
+CAMPAIGNS["s2"] = [c for d in S2_DESIGNS for c in (d, d + "-S2", d + "-S2n")]
+for _d in ROUND1_DESIGNS:  # round-1 designs may need S2n runs in the refinement round
+    _register_design(_d, CONFIGS[_d]["campaign"], s2n=True)
+
+
+def refinement_designs(winner: str) -> List[str]:
+    """§3.4: N = 30, N = 240 (other dials unchanged), and W = $5M."""
+    d = parse_design(winner)
+    return [design_id_d({**d, "N": "30"}), design_id_d({**d, "N": "240"}), design_id_d({**d, "W": "5M"})]
+
+
+for _d in ROUND1_DESIGNS + S2_DESIGNS:  # registered up front for spawned workers
+    for _r in refinement_designs(_d):
+        if _r + "-S2n" not in CONFIGS:
+            _register_design(_r, "s2r", s2n=True)
+
+
+def register_refinement(winner: str) -> List[str]:
+    """CAMPAIGNS["s2r"]: the 3 refinement designs (C, S2, S2n) plus any of
+    the winner's own configs (it may lack S2n runs if it is a round-1 design)."""
+    ds = refinement_designs(winner)
+    CAMPAIGNS["s2r"] = [c for d in ds for c in (d, d + "-S2", d + "-S2n")] + [winner + "-S2n"]
+    return ds
+
+
+V14_CAMPAIGNS = {"b", "s1", "s1r2", "s2", "s2r"}
 
 
 def run_params(config_id: str, seed: int) -> RunParams:

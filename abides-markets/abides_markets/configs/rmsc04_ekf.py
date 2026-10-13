@@ -37,6 +37,7 @@ from abides_markets.configs.param_ranges import (
     INFORMED_DESIGN_KEYS,
     INFORMED_RANGES as INF,
     MOMENTUM_RANGES as MOM,
+    PRICE_LEARNING_LEVELS,
     draw,
 )
 from abides_markets.models import OrderSizeModel
@@ -274,6 +275,8 @@ def build_config(
             f"fund_mode='informed' needs informed_design with {INFORMED_DESIGN_KEYS}"
         _T = (*informed_design["T_r_range_s"], "log")
         _S = (*informed_design["sigma_r_range_c"], "log")
+        _PL = informed_design.get("price_learning", "off")  # spec v1.4.1 §2.3
+        assert _PL in PRICE_LEARNING_LEVELS, f"unknown price_learning {_PL!r}"
     ekf_start_id = agent_count
     for j in range(agent_count, agent_count + num_ekf_agents):
         # ── Randomized EKF Hyperparameters ──────────────────
@@ -313,6 +316,10 @@ def build_config(
                 T_r=draw({"T_r": _T}, "T_r"),
                 sigma_r=draw({"sigma_r": _S}, "sigma_r"),
             )
+            if _PL != "off":  # spec v1.4.1 §2.3: after all other informed draws
+                lv = PRICE_LEARNING_LEVELS[_PL]
+                fkw.update(price_learning=_PL, n_pl=lv["n_pl"],
+                           eps_thr=draw(lv, "eps_thr"), a_pl=draw(lv, "a_pl"))
             cash_j = int(informed_design["wealth_c"])
         agents.append(
             FundamentalistAgent(

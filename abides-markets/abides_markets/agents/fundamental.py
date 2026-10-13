@@ -116,6 +116,12 @@ class FundamentalistAgent(TradingAgent):
         theta_q: float = 0.01,            # quote size, fraction of wealth per side
         T_r: float = 300.0,               # s, mean research interval
         sigma_r: float = 50.0,            # cents, research noise sd
+        # --- spec v1.4.1 Part 2: learning from prices (informed mode only).
+        #     "off" is exactly the v1.4 behaviour. ---
+        price_learning: str = "off",      # "off" | "mod" | "strong"
+        n_pl: int = 3,                    # looks in a row the price must disagree
+        eps_thr: float = 2.0,             # surprise threshold (in units of normal noise)
+        a_pl: float = 0.3,                # EWMA weight of the gated surprise
     ) -> None:
         super().__init__(id, name, type, random_state, starting_cash, log_orders)
         if mode not in MODES:
@@ -131,6 +137,14 @@ class FundamentalistAgent(TradingAgent):
         self.sigma_r: float = sigma_r
         self.t_last: Optional[NanosecondTime] = None  # informed: time of the last cycle
         self.next_research: Optional[NanosecondTime] = None  # informed: research clock
+        if price_learning not in ("off", "mod", "strong"):
+            raise ValueError(f"price_learning must be off|mod|strong, got {price_learning!r}")
+        self.price_learning: str = price_learning
+        self.n_pl: int = int(n_pl)
+        self.eps_thr: float = eps_thr
+        self.a_pl: float = a_pl
+        self.eps_hist: List[float] = []  # the last n_pl surprises
+        self.epsbar: float = 0.0
 
         # Trading parameters
         self.symbol: str = symbol
@@ -709,6 +723,37 @@ class FundamentalistAgent(TradingAgent):
     def _draw_research_gap(self) -> NanosecondTime:
         return int(self.random_state.exponential(self.T_r) * 1e9)
 
+    def price_learning_step(self, mid: float, R_noise: float) -> Tuple[float, Dict]:
+        """spec v1.4.1 §2.2, before the market update (x_hat, P after the
+        predict and research steps). Innovation-based adaptive Kalman filtering
+        (covariance matching), gated by persistence:
+            y       = mid - x_hat
+            eps     = y^2 / (P + R_noise)           (surprise vs normal price noise)
+            e_pers  = min(last n_pl eps) once n_pl looks exist, else 0
+            epsbar  = (1 - a_pl) epsbar + a_pl e_pers
+            g       = clip(epsbar / eps_thr, 1, rho)
+            g > 1:  P = max(P, (epsbar - eps_thr)(P + R_noise))
+            R_m     = (rho / g) R_noise
+        Updates eps_hist, epsbar and P; returns (R_m, log fields)."""
+        y = mid - self.x_hat
+        eps = y * y / (self.P + R_noise)
+        self.eps_hist.append(eps)
+        if len(self.eps_hist) > self.n_pl:
+            del self.eps_hist[0]
+        e_pers = min(self.eps_hist) if len(self.eps_hist) == self.n_pl else 0.0
+        self.epsbar = (1.0 - self.a_pl) * self.epsbar + self.a_pl * e_pers
+        g = min(self.rho, max(1.0, self.epsbar / self.eps_thr))
+        inflated = False
+        if g > 1.0:
+            P_new = max(self.P, (self.epsbar - self.eps_thr) * (self.P + R_noise))
+            inflated = P_new > self.P
+            self.P = P_new
+        rho_eff = self.rho / g
+        return rho_eff * R_noise, {
+            "eps": round(eps, 6), "e_pers": round(e_pers, 6), "epsbar": round(self.epsbar, 6),
+            "g": round(g, 6), "rho_eff": round(rho_eff, 6), "P_inflated": inflated,
+        }
+
     def research_update(self, y_r: float) -> float:
         """Step 2 of §4.3: one scalar Kalman update with a research reading
         of variance sigma_r^2. Returns K_r."""
@@ -816,15 +861,21 @@ class FundamentalistAgent(TradingAgent):
                 self.update_sigma_f2(t, mid)
                 R_noise = self._compute_observation_variance(mid)
                 self.R_last = R_noise
-                R_m = self.rho * R_noise
+                if self.price_learning == "off":
+                    R_m, pl = self.rho * R_noise, None
+                else:  # spec v1.4.1 §2.2: learning from prices
+                    R_m, pl = self.price_learning_step(mid, R_noise)
                 er = self._compute_kaufman_er()
                 self.x_hat, self.P, K_m = self.correction(self.x_hat, self.P, mid, R_m)
-                self.logEvent("EKF_UPDATE", {
+                ev = {
                     "mid": mid, "x_hat": round(self.x_hat, 2), "P": round(self.P, 2),
                     "R": round(R_noise, 2), "K": round(K_m, 4), "ER": round(er, 4),
                     "Q": round(Q, 4), "dt": round(dt, 3), "sigma_f2": round(self.sigma_f2_hat, 4),
                     "R_m": round(R_m, 2), "rho": round(self.rho, 4), "K_m": round(K_m, 6),
-                })
+                }
+                if pl is not None:
+                    ev.update(pl)
+                self.logEvent("EKF_UPDATE", ev)
 
             # Step 4: clock and caution (caution only with a mid)
             self.t_last = t

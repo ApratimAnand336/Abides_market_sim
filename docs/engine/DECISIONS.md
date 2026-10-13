@@ -314,3 +314,9 @@ Spec: [`docs/specs/spec_v1.4.1.txt`](../specs/spec_v1.4.1.txt), approved by the 
 - No new runs; the new metrics are recomputed from the stored s1 `series.npz` by the same functions as `run_metrics` (`scripts/lab_v14._augment_from_series`).
 - **Result:** L1 and L6 now pass in all 16 designs. The 8 designs at $500k still fail L2. Among the 8 at $2M, the v1.4 §7.4 rule (T5/T6 on S2 only, as round 1 has no S2n runs) picks D-60fl2M with 5/7 targets: T3 and T6 fail.
 - T6 fails everywhere: spread_jump_ratio 8.7–49. T3 (1-min vol ratio, 0.45–0.74) fails everywhere. Tables: `docs/v1.4/lab/RESULTS_s2.md` §1.
+
+### 2026-10-13 (N4b) Learning from prices: implementation notes
+- The mechanism is implemented exactly as §2.2 (`FundamentalistAgent.price_learning_step`). The levels mod/strong follow §2.3: `eps_thr` and `a_pl` are drawn after the agent's T_r and σ_r draws and before its RandomState seed, and nothing is drawn for "off". "off" keeps the v1.4 code path and the v1.4 EKF_UPDATE keys (T-N16: identical agents and fingerprint).
+- `P_inflated` is logged as true when the covariance matching actually raised P (g > 1 and (ε̄ − ε_thr)(P + R_noise) > P).
+- The T-N18 numbers agree with the spec's hand simulation. A persistent 2,000¢ gap is adopted 59–96% at look 3 and 95–100% at look 4 (mod); 76–96% at look 2 (strong). A two-look 800¢ blip moves the belief by less than 20¢ (mod). N(0, 40¢) noise never triggers g > 1 in 3,000 looks.
+- Lab: design ids gain an optional level suffix (`D-60fl2M-mod`). Designs without a suffix keep their v1.4 build arguments and config hashes, so the stored s1 runs stay valid. S2n configs are registered for every s2, refinement and round-1 design. Refinement candidates (§3.4) are registered at import so that spawned workers know them.
