@@ -1,0 +1,119 @@
+FINVERSE: SPEC v1.4.2 (AMENDMENT 2 to v1.4 / R3: close R3, faster engine, trimmed runs)
+=====================================================================================
+Date: 2026-10-13.  Owner: Apratim Anand, IIT Bombay.
+Audience: Claude Code. Status: APPROVED by the owner on 2026-10-13.
+Applies to: branch v1.4 (head 78deb78, N0-N4c done). Continue on the same branch.
+Read with docs/specs/spec_v1.4.txt and spec_v1.4.1.txt; this amendment overrides them where
+it differs. Copy this file to docs/specs/spec_v1.4.2.txt. One commit per milestone; do not
+push.
+
+
+=====================================================================================
+PART 0. DECISIONS (owner, 2026-10-13)
+=====================================================================================
+D-R3-7 The selected design is D-60fl2M with price_learning "off": 60 informed
+       fundamentalists, research interval log-U[60, 300] s, research noise log-U[10, 50] c,
+       $2M each. It passes T1, T2, T4, T5, T7 and every limit (L1-L6, corrected units).
+D-R3-8 R3 closes with T3 and T6 OPEN. They are carried into R4 as known issues, with the
+       evidence below. No further R3 design sweeps.
+       Evidence (RESULTS_s2.md): T3 price/value vol ratio 0.49 at 1 min, 0.73 at 15 min,
+       0.93 at 60 min (smooth minute to minute, tracks value over the hour). T6 spread p95
+       after a +/-2% jump 8.7x / 16.7x the baseline (book never empties; it widens while
+       agents disagree; 33% of agents updated at +5 min, 87% at +10).
+       Why R4: both need liquidity that stays tight while informed traders disagree, and
+       short-horizon price variation that does not come from research arrivals. Those are
+       R4's market-maker (inventory, quoting around the last trade under stress) and
+       endogenous-volatility work.
+D-R3-9 Learning from prices (v1.4.1 Part 2) is a documented negative result. The rule is
+       symmetric: an agent that has just researched the new value sees a stale price and is
+       pulled back to it (diagnostic: 2-3x more and larger moves toward the stale price).
+       The spec's hand simulation tested only an un-updated agent; that was a spec error.
+       Keep the code with default "off" (tests stay), document the result, and list a
+       one-directional variant (no learning for an agent whose last research reading is
+       younger than its research interval) as an R4 candidate. Do not implement it now.
+D-R3-10 Speed matters for the rest of the roadmap (R4/R5 sweeps, R6 live users). Do the
+       bit-identical engine speed-up of Part 1 before the remaining campaigns.
+D-R3-11 The remaining campaigns are trimmed (Part 2). The final market keeps 20 seeds.
+
+
+=====================================================================================
+PART 1. ENGINE SPEED-UP (milestone N4d; ABIDES core, results must be bit-identical)
+=====================================================================================
+1.1 Problem: OrderBook.get_imbalance (abides-markets/abides_markets/order_book.py) is about
+    40% of run time. It sums the visible quantity of every order on both sides of the book
+    (PriceLevel.total_quantity iterates every order) and it is called by
+    ExchangeAgent.handle_event_based_data_subscription for EVERY book event and EVERY
+    BookImbalance subscriber (both market makers). Belief-anchored quotes spread orders over
+    many price levels, so the book is large.
+1.2 Change: keep running totals of visible quantity per side in OrderBook
+    (self._vis_bid_qty, self._vis_ask_qty), updated at every place where a visible order
+    enters, leaves, is partially executed, is modified or replaced (follow every code path
+    that changes PriceLevel contents: insert, execute/fill, cancel, partial cancel, modify,
+    replace; hidden orders do not count, as now). get_imbalance uses the totals; its
+    formula and return values are unchanged. Optionally also memoise PriceLevel totals the
+    same way. Do not change any other behaviour.
+1.3 Guard (tests):
+    T-S1 property test: in a 1-hour default market and in a 1-hour D-60fl2M market, after
+         every book event the running totals equal the full recomputation (run with a debug
+         flag that asserts on every call; the flag is off by default).
+    T-S2 bit-identical results: I8 (v1.3 default market, unchanged hash) and the full-day
+         seed-42 D-60fl2M-S2 EXEC hash recorded BEFORE the change (store it in
+         docs/v1.4/lab/reference_hashes.json) are identical after the change.
+    T-S3 report wall time of one full D-60fl2M day before/after (same machine, 1 worker).
+    If T-S1 or T-S2 cannot be made to pass, revert the change and report; do not proceed
+    with a non-identical engine.
+
+
+=====================================================================================
+PART 2. TRIMMED CAMPAIGNS (replace v1.4 §7.5-7.7)
+=====================================================================================
+All with design D-60fl2M (learning off), budget on, full day, as in v1.4.
+2.1 Campaign step (step-down), seeds:
+      num_value 97, 50, 20: configs P<k>-C and P<k>-S2, 10 seeds (42, 7, 1, 2, 3, 4, 5, 6,
+      8, 9) -> 3 x 2 x 10 = 60 runs.
+      num_value 0 (the final market P0): P0-C, P0-S2, P0-S2n, 20 seeds (api.lab.SEEDS)
+      -> 60 runs.
+2.2 Campaign final on P0, 20 seeds: IMP-0, IMP-0.5, IMP-1, IMP-5, IMP-1s, S4 -> 120 runs.
+      (IMP-1s is kept: the v1.3 result that buying and selling cost about the same does
+      not transfer to a market whose liquidity now comes from informed agents with
+      leverage and short limits.)
+      P0-MM0 (num_mm = 0; L3 part 2: trades > 0, a yes/no check): 5 seeds -> 5 runs.
+      Dropped: S5 (volatility burst). It is not an R3 target and R4 runs it as part of its
+      own scorecard, so no R3 decision depends on it.
+2.3 Total 245 runs (was 380). With the speed-up and 2 workers, expect about 1.5-2.5 h.
+      What the trim costs, stated in the report: the 97/50/20 steps use 10 seeds, so their
+      medians are about 1.4x noisier than 20-seed medians. They show the trend of the
+      step-down and decide nothing; every R3 pass/fail is judged on P0 with 20 seeds.
+      Use the /lab-campaign skill; run in the background; resumable.
+2.4 Reporting: the step-down tables use 10-seed medians for 97/50/20 and 20-seed medians
+      for 0; say so in every table. R3 scorecard on P0 (20 seeds): T1-T7, L1-L6.
+
+
+=====================================================================================
+PART 3. R3 CLOSURE CRITERIA (replace v1.4 §2.4)
+=====================================================================================
+  R3 is complete when, on P0 with 20 seeds:
+    T1, T2, T4, T5, T7 PASS and L1-L6 PASS (the screening result, confirmed on 20 seeds);
+    T3 and T6 are reported with their values and recorded as open issues for R4
+    (KNOWN_ISSUES: new entries K14 "price too smooth at 1-5 min" and K15 "spread widens
+    8-17x after a value jump while informed agents disagree", each with evidence and the
+    R4 hypotheses of D-R3-8);
+    the default switch (v1.4 N6) and reports (v1.4 N7) are done.
+  If a 20-seed confirmation fails a target that passed in screening, report it (do not
+  re-sweep) and continue; the owner decides at the end.
+
+
+=====================================================================================
+PART 4. MILESTONES (continue on v1.4)
+=====================================================================================
+  N4d  Part 1 speed-up + T-S1..T-S3; DECISIONS D-R3-7..D-R3-11; docs (ARCHITECTURE.md
+       performance note; AGENT_FUNDAMENTALIST.md: learning from prices = negative result,
+       default off, with the diagnostic table). No stop.
+  N5   Part 2 campaigns; figures as in v1.4 N5 (stepdown_lines.png with the seed counts in
+       the legend). No stop unless a run fails repeatedly.
+  N6   as v1.4 N6 (default switch to P0 = D-60fl2M, learning off; RunParams; payload cap;
+       dashboard; ENGINE_VERSION 1.4; I8 re-record + I8-legacy; regression re-baseline).
+  N7   as v1.4 N7 plus Part 3 closure: RESULTS.md (final), REPORT.md, KNOWN_ISSUES K14/K15,
+       CHANGELOG, TESTING, HANDOFF ("R3 complete; next: R4 spec").
+  Then STOP and report to the owner: the R3 scorecard, the step-down summary, the impact
+  results and the run times.

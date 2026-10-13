@@ -288,6 +288,28 @@ for "off".
 | mod | 3 | 1–4, log | 0.2–0.4 | ignores a two-look blip |
 | strong | 2 | 0.5–2, log | 0.2–0.4 | reacts one look earlier and follows two-look blips (herding-prone; judged by L6) |
 
+**Result: a negative result (spec v1.4.2, D-R3-9). Default "off"; the code and tests stay.**
+
+Campaign s2 (16 designs × C/S2/S2n × 5 seeds) and its refinement round found that learning
+from prices *slows* the pricing of value jumps. Off → mod / strong: t90 +5.8 / +16.1 min, with
+no more agents updated at +5 min.
+
+The rule is symmetric. An agent that has just researched the new value sees a price that has
+not moved yet. Its gate opens, it inflates P, and it pulls its belief back toward the stale
+price. Diagnostic (`scripts/diag_learning_jump.py`, seed 42, 11:00–11:30, +2% jump):
+
+| design | learning moves toward the new value / toward the stale price | median move ($) |
+|---|---|---|
+| D-60fl2M-mod | 81 / 99 | 0.34 / 1.12 |
+| D-60fl2M-strong | 183 / 216 | 0.30 / 0.89 |
+| D-60sl2M-mod | 150 / 354 | 0.52 / 1.05 |
+
+The spec's hand simulation tested only an agent that had not yet researched; that was a spec
+error. On quiet days the gate never opens in the fast, precise designs.
+
+R4 candidate (not implemented): a one-directional variant, with no learning for an agent whose
+last research reading is younger than its research interval.
+
 **Log.** With learning on, EKF_UPDATE also carries eps, e_pers, epsbar, g, rho_eff and
 P_inflated (true when the covariance matching raised P). With "off" the event is unchanged.
 

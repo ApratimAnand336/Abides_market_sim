@@ -332,3 +332,42 @@ Spec: [`docs/specs/spec_v1.4.1.txt`](../specs/spec_v1.4.1.txt), approved by the 
   - D-240fl2M (about 2 GB per run) ran one at a time for memory safety; its L5 failure (186 s) is under the most favourable condition.
   - Late s2 runs became slower (82 → about 100 s) under unchanged settings; this decides only D-120sh2M-strong's L5 rejection (99.7 s), and that design ranks below the winner anyway.
   - To keep the engine label clean while the report code was still uncommitted, `scripts/lab_v14.py` and the generated reports were set aside with `git stash` during the runs. Two stash entries hold only stale generated reports (safe to drop).
+
+---
+
+## v1.4.2 (amendment 2 to R3): close R3, faster engine, trimmed runs
+
+Spec: [`docs/specs/spec_v1.4.2.txt`](../specs/spec_v1.4.2.txt), approved by the owner on 2026-10-13.
+
+### 2026-10-13 D-R3-7: the R3 design is D-60fl2M, price learning off
+- 60 informed fundamentalists. Research interval log-U[60, 300] s, research noise log-U[10, 50]¢, $2M each.
+- In screening it passes T1, T2, T4, T5, T7 and every limit L1–L6.
+
+### 2026-10-13 D-R3-8: R3 closes with T3 and T6 open (carried into R4)
+- **T3:** the price/value volatility ratio is 0.49 at 1 min, 0.73 at 15 min and 0.93 at 60 min.
+- **T6:** the spread p95 after a ±2% jump is 8.7× / 16.7× the baseline. The book never empties.
+- **Why R4:** both need liquidity that stays tight while informed traders disagree, and short-horizon price variation that does not come from research arrivals. That is R4's market-maker and endogenous-volatility work. Recorded as K14 and K15 in N7. No further R3 design sweeps.
+
+### 2026-10-13 D-R3-9: learning from prices is a documented negative result
+- The rule is symmetric, so an agent that has just researched the new value is pulled back toward the stale price.
+- The spec's hand simulation tested only an un-updated agent; that was a spec error.
+- The code and its tests stay, with default "off".
+- R4 candidate (not implemented): a one-directional variant, with no learning for an agent whose last research reading is younger than its research interval.
+
+### 2026-10-13 D-R3-10: bit-identical engine speed-up before the remaining campaigns (N4d, below)
+
+### 2026-10-13 D-R3-11: trimmed campaigns
+- step: P97/50/20 on 10 seeds (C + S2); P0 on 20 seeds (C, S2, S2n).
+- final on P0, 20 seeds: IMP-0, IMP-0.5, IMP-1, IMP-5, IMP-1s, S4; plus P0-MM0 on 5 seeds.
+- 245 runs; S5 dropped. The 10-seed steps show the trend and decide nothing.
+
+### 2026-10-13 (N4d) OrderBook running visible totals (ABIDES core, bit-identical)
+- **Change.** `OrderBook._vis_bid_qty` / `_vis_ask_qty` are adjusted at every site that changes visible resting quantity, and `get_imbalance` reads them instead of summing every order. Its formula and return values are unchanged: the same integers.
+  - Sites: enter_order; execute_order (full pop, partial fill, price-to-comply other half, removed or decremented); cancel_order; modify_order and partial_cancel_order (delta of the visible quantity); replace_order (through cancel + enter).
+  - Hidden orders are excluded, as in `PriceLevel.total_quantity`.
+- **Guard.** `OrderBook.DEBUG_TOTALS` (default False) asserts totals == full recomputation after every public handler and in get_imbalance.
+  - T-S1: every upstream orderbook/ unit test runs with the flag on (orderbook/conftest.py); a hand-built book covers hidden orders, partial cancel, modify up/down, replace and fills; a 1-hour default market and a 1-hour D-60fl2M market also run with the check on.
+  - T-S2: the full-day D-60fl2M-S2 seed-42 fingerprint recorded before the change (`docs/v1.4/lab/reference_hashes.json`, equal to the stored s1 run) is reproduced, and I8 holds.
+- **T-S3 (one full D-60fl2M day, seed 42, 1 worker, same machine, alternating old/new engine):** before 63.6 and 62.7 s; after 48.9 and 48.0 s, about **−23%**.
+  - The profile had attributed about 40% to get_imbalance, but the old per-event summing also overlapped with other work.
+  - After the change, no single hotspot remains: deepcopy of orders (about 15%) and `fmt_ts` in debug log calls that are formatted even when debug logging is off (about 8%) lead. Those are left for R4 (they touch ABIDES core logging/messaging).

@@ -25,6 +25,22 @@ from .price_level import PriceLevel
 logger = logging.getLogger(__name__)
 
 
+def _checked_totals(fn):
+    """FinVerse spec v1.4.2 Part 1 (T-S1): when OrderBook.DEBUG_TOTALS is set,
+    assert after every public book event that the running visible totals equal
+    a full recomputation. Off by default (one attribute read per call)."""
+
+    def wrapper(self, *args, **kwargs):
+        out = fn(self, *args, **kwargs)
+        if OrderBook.DEBUG_TOTALS:
+            self._check_totals()
+        return out
+
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    return wrapper
+
+
 class OrderBook:
     """Basic class for an order book for one symbol, in the style of the major US Stock Exchanges.
 
@@ -47,6 +63,9 @@ class OrderBook:
         sell_transactions: An ordered list of all previous sell transaction timestamps and quantities.
     """
 
+    # spec v1.4.2 Part 1: assert running totals == recomputation (tests only)
+    DEBUG_TOTALS: bool = False
+
     def __init__(self, owner: Agent, symbol: str) -> None:
         """Creates a new OrderBook class instance for a single symbol.
 
@@ -59,6 +78,11 @@ class OrderBook:
         self.bids: List[PriceLevel] = []
         self.asks: List[PriceLevel] = []
         self.last_trade: Optional[int] = None
+        # spec v1.4.2 Part 1: running totals of VISIBLE resting quantity per side
+        # (hidden orders excluded, as in PriceLevel.total_quantity), kept up to
+        # date at every site that changes visible quantity; used by get_imbalance.
+        self._vis_bid_qty: int = 0
+        self._vis_ask_qty: int = 0
 
         # Create an empty list of dictionaries to log the full order book depth (price and volume) each time it changes.
         self.book_log2: List[Dict[str, Any]] = []
@@ -72,6 +96,35 @@ class OrderBook:
         self.buy_transactions: List[Tuple[NanosecondTime, int]] = []
         self.sell_transactions: List[Tuple[NanosecondTime, int]] = []
 
+    def _adj_vis(self, side_is_bid: bool, delta: int) -> None:
+        """Adjust the running visible total of one side by delta shares."""
+        if side_is_bid:
+            self._vis_bid_qty += delta
+        else:
+            self._vis_ask_qty += delta
+
+    def _recompute_vis(self) -> Tuple[int, int]:
+        """Full recomputation (the pre-v1.4.2 get_imbalance sums)."""
+        return (
+            sum(price_level.total_quantity for price_level in self.bids),
+            sum(price_level.total_quantity for price_level in self.asks),
+        )
+
+    def _check_totals(self) -> None:
+        full = self._recompute_vis()
+        assert (self._vis_bid_qty, self._vis_ask_qty) == full, (
+            f"OrderBook running totals {(self._vis_bid_qty, self._vis_ask_qty)} != recomputed {full}"
+        )
+
+    @staticmethod
+    def _visible_qty_of(price_level: PriceLevel, order_id: int) -> Optional[int]:
+        """Quantity of a VISIBLE order in a price level, None if absent or hidden."""
+        for o, _ in price_level.visible_orders:
+            if o.order_id == order_id:
+                return o.quantity
+        return None
+
+    @_checked_totals
     def handle_limit_order(self, order: LimitOrder, quiet: bool = False) -> None:
         """Matches a limit order or adds it to the order book.
 
@@ -165,6 +218,7 @@ class OrderBook:
 
             self.last_trade = avg_price
 
+    @_checked_totals
     def handle_market_order(self, order: MarketOrder) -> None:
         """Takes a market order and attempts to fill at the current best market price.
 
@@ -228,6 +282,8 @@ class OrderBook:
             if order.quantity >= book[0].peek()[0].quantity:
                 # Consume entire matched order.
                 matched_order, matched_order_metadata = book[0].pop()
+                if not matched_order.is_hidden:
+                    self._adj_vis(not order.side.is_bid(), -matched_order.quantity)
 
                 # If the order is a part of a price to comply pair, also remove the other
                 # half of the order from the book.
@@ -238,7 +294,10 @@ class OrderBook:
                             "Should not be executing on the visible half of a price to comply order!"
                         )
 
-                    assert book[1].remove_order(matched_order.order_id) is not None
+                    _other = book[1].remove_order(matched_order.order_id)
+                    assert _other is not None
+                    if not _other[0].is_hidden:
+                        self._adj_vis(not order.side.is_bid(), -_other[0].quantity)
 
                     if book[1].is_empty:
                         del book[1]
@@ -254,6 +313,8 @@ class OrderBook:
                 matched_order.quantity = order.quantity
 
                 book_order.quantity -= matched_order.quantity
+                if not book_order.is_hidden:
+                    self._adj_vis(not order.side.is_bid(), -matched_order.quantity)
 
                 # If the order is a part of a price to comply pair, also adjust the
                 # quantity of the other half of the pair.
@@ -267,6 +328,8 @@ class OrderBook:
                     book_order_metadata[
                         "ptc_other_half"
                     ].quantity -= matched_order.quantity
+                    if not book_order_metadata["ptc_other_half"].is_hidden:
+                        self._adj_vis(not order.side.is_bid(), -matched_order.quantity)
 
             # When two limit orders are matched, they execute at the price that
             # was being "advertised" in the order book.
@@ -372,6 +435,8 @@ class OrderBook:
             return
 
         book = self.bids if order.side.is_bid() else self.asks
+        if not order.is_hidden:  # every path below adds the order to this side
+            self._adj_vis(order.side.is_bid(), order.quantity)
 
         if len(book) == 0:
             # There were no orders on this side of the book.
@@ -408,6 +473,7 @@ class OrderBook:
             # append current OB state to book_log2
             self.append_book_log2()
 
+    @_checked_totals
     def cancel_order(
         self,
         order: LimitOrder,
@@ -450,6 +516,8 @@ class OrderBook:
 
             if cancelled_order_result is not None:
                 cancelled_order, metadata = cancelled_order_result
+                if not cancelled_order.is_hidden:
+                    self._adj_vis(order.side.is_bid(), -cancelled_order.quantity)
 
                 # If the cancelled price now has no orders, remove it completely.
                 if price_level.is_empty:
@@ -494,6 +562,7 @@ class OrderBook:
 
         return False
 
+    @_checked_totals
     def modify_order(self, order: LimitOrder, new_order: LimitOrder) -> None:
         """Modifies the quantity of an existing limit order in the order book.
 
@@ -511,7 +580,10 @@ class OrderBook:
             if not price_level.order_has_equal_price(order):
                 continue
 
+            _old_vis = self._visible_qty_of(price_level, order.order_id)
             if price_level.update_order_quantity(order.order_id, new_order.quantity):
+                if _old_vis is not None:
+                    self._adj_vis(order.side.is_bid(), new_order.quantity - _old_vis)
                 self.history.append(
                     dict(
                         time=self.owner.current_time,
@@ -536,6 +608,7 @@ class OrderBook:
                     # append current OB state to book_log2
                     self.append_book_log2()
 
+    @_checked_totals
     def partial_cancel_order(
         self,
         order: LimitOrder,
@@ -561,7 +634,10 @@ class OrderBook:
             if not price_level.order_has_equal_price(order):
                 continue
 
+            _old_vis = self._visible_qty_of(price_level, order.order_id)
             if price_level.update_order_quantity(order.order_id, new_order.quantity):
+                if _old_vis is not None:
+                    self._adj_vis(order.side.is_bid(), new_order.quantity - _old_vis)
                 self.history.append(
                     dict(
                         time=self.owner.current_time,
@@ -591,6 +667,7 @@ class OrderBook:
                     ### append current OB state to book_log2
                     self.append_book_log2()
 
+    @_checked_totals
     def replace_order(
         self,
         agent_id: int,
@@ -795,8 +872,12 @@ class OrderBook:
             - Ask has no volume                             --> (1.0, Side.BID)
             - Bid has no volume                             --> (1.0, Side.ASK)
         """
-        bid_vol = sum(price_level.total_quantity for price_level in self.bids)
-        ask_vol = sum(price_level.total_quantity for price_level in self.asks)
+        # spec v1.4.2 Part 1: running totals instead of summing every order
+        # (same integers, so the same return values; T-S1/T-S2)
+        if OrderBook.DEBUG_TOTALS:
+            self._check_totals()
+        bid_vol = self._vis_bid_qty
+        ask_vol = self._vis_ask_qty
 
         if bid_vol == ask_vol:
             return (0, None)

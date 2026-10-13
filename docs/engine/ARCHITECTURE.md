@@ -146,3 +146,18 @@ See [REALISM_LAB.md](REALISM_LAB.md).
 | `web/src/` | dashboard: `tabs/`, `components/`, `charts/`, `types/payload.ts` (TypeScript mirror of `api/schema.py`) |
 | `abides-markets/tests/`, `api/tests/` | unit and invariant tests |
 | `scripts/` | `dev.sh`, acceptance scripts, `realism_lab.py` (the lab runner) |
+
+## Performance (v1.4.2)
+
+`OrderBook.get_imbalance`, which serves both market makers' BookImbalance subscriptions on every
+book event, used to sum the visible quantity of every resting order. That was about 40% of the
+profile once informed agents spread quotes over many levels. Since v1.4.2 the order book keeps
+running visible totals per side. They are updated at every insert, fill, cancel, partial cancel,
+modify and replace, and checked against a full recomputation when `OrderBook.DEBUG_TOTALS` is
+set (tests only).
+
+Results are bit-identical: I8 holds, and so does the full-day D-60fl2M-S2 seed-42 hash in
+`docs/v1.4/lab/reference_hashes.json`. One full D-60fl2M day (seed 42, 1 worker, i7-13620H)
+took 63.6 / 62.7 s before and 48.9 / 48.0 s after (about −23%). Remaining costs are spread
+out: order deepcopies (about 15%) and debug-log timestamp formatting (about 8%).
+
