@@ -370,3 +370,21 @@ design.
 - **Re-evaluation.** `scripts/lab_v14.report_s2` writes `docs/v1.4/lab/RESULTS_s2.md`. It
   recomputes these keys for runs stored before v1.4.1 from their `series.npz`.
 
+### Campaigns s2 and s2r (spec v1.4.1 §3.2–3.5)
+
+| campaign | configs | seeds | report |
+|---|---|---|---|
+| s2 | 16 designs `D-<N><T><S>2M-<mod\|strong>` × {C, S2, S2n} (240 runs) | 42, 7, 1, 2, 3 | `RESULTS_s2.md`, `selection_s2.json`, `summary_s2.json` |
+| s2r | the 32-candidate winner with N = 30, N = 240, W = $5M (C, S2, S2n), plus the winner's own S2n | 42, 7, 1, 2, 3 | appended to `RESULTS_s2.md` |
+
+`lab_v14.report_s2`:
+- re-evaluates round 1 (§3.1);
+- runs the 32-candidate selection (§3.3) with limits L1, L4, L5, L2 and L6, and T5/T6 on S2 AND
+  S2n where S2n runs exist;
+- runs the refinement round (§3.4);
+- applies the continue/stop rule (§3.5), all printed in full. Hand-written findings come from
+  `S2_FINDINGS.md`.
+
+`scripts/diag_learning_jump.py <design> <seed>` classifies the learning-driven belief moves of
+informed agents after the +2% jump as toward the new value or toward the stale price.
+

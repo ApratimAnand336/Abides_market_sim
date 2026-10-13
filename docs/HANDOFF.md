@@ -18,8 +18,8 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 | N3 | done | 344fcbf | informed mode; T-N1..7 pass; I8 unchanged |
 | N4 | done, STOPPED | 73734ef | s1: NO design passes L1/L2 -> no winner; owner decides |
 | N4a | done | 153f032 | v1.4.1: bps limits, L6, diagnostics; round 1 re-evaluated (D-60fl2M, 5/7) |
-| N4b | done | (this) | price learning + T-N16..19; s2/s2r plumbing |
-| N4c | todo | | campaign s2 (+S2n), 32-candidate selection; continue to N5 or STOP per §3.5 |
+| N4b | done | 0d20335 | price learning + T-N16..19; s2/s2r plumbing |
+| N4c | done, STOPPED | (this) | selected D-60fl2M fails T3, T6 -> STOP (§3.5); learning slows jumps |
 | N5 | todo | | |
 | N6 | todo | | default switch; re-record I8; add I8-legacy |
 | N7 | todo | | |
@@ -35,6 +35,8 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 - I8 hash = v1.3 default market; must hold until N6.
 
 ## Open issues / owner decisions pending
+- **N4c STOP (§3.5):** selected D-60fl2M (off) fails T3 (0.49) and T6 (jump ratio 8.7/16.7). Learning from prices pulls researched agents toward the stale price (RESULTS_s2.md §6). Owner decides next step; N5 not started.
+- git stash holds 2 entries of stale generated reports (safe to drop) and the applied N4c code stash.
 - Owner answered N4 with spec v1.4.1 (docs/specs/spec_v1.4.1.txt): bps limits, L6, price learning, campaign s2.
 - Files of 9e6b063 (docs/finverse_journey, the "(1)" spec copy) are untracked now but remain in that commit's history (owner decides).
 - Optional engine speed-up: OrderBook.get_imbalance is 40% of run time (ABIDES core; owner's call).
@@ -42,6 +44,7 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 - (sim_data.pkl: clean, owner-confirmed; HANDOFF.md tracked from N0; CLAUDE.md/.claude stay untracked.)
 
 ## Log (newest first, one line each)
+- 2026-10-13 N4c: s2 240 runs + s2r 50 runs; selection D-60fl2M; STOP.
 - 2026-10-13 N4b: price learning mechanism, tests; suite 332 passed.
 - 2026-10-13 N4a: v1.4.1 Part 1 metrics/limits, housekeeping, corrected round 1.
 - 2026-10-12 N4: s1 160 runs (80 min, 2 workers), selection: no winner; long_only flag split.

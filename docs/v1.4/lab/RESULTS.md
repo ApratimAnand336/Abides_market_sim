@@ -87,3 +87,11 @@ from "the best design by the selection rule". Neither exists when step 1 rejects
 design. Per the owner's instruction, I stop here after N4: the owner decides how to proceed.
 The selection itself is mechanical and has not been changed.
 
+## 3b. Spec v1.4.1: corrected limits and learning from prices (N4a–N4c, interim)
+
+Full tables, selection printouts and E11–E15 verdicts: [RESULTS_s2.md](RESULTS_s2.md).
+- Under the bps limits and L6, all 8 round-1 designs at $2M pass every limit.
+- Learning from prices (campaign s2, 240 runs, plus a 50-run refinement) did not fix T3 or
+  T6, and it slowed jump pricing: learning makes researched agents follow the stale price.
+- The mechanical selection ends at D-60fl2M (no learning): 5/7 targets, T3 and T6 fail.
+  Per §3.5 the work STOPPED for the owner.

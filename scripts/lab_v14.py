@@ -268,8 +268,9 @@ def select_design(summaries: List[Dict[str, Any]], limits=None, title=None):
                  "names no winner and round 2 (defined from a round-1 winner) cannot start. "
                  "§7.4 does not cover this case: the owner decides.")
         return None, P
-    scr = all(c["scope"] != "S2n" for t in kept[0]["r3"]["targets"].values() for c in t["checks"])
-    P += ["", "Step 2 — number of targets passed among T1–T7 (T5, T6 on " + ("S2 only" if scr else "S2 AND S2n") + "):"]
+    scr = [all(c["scope"] != "S2n" for t in k["r3"]["targets"].values() for c in t["checks"]) for k in kept]
+    on = "S2 only" if all(scr) else ("S2 AND S2n" if not any(scr) else "S2 AND S2n; designs without S2n runs: S2 only")
+    P += ["", f"Step 2 — number of targets passed among T1–T7 (T5, T6 on {on}):"]
     for s in kept:
         t = s["r3"]["targets"]
         s["_n"] = sum(t[k]["status"] == "PASS" for k in SCREEN_TARGETS)
@@ -427,13 +428,134 @@ def report_s2(engine: str, seeds) -> str:
         L += [f"## 2. Campaign s2: {len(have)}/{len(s2)} designs have runs; selection pending.", ""]
     DOC.mkdir(parents=True, exist_ok=True)
     (DOC / "summary_s2.json").write_text(json.dumps(RL._jsonable(out), separators=(",", ":")), encoding="utf-8")
+    extra = DOC / "S2_FINDINGS.md"  # hand-written findings and E11-E15 verdicts (N4c)
+    if extra.exists() and "s2" in out:
+        L += ["", extra.read_text(encoding="utf-8")]
     md = "\n".join(L)
     (DOC / "RESULTS_s2.md").write_text(md, encoding="utf-8")
     return md
 
 
-def report_s2_selection(sums1, seeds, out) -> List[str]:  # filled in N4c
-    return []
+def _effects(by: Dict[str, Dict[str, Any]], pairs, rows) -> List[str]:
+    """Median over matched pairs (a -> b) of the change of each measure."""
+    L = ["| change | " + " | ".join(lbl for lbl, _, _ in rows) + " |", "|" + "|".join(["---"] * (len(rows) + 1)) + "|"]
+    for label, plist in pairs:
+        cols = []
+        for _, scope, key in rows:
+            d = []
+            for a, b in plist:
+                A, B = by.get(a), by.get(b)
+                if A and B and (A.get(scope) or {}).get(key) is not None and (B.get(scope) or {}).get(key) is not None:
+                    d.append(B[scope][key] - A[scope][key])
+            cols.append(_fmt(_med(d)))
+        L.append(f"| {label} | " + " | ".join(cols) + " |")
+    return L
+
+
+EFFECT_ROWS = [("ac1", "C", "ac1"), ("VR(5)", "C", "vr5"), ("VR(30)", "C", "vr30"), ("vol ratio 1m", "C", "vol_ratio_price_value"),
+               ("vol ratio 15m", "C", "vol_ratio_15m"), ("vol ratio 30m", "C", "vol_ratio_30m"), ("vv_corr", "C", "vv_corr"),
+               ("max gap $", "C", "max_abs_gap"), ("spread med bps", "C", "spread_med_bps"), ("spread p95 bps", "C", "spread_p95_bps"),
+               ("jump ratio S2", "S2", "spread_jump_ratio"), ("updated +2m", "S2", "informed_share_updated_2m"),
+               ("updated +5m", "S2", "informed_share_updated_5m"), ("t90 S2", "S2", "t90"), ("volume", "C", "shares_executed"),
+               ("fund P&L total", "C", "fund_pnl_total")]
+
+
+def _fails(s, limits) -> List[str]:
+    t, l = s["r3"]["targets"], s["r3"]["limits"]
+    return [k for k in SCREEN_TARGETS if t[k]["status"] != "PASS"] + [k for k in limits if l[k]["status"] != "PASS"]
+
+
+def _why(s) -> List[str]:
+    """Evidence lines for every failed target/limit of a design (check values)."""
+    out = []
+    for grp in ("targets", "limits"):
+        for k, it in s["r3"][grp].items():
+            if it["status"] != "PASS":
+                out.append(f"- {k} ({it['label']}): " + "; ".join(
+                    f"{c['scope']} {c['key']} = {_fmt(c['value'])} {c['op']} {c['threshold']:g} → {c['result']}" for c in it["checks"]))
+    return out
+
+
+def report_s2_selection(sums1, seeds, out) -> List[str]:
+    """spec v1.4.1 §3.2-3.5: the s2 table, the 32-candidate selection, the
+    refinement round and the continue/stop decision, all mechanical."""
+    lim = SELECTION_LIMITS_V141
+    sums2 = [design_summary(d, seeds, screening=False) for d in lab.S2_DESIGNS]
+    run_eng = sorted({r["engine_version"] for c in lab.CAMPAIGNS["s2"] for r in runs(ROOT, c, seeds)})
+    run_dates = sorted({r["date"] for c in lab.CAMPAIGNS["s2"] for r in runs(ROOT, c, seeds)})
+    # §3.3: round-1 designs enter "re-evaluated by 3.1" (T5/T6 on S2: they have no S2n runs)
+    pool = [dict(x) for x in sums1] + [dict(x) for x in sums2]
+    win, P = select_design(pool, lim, "Selection over 32 candidates (spec v1.4.1 §3.3): limits L1, L4, L5, L2, L6; "
+                                      "targets T1–T7 (s2 designs: T5, T6 on S2 AND S2n; round-1 designs: as re-evaluated by §3.1, S2 only).")
+    by = {x["design"]: x for x in sums1 + sums2}
+    L = ["## 2. Campaign s2: learning from prices (§3.2)", "",
+         f"16 designs D-<N><T><S>2M-<L> × {{C, S2, S2n}} × seeds {list(seeds)} = 240 runs; engine {run_eng}; dates {run_dates}; "
+         "W fixed at $2M (7 of 8 $500k designs failed L2 in round 1).", "",
+         design_table_v141(sums2, win), "",
+         "### What learning and the dials do (median change over matched pairs)", "",
+         *_effects(by, [
+             ("off → mod (same N, T, S at $2M)", [(d.replace("-mod", ""), d) for d in lab.S2_DESIGNS if d.endswith("-mod")]),
+             ("off → strong", [(d.replace("-strong", ""), d) for d in lab.S2_DESIGNS if d.endswith("-strong")]),
+             ("mod → strong", [(d, d.replace("-mod", "-strong")) for d in lab.S2_DESIGNS if d.endswith("-mod")]),
+             ("N 60 → 120 (s2)", [(d, d.replace("D-60", "D-120", 1)) for d in lab.S2_DESIGNS if d.startswith("D-60")]),
+             ("T_r fast → slow (s2)", [(d, lab.design_id_d({**lab.parse_design(d), "T": "s"})) for d in lab.S2_DESIGNS
+                                       if lab.parse_design(d)["T"] == "f"]),
+             ("σ_r low → high (s2)", [(d, lab.design_id_d({**lab.parse_design(d), "S": "h"})) for d in lab.S2_DESIGNS
+                                     if lab.parse_design(d)["S"] == "l"]),
+         ], EFFECT_ROWS), "",
+         "## 3. Selection over 32 candidates (§3.3)", "", "```", *P, "```", ""]
+    sel = {"generated": date.today().isoformat(), "seeds": list(seeds), "winner_32": win, "printout_32": P}
+    final, final_sum = win, by.get(win)
+    if win is None:
+        L += ["No winner: every candidate fails a limit. Per §3.5: STOP and report.", ""]
+        sel["decision"] = "STOP"
+    else:
+        fails = _fails(by[win], lim)
+        if not fails:
+            L += [f"The winner {win} passes every target and limit: no refinement round (§3.4).", ""]
+        else:
+            ref = lab.refinement_designs(win)
+            sel["refinement_designs"] = ref
+            have = all(RL.load_metrics(ROOT, d, seeds[0]) for d in ref) and \
+                all(RL.load_metrics(ROOT, d + "-S2n", seeds[0]) for d in ref + [win])
+            L += [f"Winner {win} fails {', '.join(fails)}: refinement round (§3.4) with {ref} (C + S2 + S2n, 5 seeds), "
+                  f"plus S2n runs of the winner itself where missing.", ""]
+            if not have:
+                L += ["Refinement runs are not complete: run `python scripts/realism_lab.py --campaign s2r`.", ""]
+                sel["decision"] = "PENDING_REFINEMENT"
+                final, final_sum = None, None
+            else:
+                pool2 = [design_summary(d, seeds, screening=False) for d in [win] + ref]
+                final, P2 = select_design([dict(x) for x in pool2], lim,
+                                          "Refinement round (spec v1.4.1 §3.4): the winner and its three refinements, "
+                                          "T5/T6 on S2 AND S2n.")
+                sel["printout_refinement"] = P2
+                by.update({x["design"]: x for x in pool2})
+                final_sum = by.get(final)
+                L += ["## 4. Refinement round (§3.4)", "", design_table_v141(pool2, final), "", "```", *P2, "```", ""]
+    sel["selected"] = final
+    if final_sum is not None:
+        fails = _fails(final_sum, lim)
+        sel["decision"] = "CONTINUE_N5" if not fails else "STOP"
+        sel["selected_fails"] = fails
+        S2, S2n = final_sum["S2"], final_sum.get("S2n") or {}
+        L += ["## 5. Selected design and decision (§3.5)", "",
+              f"**{final}** — " + ("passes every target and limit: continue to N5." if not fails
+                                   else f"fails {', '.join(fails)}: STOP and report to the owner (§3.5)."), "",
+              "Jump timeline of the selected design (5-seed medians; cf. spec v1.4.1 §0.2 for D-60fl2M without learning):", "",
+              "| jump | updated +1 m | +2 m | +5 m | +10 m | +15 m | t50 min | t90 min | spread_jump_ratio | one-sided | volume uplift |",
+              "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for nm, J in (("+2% (S2)", S2), ("−2% (S2n)", S2n)):
+            L.append(f"| {nm} | " + " | ".join(_fmt(J.get(f"informed_share_updated_{m}m"), 2) for m in R.SHARE_UPDATED_MIN) +
+                     f" | {_fmt(J.get('t50'))} | {_fmt(J.get('t90'))} | {_fmt(J.get('spread_jump_ratio'))} | "
+                     f"{_fmt(J.get('one_sided_share_jump'))} | {_fmt(J.get('volume_uplift'))} |")
+        if fails:
+            L += ["", "Failed targets/limits and their evidence:", "", *_why(final_sum)]
+        L.append("")
+    out["s2"] = {"designs": sums2, "selection": sel}
+    DOC.mkdir(parents=True, exist_ok=True)
+    (DOC / "selection_s2.json").write_text(json.dumps(RL._jsonable(sel), indent=1), encoding="utf-8")
+    return L
 
 
 def report_s1(engine: str, seeds) -> str:
