@@ -102,11 +102,11 @@ BANDS: List[Dict[str, Any]] = [
         "scope": "run", "source": SOURCE,
     },
     {
-        "id": "G8", "key": "spread", "rule": "spread", "metrics": ["spread_med_ticks", "spread_p95_ticks"],
-        "label": "Spread (median, p95)", "unit": "ticks",
-        "pass": [[None, 5.0]], "warn": [[None, 10.0]],
-        "text": "PASS median ≤ 1 and p95 ≤ 5 ticks · WARN p95 ≤ 10 ticks",
-        "note": "Bid-ask spread in cents, two-sided seconds only. A liquid large-cap trades at a one-tick spread.",
+        "id": "G8", "key": "spread", "rule": "spread", "metrics": ["spread_med_bps", "spread_p95_bps"],
+        "label": "Spread (median, p95)", "unit": "bps",
+        "pass": [[None, 10.0]], "warn": [[None, 25.0]],
+        "text": "PASS median ≤ 2.5 and p95 ≤ 10 bps · WARN p95 ≤ 25 bps",
+        "note": "Bid-ask spread in bps of the mid, two-sided seconds only (spec v1.4.1: the v1.3 tick band was a unit error; liquid large caps trade at about 1–2.5 bps, Nasdaq).",
         "scope": "run", "source": SOURCE,
     },
     {
@@ -501,6 +501,34 @@ def u_ratio(vol_1m: np.ndarray) -> Optional[float]:
     return _ratio(v[:30].sum() + v[360:].sum(), 2.0 * mid)
 
 
+def spread_bps(spr_1s: np.ndarray, mid_1s: np.ndarray) -> np.ndarray:
+    """spec v1.4.1 Part 1: spread in bps of the mid, 1e4 (ask - bid) / mid.
+    spr_1s in cents (NaN when one-sided), mid_1s in dollars."""
+    return 100.0 * np.asarray(spr_1s, dtype=float) / np.asarray(mid_1s, dtype=float)
+
+
+def spread_bps_metrics(spr_1s: np.ndarray, mid_1s: np.ndarray) -> Dict[str, Optional[float]]:
+    """Median and p95 of spread_bps over the two-sided grid seconds."""
+    b = spread_bps(spr_1s, mid_1s)
+    two = b[np.isfinite(b)]
+    return {
+        "spread_med_bps": float(np.median(two)) if len(two) else None,
+        "spread_p95_bps": float(np.percentile(two, 95)) if len(two) else None,
+    }
+
+
+VOL_RATIO_HORIZONS_MIN = (5, 15, 30, 60)
+
+
+def vol_ratio_horizon(close_1m: np.ndarray, val_close_1m: np.ndarray, k: int) -> Optional[float]:
+    """spec v1.4.1 Part 1: std of k-min log returns of the price over that of
+    the value, k-min returns sampled every minute (overlapping)."""
+    c, v = np.asarray(close_1m, float), np.asarray(val_close_1m, float)
+    if len(c) <= k or len(v) <= k:
+        return None
+    return _ratio(_std(np.log(c[k:] / c[:-k])), _std(np.log(v[k:] / v[:-k])))
+
+
 def spread_metrics(spr_1s: np.ndarray) -> Dict[str, Optional[float]]:
     """3.6: spread in ticks (cents) over two-sided grid seconds."""
     s = np.asarray(spr_1s, dtype=float)
@@ -585,6 +613,7 @@ def run_metrics(s: Dict[str, Any]) -> Dict[str, Any]:
 
     # 3.6 spread
     out.update(spread_metrics(s["spr_1s"]))
+    out.update(spread_bps_metrics(s["spr_1s"], s["mid_1s"]))  # spec v1.4.1 (G8, L1)
 
     # 3.7 price vs value
     gap = np.asarray(mid, float) - np.asarray(val, float)
@@ -607,6 +636,9 @@ def run_metrics(s: Dict[str, Any]) -> Dict[str, Any]:
     out["corr_mid_value"] = float(np.corrcoef(mid, val)[0, 1]) if np.std(mid) > 0 and np.std(val) > 0 else None
     val_close = bar_closes(val, s["duration"])
     out["vol_ratio_price_value"] = _ratio(_std(r1), _std(returns_from_closes(val_close)))
+    for k in VOL_RATIO_HORIZONS_MIN:  # spec v1.4.1 diagnostics
+        out[f"vol_ratio_{k}m"] = vol_ratio_horizon(close, val_close, k)
+    out["max_abs_gap"] = float(np.max(np.abs(gap))) if len(gap) else None  # L6, dollars
 
     # 3.8 regimes
     out["regime_contrast"] = regime_contrast(r1)
@@ -838,12 +870,12 @@ def grade_value(band: Dict[str, Any], values: Dict[str, Any]) -> Optional[str]:
             return "WARN"
         return "FAIL"
     if rule == "spread":
-        med, p95 = _f(values.get("spread_med_ticks")), _f(values.get("spread_p95_ticks"))
+        med, p95 = _f(values.get("spread_med_bps")), _f(values.get("spread_p95_bps"))
         if med is None or p95 is None:
             return None
-        if med <= 1.0 and p95 <= 5.0:
+        if med <= 2.5 and p95 <= 10.0:  # spec v1.4.1 Part 1 (bps of the mid)
             return "PASS"
-        if p95 <= 10.0:
+        if p95 <= 25.0:
             return "WARN"
         return "FAIL"
     x = _f(values.get(band["key"]))
@@ -965,6 +997,45 @@ def jump_response(T: Dict[str, Any], B: Dict[str, Any], t0: int, jump_dollars: f
     out["vol_uplift"] = _ratio(sigma_window_bps(T["mid_1s"], t0, t0 + 1800), sigma_window_bps(B["mid_1s"], t0, t0 + 1800))
     out["volume_uplift"] = _ratio(window_volume(T, t0, t0 + 1800), window_volume(B, t0, t0 + 1800))
     out.update(jump_window_metrics(T, t0, J))
+    out.update(spread_jump_ratio(T, B, t0))
+    out.update(informed_share_updated(T, t0, J))
+    return out
+
+
+def _p95_bps_window(S: Dict[str, Any], a: int, b: int) -> Optional[float]:
+    if "spr_1s" not in S:
+        return None
+    x = spread_bps(_win(S["spr_1s"], a, b), _win(S["mid_1s"], a, b))
+    x = x[np.isfinite(x)]
+    return float(np.percentile(x, 95)) if len(x) else None
+
+
+def spread_jump_ratio(T: Dict[str, Any], B: Dict[str, Any], t0: int, window_s: int = 1800) -> Dict[str, Any]:
+    """spec v1.4.1 T6: p95 spread_bps of the treated run in [t0, t0 + 30 min]
+    over the p95 spread_bps of the same seed's baseline in the same window."""
+    pt, pb = _p95_bps_window(T, t0, t0 + window_s), _p95_bps_window(B, t0, t0 + window_s)
+    return {"spread_p95_jump_bps": pt, "spread_p95_jump_bps_base": pb, "spread_jump_ratio": _ratio(pt, pb)}
+
+
+SHARE_UPDATED_MIN = (1, 2, 5, 10, 15)
+
+
+def informed_share_updated(T: Dict[str, Any], t0: int, jump_dollars: float) -> Dict[str, Any]:
+    """spec v1.4.1 diagnostic: share of (informed) fundamentalists whose belief
+    is within 10% of |J| of the post-jump value at t0 + {1, 2, 5, 10, 15} min.
+    Beliefs from the 10 s grid of EKF_UPDATE x_hat (dollars); value from the
+    treated run's val_1s. All fundamentalists of a design run are informed."""
+    out: Dict[str, Any] = {}
+    X = np.asarray(T.get("fund_xhat_10s", np.zeros((0, 0))), dtype=float)
+    for m in SHARE_UPDATED_MIN:
+        key = f"informed_share_updated_{m}m"
+        t = t0 + 60 * m
+        j = t // GRID_10S
+        if X.ndim != 2 or X.shape[0] == 0 or j >= X.shape[1] or t >= len(T["val_1s"]):
+            out[key] = None
+            continue
+        v = float(T["val_1s"][t])
+        out[key] = float(np.mean(np.abs(X[:, j] - v) <= 0.1 * abs(float(jump_dollars))))
     return out
 
 
@@ -1157,20 +1228,24 @@ R3_TARGETS: List[Dict[str, Any]] = [
     {"id": "T4", "label": "volume-volatility Spearman", "checks": [("C", "vv_corr", ">", 0.0)]},
     {"id": "T5", "label": "volume uplift after a ±2% jump",
      "checks": [("S2", "volume_uplift", ">", 1.0), ("S2n", "volume_uplift", ">", 1.0)]},
+    # spec v1.4.1 Part 1: the jump-window spread is judged relative to the
+    # same seed's baseline (spread_jump_ratio), not in absolute ticks
     {"id": "T6", "label": "no emptied book during a jump",
-     "checks": [("S2", "one_sided_share_jump", "<=", 0.01), ("S2", "spread_p95_jump_ticks", "<=", 10.0),
-                ("S2n", "one_sided_share_jump", "<=", 0.01), ("S2n", "spread_p95_jump_ticks", "<=", 10.0)]},
+     "checks": [("S2", "one_sided_share_jump", "<=", 0.01), ("S2", "spread_jump_ratio", "<=", 3.0),
+                ("S2n", "one_sided_share_jump", "<=", 0.01), ("S2n", "spread_jump_ratio", "<=", 3.0)]},
     {"id": "T7", "label": "informed fundamentalists earn their information ($)",
      "checks": [("C", "fund_pnl_total", ">", 0.0), ("C", "fund_pnl_median", ">", 0.0)]},
 ]
 R3_LIMITS: List[Dict[str, Any]] = [
-    {"id": "L1", "label": "spread (ticks)",
-     "checks": [("C", "spread_med_ticks", "<=", 2.0), ("C", "spread_p95_ticks", "<=", 10.0)]},
+    {"id": "L1", "label": "spread (bps of the mid; spec v1.4.1)",
+     "checks": [("C", "spread_med_bps", "<=", 2.5), ("C", "spread_p95_bps", "<=", 10.0)]},
     {"id": "L2", "label": "shares executed per day", "checks": [("C", "shares_executed", ">=", 295_500)]},
     {"id": "L3", "label": "trades all day with num_value = 0 (share of half-hours with trades)",
      "checks": [("C", "active_halfhours_share", ">=", 1.0)]},
     {"id": "L4", "label": "zero_sum = 0 in every run (1 = yes)", "checks": [("C", "zero_sum_all_zero", ">=", 1.0)]},
     {"id": "L5", "label": "median wall time of a full day (s)", "checks": [("C", "wall_time_s", "<=", 90.0)]},
+    {"id": "L6", "label": "no runaway herding: max |mid − value| over the day ($; spec v1.4.1)",
+     "checks": [("C", "max_abs_gap", "<=", 10.0)]},
 ]
 R3_MISS_SCALE = {"T1": 0.10, "T2": 0.45, "T3": 0.90, "T4": 0.30}  # §7.4 tie-break
 

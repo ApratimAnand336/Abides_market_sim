@@ -60,22 +60,34 @@ def _fmt(x, d=3) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 
 
+V141_KEYS = ["spread_med_bps", "spread_p95_bps", "max_abs_gap"] + [f"vol_ratio_{k}m" for k in R.VOL_RATIO_HORIZONS_MIN]
+
+
 def _augment_from_series(root: Path, cid: str, seed: int, m: Dict[str, Any]) -> Dict[str, Any]:
     """Runs stored before v1.4 lack the corrected half-life and L3 keys:
     recompute them from series.npz (no simulation)."""
-    if "gap_half_life_corr_min" in m and "active_halfhours_share" in m:
+    need_v14 = not ("gap_half_life_corr_min" in m and "active_halfhours_share" in m)
+    need_v141 = not all(k in m for k in V141_KEYS)
+    if not (need_v14 or need_v141):
         return m
     s = RL.load_series(root, cid, seed)
     if s is None:
         return m
-    c = R.gap_half_life_corrected(s["mid_1s"] - s["val_1s"])
     m = dict(m)
-    m.update(gap_half_life_read_min=R._f(c["h_read"]), gap_half_life_corr_min=R._f(c["h_corrected"]),
-             gap_half_life_corr_above=bool(c["above_table"]), gap_half_life_range=c["h_range"],
-             gap_mean=R._f(c["gap_mean"]))
-    v = s["vol_1m"]
-    win = [v[i:i + 30].sum() for i in range(0, len(v), 30)]
-    m["active_halfhours_share"] = float(np.mean([w > 0 for w in win]))
+    if need_v14:
+        c = R.gap_half_life_corrected(s["mid_1s"] - s["val_1s"])
+        m.update(gap_half_life_read_min=R._f(c["h_read"]), gap_half_life_corr_min=R._f(c["h_corrected"]),
+                 gap_half_life_corr_above=bool(c["above_table"]), gap_half_life_range=c["h_range"],
+                 gap_mean=R._f(c["gap_mean"]))
+        v = s["vol_1m"]
+        win = [v[i:i + 30].sum() for i in range(0, len(v), 30)]
+        m["active_halfhours_share"] = float(np.mean([w > 0 for w in win]))
+    if need_v141:  # spec v1.4.1 Part 1 / 3.1: same functions as run_metrics
+        m.update(R.spread_bps_metrics(s["spr_1s"], s["mid_1s"]))
+        m["max_abs_gap"] = float(np.max(np.abs(s["mid_1s"] - s["val_1s"])))
+        val_close = R.bar_closes(s["val_1s"], len(s["val_1s"]) - 1)
+        for k in R.VOL_RATIO_HORIZONS_MIN:
+            m[f"vol_ratio_{k}m"] = R.vol_ratio_horizon(s["close_1m"], val_close, k)
     return m
 
 
@@ -97,7 +109,8 @@ def c_summary(rows: List[Dict[str, Any]], all_rows: List[Dict[str, Any]]) -> Dic
     keys = ["ac1", "vr5", "vol_ratio_price_value", "vv_corr", "spread_med_ticks", "spread_p95_ticks",
             "shares_executed", "active_halfhours_share", "sigma_1m_bps", "gap_std", "gap_mean",
             "gap_half_life_read_min", "gap_half_life_corr_min", "gap_half_life_min", "one_sided_share",
-            "spread_max_ticks", "cs", "kurt", "regime_contrast"]
+            "spread_max_ticks", "cs", "kurt", "regime_contrast",
+            "vr30"] + V141_KEYS
     out = {k: _med([m.get(k) for m in ms]) for k in keys}
     out["fund_pnl_total"] = _med([f.get("pnl_vs_hold_total") for f in fund])
     out["fund_pnl_median"] = _med([f.get("pnl_vs_hold_median") for f in fund])
@@ -118,7 +131,9 @@ def jump_summary(root: Path, cid: str, seeds, min_seeds: int) -> Optional[Dict[s
         return None
     st = sb["stats"]
     keys = ["t50", "t90", "settle", "overshoot", "volume_uplift", "vol_uplift", "one_sided_share_jump",
-            "spread_p95_jump_ticks", "spread_max_jump_ticks", "price_path_steps", "belief_5", "belief_30"]
+            "spread_p95_jump_ticks", "spread_max_jump_ticks", "price_path_steps", "belief_5", "belief_30",
+            "spread_jump_ratio", "spread_p95_jump_bps", "spread_p95_jump_bps_base"] + \
+        [f"informed_share_updated_{m}m" for m in R.SHARE_UPDATED_MIN]
     out = {k: (st[k]["median"] if k in st else None) for k in keys}
     out["n_seeds"] = sb["n_seeds"]
     return out
@@ -213,28 +228,34 @@ def report_b(engine: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 
 
-def design_summary(did: str, seeds) -> Dict[str, Any]:
+def design_summary(did: str, seeds, screening: bool = True) -> Dict[str, Any]:
+    """5-seed medians of one design. screening=True: T5/T6 on S2 only (v1.4
+    §7.4); False: on S2 and S2n (v1.4.1 §3.3; missing S2n runs -> MISSING)."""
     rows_c = runs(ROOT, did, seeds)
     rows_s2 = runs(ROOT, did + "-S2", seeds)
-    C = c_summary(rows_c, rows_c + rows_s2)
+    rows_s2n = runs(ROOT, did + "-S2n", seeds)
+    C = c_summary(rows_c, rows_c + rows_s2 + rows_s2n)
     S2 = jump_summary(ROOT, did + "-S2", seeds, min_seeds=1) or {}
-    sc = R.r3_scorecard({"C": C, "S2": S2}, screening=True)
-    return {"design": did, "dials": lab.parse_design(did), "C": C, "S2": S2, "r3": sc,
-            "n_seeds_C": len(rows_c), "n_seeds_S2": len(rows_s2)}
+    S2n = (jump_summary(ROOT, did + "-S2n", seeds, min_seeds=1) or {}) if rows_s2n else {}
+    sc = R.r3_scorecard({"C": C, "S2": S2, "S2n": S2n}, screening=screening)
+    return {"design": did, "dials": lab.parse_design(did), "C": C, "S2": S2, "S2n": S2n, "r3": sc,
+            "n_seeds_C": len(rows_c), "n_seeds_S2": len(rows_s2), "n_seeds_S2n": len(rows_s2n)}
 
 
 SCREEN_TARGETS = ["T1", "T2", "T3", "T4", "T5", "T6", "T7"]
 SELECTION_LIMITS = ["L1", "L2", "L4", "L5"]
+SELECTION_LIMITS_V141 = ["L1", "L4", "L5", "L2", "L6"]  # spec v1.4.1 §3.3
 
 
-def select_design(summaries: List[Dict[str, Any]]):
+def select_design(summaries: List[Dict[str, Any]], limits=None, title=None):
     """§7.4, mechanically. Returns (winner id or None, printout lines)."""
-    P = ["Selection rule (spec v1.4 §7.4), applied to 5-seed medians.", ""]
-    P.append("Step 1 — reject designs failing any limit L1, L2, L4, L5:")
+    limits = limits or SELECTION_LIMITS
+    P = [title or "Selection rule (spec v1.4 §7.4), applied to 5-seed medians.", ""]
+    P.append(f"Step 1 — reject designs failing any limit {', '.join(limits)}:")
     kept = []
     for s in summaries:
         lim = s["r3"]["limits"]
-        fails = [l for l in SELECTION_LIMITS if lim[l]["status"] != "PASS"]
+        fails = [l for l in limits if lim[l]["status"] != "PASS"]
         if fails:
             detail = "; ".join(f"{l}: " + ", ".join(f"{c['key']}={_fmt(c['value'])} {c['op']} {c['threshold']:g} {c['result']}"
                                                   for c in lim[l]["checks"]) for l in fails)
@@ -243,11 +264,12 @@ def select_design(summaries: List[Dict[str, Any]]):
             P.append(f"  {s['design']}: kept")
             kept.append(s)
     if not kept:
-        P.append("No design passes the limits L1, L2, L4, L5: step 1 rejects every design, so the rule "
+        P.append(f"No design passes the limits {', '.join(limits)}: step 1 rejects every design, so the rule "
                  "names no winner and round 2 (defined from a round-1 winner) cannot start. "
                  "§7.4 does not cover this case: the owner decides.")
         return None, P
-    P += ["", "Step 2 — number of targets passed among T1–T4, T5 (S2 only), T6 (S2 only), T7:"]
+    scr = all(c["scope"] != "S2n" for t in kept[0]["r3"]["targets"].values() for c in t["checks"])
+    P += ["", "Step 2 — number of targets passed among T1–T7 (T5, T6 on " + ("S2 only" if scr else "S2 AND S2n") + "):"]
     for s in kept:
         t = s["r3"]["targets"]
         s["_n"] = sum(t[k]["status"] == "PASS" for k in SCREEN_TARGETS)
@@ -269,9 +291,10 @@ def select_design(summaries: List[Dict[str, Any]]):
     return win, P
 
 
-def _all_pass(s) -> bool:
+def _all_pass(s, limits=None) -> bool:
     t, l = s["r3"]["targets"], s["r3"]["limits"]
-    return all(t[k]["status"] == "PASS" for k in SCREEN_TARGETS) and all(l[k]["status"] == "PASS" for k in SELECTION_LIMITS)
+    return all(t[k]["status"] == "PASS" for k in SCREEN_TARGETS) and \
+        all(l[k]["status"] == "PASS" for k in (limits or SELECTION_LIMITS))
 
 
 def design_table(summaries: List[Dict[str, Any]], winner: Optional[str]) -> str:
@@ -329,6 +352,88 @@ def main_effects(summaries: List[Dict[str, Any]]) -> str:
             cols.append(_fmt(_med(diffs)))
         L.append(f"| {label} | " + " | ".join(cols) + " |")
     return "\n".join(L)
+
+
+def _mark(t, k):
+    return {"PASS": "✓", "FAIL": "✗"}.get(t[k]["status"], "?")
+
+
+def design_table_v141(summaries: List[Dict[str, Any]], winner: Optional[str]) -> str:
+    """spec v1.4.1 table: corrected limits and targets plus the Part 1 diagnostics."""
+    H = ("| design | T1 ac1 | T2 VR5 | T3 vol ratio 1m | T4 vv | T5 uplift S2 / S2n | T6 one-sided S2/S2n · ratio S2/S2n | "
+         "T7 total / median $ | targets | L1 spread med / p95 bps | L2 volume | L5 wall s | L6 max gap $ | L4 | "
+         "vol ratio 5/15/30/60 m | VR(30) | updated +1/2/5/10/15 m (S2) | t50 / t90 S2 min | spread p95 ticks S2 | seeds C/S2/S2n |")
+    L = [H, "|" + "|".join(["---"] * (H.count("|") - 1)) + "|"]
+    for s in summaries:
+        C, S2, S2n, t, l = s["C"], s["S2"], s.get("S2n") or {}, s["r3"]["targets"], s["r3"]["limits"]
+        name = f"**{s['design']}**" if s["design"] == winner else s["design"]
+        upd = " / ".join(_fmt(S2.get(f"informed_share_updated_{m}m"), 2) for m in R.SHARE_UPDATED_MIN)
+        L.append(
+            f"| {name} | {_fmt(C.get('ac1'))} {_mark(t, 'T1')} | {_fmt(C.get('vr5'))} {_mark(t, 'T2')} | "
+            f"{_fmt(C.get('vol_ratio_price_value'))} {_mark(t, 'T3')} | {_fmt(C.get('vv_corr'))} {_mark(t, 'T4')} | "
+            f"{_fmt(S2.get('volume_uplift'))} / {_fmt(S2n.get('volume_uplift'))} {_mark(t, 'T5')} | "
+            f"{_fmt(S2.get('one_sided_share_jump'))}/{_fmt(S2n.get('one_sided_share_jump'))} · "
+            f"{_fmt(S2.get('spread_jump_ratio'))}/{_fmt(S2n.get('spread_jump_ratio'))} {_mark(t, 'T6')} | "
+            f"{_fmt(C.get('fund_pnl_total'))} / {_fmt(C.get('fund_pnl_median'))} {_mark(t, 'T7')} | "
+            f"{sum(t[k]['status'] == 'PASS' for k in SCREEN_TARGETS)}/7 | "
+            f"{_fmt(C.get('spread_med_bps'))} / {_fmt(C.get('spread_p95_bps'))} {l['L1']['status']} | "
+            f"{_fmt(C.get('shares_executed'))} {l['L2']['status']} | {_fmt(C.get('wall_time_s'))} {l['L5']['status']} | "
+            f"{_fmt(C.get('max_abs_gap'))} {l['L6']['status']} | {l['L4']['status']} | "
+            f"{' / '.join(_fmt(C.get(f'vol_ratio_{k}m'), 2) for k in R.VOL_RATIO_HORIZONS_MIN)} | {_fmt(C.get('vr30'))} | "
+            f"{upd} | {_fmt(S2.get('t50'))} / {_fmt(S2.get('t90'))} | {_fmt(S2.get('spread_p95_jump_ticks'))} | "
+            f"{s['n_seeds_C']}/{s['n_seeds_S2']}/{s.get('n_seeds_S2n', 0)} |")
+    return "\n".join(L)
+
+
+def g8_regrade() -> List[str]:
+    """spec v1.4.1 Part 1: G8 re-graded in bps for the v1.3 markets (stored runs)."""
+    L = ["| market (v1.3 runs, 20 seeds) | spread median / p95 (bps) | G8 (v1.4.1) | G8 as graded in v1.3 (ticks) |",
+         "|---|---|---|---|"]
+    for cid in ("C-DEF", "C-V20"):
+        rows = runs(V13, cid, lab.SEEDS)
+        if not rows:
+            continue
+        med = _med([r["metrics"].get("spread_med_bps") for r in rows])
+        p95 = _med([r["metrics"].get("spread_p95_bps") for r in rows])
+        g = R.grade_value(R.BANDS_BY_ID["G8"], {"spread_med_bps": med, "spread_p95_bps": p95})
+        mt = _med([r["metrics"].get("spread_med_ticks") for r in rows])
+        pt = _med([r["metrics"].get("spread_p95_ticks") for r in rows])
+        L.append(f"| {cid} | {_fmt(med)} / {_fmt(p95)} | {g} | {_fmt(mt)} / {_fmt(pt)} ticks: PASS |")
+    return L
+
+
+def report_s2(engine: str, seeds) -> str:
+    """docs/v1.4/lab/RESULTS_s2.md (spec v1.4.1): corrected round 1 (§3.1),
+    then campaign s2 and the 32-candidate selection (§3.3) once its runs exist."""
+    sums1 = [design_summary(d, seeds, screening=True) for d in lab.ROUND1_DESIGNS]
+    win1c, P1c = select_design([dict(x) for x in sums1], SELECTION_LIMITS_V141,
+                               "Round 1 under the corrected rules (spec v1.4.1 §3.1; v1.4 §7.4 rule, T5/T6 on S2 only; "
+                               "for the record only).")
+    run_eng = sorted({r["engine_version"] for c in lab.CAMPAIGNS["s1"] for r in runs(ROOT, c, seeds)})
+    L = ["# Campaign s2 — learning from prices, and the corrected round 1 (spec v1.4.1)", "",
+         f"Seeds {list(seeds)}; full day; final population (0 ValueAgents, budget L=2). Values are 5-seed medians. "
+         f"Report generated {date.today().isoformat()} (report engine {engine}).", "",
+         "## 1. Round 1 re-evaluated under the corrected rules (§3.1, no new runs)", "",
+         f"Stored s1 runs (engine {run_eng}); L1 and G8 in bps of the mid, T6 as spread_jump_ratio, new limit L6, "
+         "diagnostics of Part 1 recomputed from series.npz. Round 1 has no S2n runs, so T5/T6 are judged on S2 here.", "",
+         design_table_v141(sums1, win1c), "", "```", *P1c, "```", "",
+         "### G8 re-graded (v1.3 markets)", "", *g8_regrade(), ""]
+    out = {"round1_corrected": {"winner": win1c, "printout": P1c, "designs": sums1}}
+    s2 = getattr(lab, "S2_DESIGNS", [])
+    have = [d for d in s2 if RL.load_metrics(ROOT, d, seeds[0])]
+    if s2 and len(have) == len(s2):
+        L += report_s2_selection(sums1, seeds, out)
+    elif s2:
+        L += [f"## 2. Campaign s2: {len(have)}/{len(s2)} designs have runs; selection pending.", ""]
+    DOC.mkdir(parents=True, exist_ok=True)
+    (DOC / "summary_s2.json").write_text(json.dumps(RL._jsonable(out), separators=(",", ":")), encoding="utf-8")
+    md = "\n".join(L)
+    (DOC / "RESULTS_s2.md").write_text(md, encoding="utf-8")
+    return md
+
+
+def report_s2_selection(sums1, seeds, out) -> List[str]:  # filled in N4c
+    return []
 
 
 def report_s1(engine: str, seeds) -> str:

@@ -295,3 +295,22 @@ Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt) (Part 1, Appendix B).
 ### 2026-10-12 (N4) L5 timing: probe vs campaign
 - The single-run probe of D-120fl2M took 101 s (seed 42). Its 5-seed campaign median under 2 workers is 74 s, and every design's median is ≤ 76 s, so L5 passes everywhere. The variation is machine load (the probe ran while other applications were using memory: 2.5 GB free).
 - Profile (1.5 h of D-120fl2M): 40% of the time is in `OrderBook.get_imbalance`, which sums every price level on each book event for the market makers' imbalance subscriptions. An exactly equivalent faster version is possible, but it would change ABIDES core code, so it is left for the owner to decide (not needed for L5 now).
+
+---
+
+## v1.4.1 (amendment to R3): learning from prices and corrected limits
+
+Spec: [`docs/specs/spec_v1.4.1.txt`](../specs/spec_v1.4.1.txt), approved by the owner on 2026-10-13.
+
+### 2026-10-13 (N4a) Spec error: L1 and G8 were written in absolute ticks
+- **Decision:** spreads are judged in bps of the mid: spread_bps = 1e4·(ask − bid)/mid. L1 passes when spread_med_bps ≤ 2.5 and spread_p95_bps ≤ 10. G8 passes when the median is ≤ 2.5 bps and the p95 ≤ 10 bps, and warns when the p95 is ≤ 25 bps. The tick metrics are still reported.
+- **Reason:** for a $1000 stock, 1 tick = 0.1 bp. "Median ≤ 2 ticks" demanded 0.2 bp, which is tighter than AAPL. Real liquid large caps trade at about 1 bp (AAPL, MSFT); the 10 largest S&P 500 stocks trade at about 2.5 bps and the index at about 4.5 bps (Nasdaq, "Sampling the S&P 500 to minimize spreads", https://www.nasdaq.com/articles/sampling-sp-500-minimize-spreads). The correction rests on that external reference, not on the round-1 numbers.
+- **Evidence:** the re-graded G8 of the v1.3 markets is unchanged: PASS (C-DEF median/p95 0.1/0.3 bps; C-V20 0.1/0.4). T-R11's G8 boundary cases now use the bps keys. The dashboard's Realism tab renders G8 from the band's own metric keys and unit.
+
+### 2026-10-13 (N4a) Spec error: T6 used an absolute tick spread
+- **Decision:** T6 = one_sided_share_jump ≤ 1% AND spread_jump_ratio ≤ 3.0, in both S2 and S2n. spread_jump_ratio is the p95 spread_bps of the treated run in [t0, t0 + 30 min] divided by the same seed's baseline in the same window, as a median over seeds. New limit L6: the median over seeds of the day's max |mid − value| must be ≤ $10 in run C.
+
+### 2026-10-13 (N4a) Round 1 re-evaluated under the corrected rules (§3.1, record only)
+- No new runs; the new metrics are recomputed from the stored s1 `series.npz` by the same functions as `run_metrics` (`scripts/lab_v14._augment_from_series`).
+- **Result:** L1 and L6 now pass in all 16 designs. The 8 designs at $500k still fail L2. Among the 8 at $2M, the v1.4 §7.4 rule (T5/T6 on S2 only, as round 1 has no S2n runs) picks D-60fl2M with 5/7 targets: T3 and T6 fail.
+- T6 fails everywhere: spread_jump_ratio 8.7–49. T3 (1-min vol ratio, 0.45–0.74) fails everywhere. Tables: `docs/v1.4/lab/RESULTS_s2.md` §1.

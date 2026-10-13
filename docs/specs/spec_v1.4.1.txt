@@ -1,0 +1,221 @@
+FINVERSE: SPEC v1.4.1 (AMENDMENT to v1.4 / R3: "learning from prices" + corrected limits)
+=========================================================================================
+Date: 2026-10-13.  Owner: Apratim Anand, IIT Bombay.
+Audience: Claude Code. Status: APPROVED by the owner on 2026-10-13.
+Applies to: branch v1.4 (head 73734ef, N0-N4 done). Continue on the same branch.
+Read together with docs/specs/spec_v1.4.txt; everything in v1.4 stays in force unless this
+amendment changes it. Copy this file to docs/specs/spec_v1.4.1.txt.
+Commit once per milestone (Part 7). Do not push. Do not delete tracked files except as
+stated in Part 6.
+
+
+=========================================================================================
+PART 0. WHY THIS AMENDMENT (findings of N4, verified independently 2026-10-13)
+=========================================================================================
+0.1 Round 1 (16 designs x 5 seeds) fixed T4 (vv_corr +0.32..+0.66), T5 (volume after a
+    jump x2.3..5.3) and T7 (informed agents profit) in every design. With fast, precise
+    research T1/T2 pass (ac1 ~0, VR(5) ~1.2). No design passed all limits, so the v1.4
+    selection rule named no winner and round 2 could not start.
+
+0.2 Root cause of the remaining failures (T3, T6, the long-horizon lag). Re-run of
+    D-60fl2M, seed 42:
+      price vol / value vol by horizon: 1 min 0.49, 5 min 0.57, 15 min 0.73, 30 min 0.85,
+      60 min 0.93  -> the price follows value, but with a lag of tens of minutes.
+      +2% value jump at 11:00: informed agents whose belief is within $2 of the new value:
+      0/60 at +2 min, 9/60 at +5, 36/60 at +8, 47/60 at +10, 59/60 at +15. The price stayed
+      at $1001 for 2 minutes, then moved in steps as individual research readings arrived;
+      the book split into an "old belief" and a "new belief" cluster with a hole between
+      them (spread 124 ticks at +3 min, 141 at +8).
+    The informed agents' price distrust rho in [3, 100] makes an agent that has not yet
+    researched ignore the market even when the price runs $8 above its belief. Real
+    traders without their own information learn from prices (Grossman-Stiglitz); that is
+    how information spreads within minutes. This amendment adds that missing mechanism.
+
+0.3 Two limits of spec v1.4 were mis-specified in absolute ticks (an error of the spec,
+    not of the results). For a $1000 stock 1 tick = 0.1 bp. Real liquid large caps trade
+    at about 1 bp (AAPL, MSFT), the 10 largest S&P 500 stocks about 2.5 bps, the index
+    about 4.5 bps (Nasdaq, "Sampling the S&P 500 to minimize spreads",
+    https://www.nasdaq.com/articles/sampling-sp-500-minimize-spreads). "Median <= 2 ticks"
+    demanded 0.2 bp, tighter than AAPL. The v1.3 band G8 had the same unit error. These
+    corrections rest on that external reference, not on the round-1 numbers; record them
+    in DECISIONS.md as spec errors.
+
+
+=========================================================================================
+PART 1. CORRECTED LIMITS AND TARGETS (replace the v1.4 definitions)
+=========================================================================================
+All spreads are now measured in bps of the mid: spread_bps = 1e4 * (ask - bid) / mid.
+Keep the tick metrics as reported diagnostics.
+  L1 (replaces v1.4 L1)  spread_med_bps <= 2.5  AND  spread_p95_bps <= 10      (run C)
+  T6 (replaces v1.4 T6)  in [t0, t0 + 30 min] of S2 and of S2n:
+                           one_sided_share_jump <= 1%  (unchanged)
+                           AND spread_jump_ratio <= 3.0, where
+                           spread_jump_ratio = (p95 spread_bps of the treated run in the
+                           window) / (p95 spread_bps of the same seed's baseline run in the
+                           same window); median over seeds.
+                         Meaning: after big news the spread may widen, but not explode.
+  L6 (new limit)         no runaway herding: median over seeds of max over the day of
+                         |mid - value| <= $10 in run C (no trigger). A design that lets
+                         prices drift far from value without news is rejected.
+  G8 (v1.3 band, dashboard and lab)  PASS: median <= 2.5 bps and p95 <= 10 bps;
+                         WARN: p95 <= 25 bps; else FAIL. Re-grade the v1.3 and round-1
+                         numbers in the reports (expected: unchanged PASS).
+  T1-T5, T7, L2-L5: unchanged. T3 stays a target at 1 min (it caught a real problem).
+  New reported diagnostics (not graded): vol_ratio_price_value at 5, 15, 30, 60 min
+  (same definition as the 1-min one, on k-min returns sampled every minute); VR(30);
+  jump t50/t90 (already computed); informed_share_updated(t) = share of informed agents
+  whose belief is within 10% of J of the post-jump value at t0 + {1, 2, 5, 10, 15} min.
+
+Implement in api/realism.py (R3_TARGETS, R3_LIMITS, BANDS["G8"], new metrics) with tests:
+  T-N14 spread_bps and spread_jump_ratio on hand-built series; T6/L1/L6 boundaries exactly
+        as written (<=).
+  T-N15 vol_ratio by horizon on a synthetic pair: price = value + white noise -> ratio > 1
+        at 1 min and -> 1 at 60 min; price = 10-min moving average of value -> ratio < 1 at
+        1 min and rising with the horizon.
+
+
+=========================================================================================
+PART 2. THE MECHANISM: LEARNING FROM PRICES (fundamental.py, informed mode only)
+=========================================================================================
+2.1 Plain language (for AGENT_FUNDAMENTALIST.md)
+  An informed agent normally trusts its own research much more than the market price.
+  But if the price keeps sitting far from its belief - farther than normal price noise
+  can explain, for several looks in a row - the agent concludes that other traders
+  probably know something it does not, and it starts trusting the price more until the
+  disagreement is gone. One odd print does nothing; a persistent move does. Research
+  keeps every agent anchored to the true value, so prices cannot drift away for long.
+
+2.2 Maths (Step 3 of v1.4 §4.3, market reading; only when price_learning is not "off")
+  Before the market update, with x_hat and P after Steps 1-2 (state: eps_hist = the agent's
+  last n_pl values of eps, epsbar = 0 at start):
+      y       = mid - x_hat                                 (innovation, cents)
+      eps     = y^2 / (P + R_noise)                         (surprise against normal price
+                                                              noise; NOT against R_m)
+      append eps to eps_hist (keep the last n_pl)
+      e_pers  = min(eps_hist) if len(eps_hist) == n_pl else 0
+                                                            (persistence gate: the price must
+                                                             disagree on n_pl looks IN A ROW)
+      epsbar  = (1 - a_pl) * epsbar + a_pl * e_pers
+      g       = clip(epsbar / eps_thr, 1, rho)              (trust boost, at most rho)
+      if g > 1:  P = max(P, (epsbar - eps_thr) * (P + R_noise))
+                                                            (covariance matching: a persistent
+                                                             disagreement means my own belief
+                                                             is less certain than P says)
+      rho_eff = rho / g                                     (>= 1)
+      R_m     = rho_eff * R_noise                           (replaces rho * R_noise)
+  then the v1.4 update K_m = P / (P + R_m), x_hat += K_m * y, P = (1 - K_m) P.
+  Log in EKF_UPDATE: "eps", "e_pers", "epsbar", "g", "rho_eff", "P_inflated" (bool).
+  Both parts are needed (checked by hand simulation, 2026-10-13, one agent, 60 s looks,
+  R_noise = 45,000 c^2, P = 900 c^2, a persistent 2,000 c gap): lowering R_m alone moves
+  the belief only 16-37% of the gap after 12 looks, because P is small; adding the P
+  inflation adopts 59-96% on the first gated look and >= 95% one look later.
+  Why the gate: without it a single large noise order would shift every agent's belief.
+  With n_pl = 3 a two-look blip of 800 c moved beliefs by at most 14 c; normal price noise
+  (gap sd 40 c, 3,000 looks) never triggered g > 1.
+  Standard technique: innovation-based adaptive Kalman filtering (covariance matching);
+  economically, learning from prices (Grossman-Stiglitz).
+
+2.3 Parameters (param_ranges.py: PRICE_LEARNING_LEVELS; eps_thr and a_pl drawn per agent
+    AFTER all existing informed draws of that agent; nothing is drawn for "off")
+  level      n_pl (fixed)   eps_thr (log-U)   a_pl (U)
+  "off"      (no learning; exactly the v1.4 behaviour, no draws)
+  "mod"      3              [1.0, 4.0]        [0.2, 0.4]
+  "strong"   2              [0.5, 2.0]        [0.2, 0.4]
+  "strong" reacts one look earlier and also follows a two-look blip (hand simulation: an 800 c
+  two-look blip moved beliefs by 35 c to $6.31): it is the herding-prone end of the sweep, which L6 and the
+  selection rule judge.
+  build_config: informed_design gains optional key "price_learning": "off" | "mod" |
+  "strong" (absent = "off").
+
+2.4 Tests (abides-markets/tests/test_fundamental_informed.py)
+  T-N16 "off" is bit-identical to v1.4 informed mode: a 1-hour market with informed agents
+        built without the key and with "price_learning": "off" gives the same EXEC hash
+        and the same agent hyperparameters.
+  T-N17 maths: a hand-built sequence of mids against a fixed starting belief: eps, e_pers,
+        epsbar, g, the inflated P, rho_eff and K_m match 2.2 to 1e-9 at every step;
+        g <= rho and rho_eff >= 1 always.
+  T-N18 behaviour (one agent, belief 0, P = 900, R_noise = 45,000, q*sigma_f2*dt = 180,
+        rho in {3, 100}, eps_thr at both ends of its range, a_pl = 0.3):
+        "mod": a persistent 2,000 c gap is >= 50% adopted by the 3rd look and >= 90% by the
+        4th; a two-look 800 c blip followed by the belief price moves the belief < 20 c.
+        "strong": a persistent gap is >= 70% adopted by the 2nd look.
+        Both: gaps drawn N(0, 40 c) for 3,000 looks never give g > 1.
+  T-N19 I1-I9 and I8 (v1.3 default market) still pass.
+
+
+=========================================================================================
+PART 3. CAMPAIGNS (replace v1.4 §7.4 round 2; v1.4 §7.5-7.7 unchanged)
+=========================================================================================
+3.1 Re-evaluate round 1 under the corrected rules (no new runs): recompute L1, T6, L6 and
+    the diagnostics of Part 1 from the stored s1 series. Print the corrected round-1 table
+    and the v1.4 §7.4 rule's result (for the record only).
+3.2 Campaign s2 (learning sweep). Designs D-<N><T><S>2M-<L>:
+      N in {60, 120}; T in {f, s}; S in {l, h}; W = $2M fixed; L in {mod, strong}
+      -> 16 designs x 2 configs (no trigger, S2) x 5 seeds (42, 7, 1, 2, 3) = 160 runs.
+    W is fixed at $2M because 7 of the 8 $500k designs failed L2 (liquidity) in round 1;
+    record this choice in DECISIONS.md.
+    Also run S2n for the same 16 designs on the same 5 seeds (80 runs) so T5/T6 can be
+    checked on both jump directions in screening.
+3.3 Selection (mechanical, printed in full) over 32 candidates: the 16 round-1 designs
+    ("off", re-evaluated by 3.1) and the 16 s2 designs. v1.4 §7.4 steps 1-3 with the
+    corrected limits L1, L4, L5, L2, L6 in step 1 and targets T1-T7 (T5, T6 on S2 AND
+    S2n) in step 2; the tie-break of step 3 unchanged.
+3.4 One refinement round, only if the winner fails any target or limit: three designs
+    around the winner: N = 30 and N = 240 (other dials unchanged), and the winner with
+    W = $5M. 5 seeds, C + S2 + S2n (45 runs). Apply the same rule to the winner plus these
+    three. No further rounds.
+3.5 Continue without stopping into v1.4 N5 (step-down, final) with the selected design IF
+    it passes every target and limit. Otherwise STOP after 3.4 and report to the owner
+    (the table, the selection printout, which targets fail and the evidence of why).
+3.6 Wall time: about 60-75 s per run at 60-120 agents; s2 = 240 runs, about 2-2.5 h with 2
+    workers. Use the /lab-campaign skill; run in the background.
+
+
+=========================================================================================
+PART 4. PRE-REGISTERED EXPECTATIONS (verdicts in RESULTS.md)
+=========================================================================================
+  E11 With learning, informed_share_updated reaches >= 50% within 2-3 min after a jump
+      (round 1: 0% at +2 min, 15% at +5 min).
+  E12 T6 passes for most learning designs: no belief-cluster hole.
+  E13 Long-horizon lag shrinks: vol ratio at 15 and 30 min rises toward 1; T3 (1 min)
+      rises but may still fail (1-min smoothness may also need R4's endogenous volatility).
+  E14 "strong" learning risks herding: higher ac1 / VR(30) and larger max |gap| than "mod";
+      L6 catches runaway cases.
+  E15 Slow/noisy research designs improve most (their agents can now converge via the
+      price), reducing their negative autocorrelation.
+
+
+=========================================================================================
+PART 5. DOCUMENTATION
+=========================================================================================
+  docs/specs/spec_v1.4.1.txt (this file). DECISIONS.md: the two spec errors (L1/G8 units,
+  T6 units) with the Nasdaq reference; the learning mechanism and its levels; W fixed at
+  $2M in s2; the corrected round-1 re-evaluation. AGENT_FUNDAMENTALIST.md: Part 2.
+  REALISM_LAB.md: spreads in bps, spread_jump_ratio, vol ratio by horizon,
+  informed_share_updated, L6. RESULTS_s2.md: corrected round-1 table, s2 table, selection
+  printout, E11-E15 verdicts, the jump timeline of the selected design (the 0.2 table).
+  HANDOFF.md: updated each milestone.
+
+
+=========================================================================================
+PART 6. HOUSEKEEPING (owner-approved 2026-10-13)
+=========================================================================================
+  Stop tracking two files committed by accident in 9e6b063 (keep the owner's local copies):
+      git rm -r --cached docs/finverse_journey "docs/v1.1/finverse_spec_v1.1 (1).txt"
+  and add both paths to .gitignore. Do not rewrite history; tell the owner the files remain
+  in commit 9e6b063's history (the owner decides whether to clean it).
+
+
+=========================================================================================
+PART 7. MILESTONES (branch v1.4; one commit each, docs included)
+=========================================================================================
+  N4a  Part 6 housekeeping; spec copy; Part 1 metrics, corrected limits, G8 bands, tests
+       T-N14/T-N15; Part 3.1 re-evaluation of round 1; DECISIONS entries.
+  N4b  Part 2 mechanism + tests T-N16..T-N19; docs.
+  N4c  Campaign s2 (+ S2n), selection, refinement round if needed; RESULTS_s2.md.
+       Continue to N5 or STOP per 3.5.
+  N5-N7 as in spec v1.4 (step-down, final campaigns, default switch, reports), using the
+       selected design including its price_learning level; the payload/dashboard of N6
+       shows eps/g/rho_eff in the fundamental detail view and PRICE_LEARNING_LEVELS in the
+       parameter cards.
+  R3 is complete after N7.

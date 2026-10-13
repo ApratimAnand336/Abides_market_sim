@@ -193,10 +193,11 @@ BOUNDARIES = [
     ("G5", {"cs": 0.0499, "ps": 0.5}, "FAIL"),
     ("G6", {"kurt": 3.0}, "PASS"), ("G6", {"kurt": 1.0}, "WARN"), ("G6", {"kurt": 0.99}, "FAIL"),
     ("G7", {"vv_corr": 0.30}, "PASS"), ("G7", {"vv_corr": 0.10}, "WARN"), ("G7", {"vv_corr": 0.099}, "FAIL"),
-    ("G8", {"spread_med_ticks": 1.0, "spread_p95_ticks": 5.0}, "PASS"),
-    ("G8", {"spread_med_ticks": 1.5, "spread_p95_ticks": 5.0}, "WARN"),
-    ("G8", {"spread_med_ticks": 1.0, "spread_p95_ticks": 10.0}, "WARN"),
-    ("G8", {"spread_med_ticks": 1.0, "spread_p95_ticks": 10.5}, "FAIL"),
+    # G8 in bps of the mid since spec v1.4.1 Part 1 (the v1.3 tick band was a unit error)
+    ("G8", {"spread_med_bps": 2.5, "spread_p95_bps": 10.0}, "PASS"),
+    ("G8", {"spread_med_bps": 2.51, "spread_p95_bps": 10.0}, "WARN"),
+    ("G8", {"spread_med_bps": 1.0, "spread_p95_bps": 25.0}, "WARN"),
+    ("G8", {"spread_med_bps": 1.0, "spread_p95_bps": 25.01}, "FAIL"),
     ("G9", {"gap_std": 1.0}, "PASS"), ("G9", {"gap_std": 3.0}, "PASS"), ("G9", {"gap_std": 0.5}, "WARN"),
     ("G9", {"gap_std": 5.0}, "WARN"), ("G9", {"gap_std": 0.49}, "FAIL"), ("G9", {"gap_std": 5.01}, "FAIL"),
     # G10 grades the corrected half-life since spec v1.4 §3.1 (band unchanged)
@@ -372,10 +373,10 @@ def test_n10_jump_window_metrics():
 
 def _r3_ok():
     C = {"ac1": 0.10, "vr5": 0.80, "vol_ratio_price_value": 0.90, "vv_corr": 0.01,
-         "fund_pnl_total": 1.0, "fund_pnl_median": 0.5, "spread_med_ticks": 2.0,
-         "spread_p95_ticks": 10.0, "shares_executed": 295_500, "active_halfhours_share": 1.0,
-         "zero_sum_all_zero": 1.0, "wall_time_s": 90.0}
-    J = {"volume_uplift": 1.01, "one_sided_share_jump": 0.01, "spread_p95_jump_ticks": 10.0}
+         "fund_pnl_total": 1.0, "fund_pnl_median": 0.5, "spread_med_bps": 2.5,
+         "spread_p95_bps": 10.0, "shares_executed": 295_500, "active_halfhours_share": 1.0,
+         "zero_sum_all_zero": 1.0, "wall_time_s": 90.0, "max_abs_gap": 10.0}
+    J = {"volume_uplift": 1.01, "one_sided_share_jump": 0.01, "spread_jump_ratio": 3.0}
     return {"C": C, "S2": dict(J), "S2n": dict(J)}
 
 
@@ -386,9 +387,11 @@ def _r3_ok():
     ("C", "vol_ratio_price_value", 0.8999, "T3", "FAIL"),
     ("C", "vv_corr", 0.0, "T4", "FAIL"),  # "> 0": exactly 0 fails
     ("S2", "volume_uplift", 1.0, "T5", "FAIL"), ("S2n", "volume_uplift", 1.0, "T5", "FAIL"),
-    ("S2n", "one_sided_share_jump", 0.0101, "T6", "FAIL"), ("S2", "spread_p95_jump_ticks", 10.01, "T6", "FAIL"),
+    ("S2n", "one_sided_share_jump", 0.0101, "T6", "FAIL"), ("S2", "spread_jump_ratio", 3.01, "T6", "FAIL"),
+    ("S2n", "spread_jump_ratio", 3.01, "T6", "FAIL"),
     ("C", "fund_pnl_total", 0.0, "T7", "FAIL"), ("C", "fund_pnl_median", 0.0, "T7", "FAIL"),
-    ("C", "spread_med_ticks", 2.01, "L1", "FAIL"), ("C", "spread_p95_ticks", 10.01, "L1", "FAIL"),
+    ("C", "spread_med_bps", 2.51, "L1", "FAIL"), ("C", "spread_p95_bps", 10.01, "L1", "FAIL"),
+    ("C", "max_abs_gap", 10.01, "L6", "FAIL"),
     ("C", "shares_executed", 295_499, "L2", "FAIL"),
     ("C", "zero_sum_all_zero", 0.0, "L4", "FAIL"), ("C", "wall_time_s", 90.01, "L5", "FAIL"),
     ("S2n", "volume_uplift", None, "T5", "MISSING"),
@@ -409,7 +412,7 @@ def test_n11_r3_scorecard_boundaries(scope, key, value, item, expected):
 
 def test_n11_r3_definitions_single_source():
     assert [t["id"] for t in R.R3_TARGETS] == [f"T{i}" for i in range(1, 8)]
-    assert [x["id"] for x in R.R3_LIMITS] == [f"L{i}" for i in range(1, 6)]
+    assert [x["id"] for x in R.R3_LIMITS] == [f"L{i}" for i in range(1, 7)]
     sc = R.r3_scorecard({"C": {"ac1": 0.3, "vr5": 1.9, "vol_ratio_price_value": 0.5, "vv_corr": -0.3}})
     t = sc["targets"]
     assert t["T1"]["norm_miss"] == pytest.approx(2.0) and t["T2"]["norm_miss"] == pytest.approx(0.65 / 0.45)
@@ -423,3 +426,68 @@ def test_n11_r3_screening_uses_s2_only():
     assert R.r3_scorecard(s)["targets"]["T5"]["status"] == "MISSING"
     sc = R.r3_scorecard(s, screening=True)
     assert sc["all_pass"] and all(c["scope"] != "S2n" for t in sc["targets"].values() for c in t["checks"])
+
+
+# ── spec v1.4.1 Part 1 (T-N14, T-N15) ────────────────────────────────────
+
+
+def test_n14_spread_bps_and_jump_ratio():
+    t0, n = 5400, 23_401
+    mid = np.full(n, 1000.0)  # $1000: 1 tick = 0.1 bp
+    spr = np.full(n, 1.0)
+    b = R.spread_bps(spr, mid)
+    assert b[0] == pytest.approx(0.1)
+    spr2 = spr.copy()
+    spr2[100] = np.nan  # one-sided seconds are excluded
+    spr2[:50] = 5.0
+    m = R.spread_bps_metrics(spr2, mid)
+    two = np.concatenate([np.full(50, 0.5), np.full(n - 51, 0.1)])
+    assert m["spread_med_bps"] == pytest.approx(float(np.median(two)))
+    assert m["spread_p95_bps"] == pytest.approx(float(np.percentile(two, 95)))
+    # baseline 2 ticks in the window, treated 6 ticks -> ratio 3 exactly
+    B = {"spr_1s": np.full(n, 2.0), "mid_1s": mid}
+    T = {"spr_1s": np.full(n, 6.0), "mid_1s": mid}
+    r = R.spread_jump_ratio(T, B, t0)
+    assert r["spread_jump_ratio"] == pytest.approx(3.0)
+    assert r["spread_p95_jump_bps"] == pytest.approx(0.6) and r["spread_p95_jump_bps_base"] == pytest.approx(0.2)
+    T["spr_1s"][t0 + 1800 + 1:] = 99.0  # outside the window: no effect
+    assert R.spread_jump_ratio(T, B, t0)["spread_jump_ratio"] == pytest.approx(3.0)
+
+
+def test_n14_informed_share_updated():
+    t0, J = 5400, 20.0
+    val = np.concatenate([np.full(t0, 1000.0), np.full(23_401 - t0, 1020.0)])
+    X = np.full((10, 23_401 // 10 + 1), 1000.0)
+    X[:3, (t0 + 60) // 10:] = 1019.0  # 3 of 10 within 10% of J ($2) after 1 min
+    X[3:8, (t0 + 300) // 10:] = 1021.5  # 5 more after 5 min
+    out = R.informed_share_updated({"fund_xhat_10s": X, "val_1s": val}, t0, J)
+    assert out["informed_share_updated_1m"] == pytest.approx(0.3)
+    assert out["informed_share_updated_2m"] == pytest.approx(0.3)
+    assert out["informed_share_updated_5m"] == pytest.approx(0.8)
+
+
+def test_n15_vol_ratio_by_horizon():
+    rng = np.random.default_rng(15)
+    n = 390
+    v = 1000.0 * np.exp(np.cumsum(rng.normal(0, 1e-4, n)))  # 1-min value closes
+    noisy = v * np.exp(rng.normal(0, 2e-4, n))  # price = value + white noise
+    r1 = R._ratio(R._std(np.diff(np.log(noisy))), R._std(np.diff(np.log(v))))
+    assert r1 > 1.0
+    r60 = R.vol_ratio_horizon(noisy, v, 60)
+    assert abs(r60 - 1.0) < abs(r1 - 1.0) and abs(r60 - 1.0) < 0.15
+    ma = np.convolve(v, np.ones(10) / 10, mode="full")[:n]  # 10-min trailing average
+    ma[:9] = v[:9]
+    lag1 = R._ratio(R._std(np.diff(np.log(ma[20:]))), R._std(np.diff(np.log(v[20:]))))
+    rs = [R.vol_ratio_horizon(ma[20:], v[20:], k) for k in (5, 15, 30, 60)]
+    assert lag1 < 1.0
+    assert lag1 < rs[0] < rs[1] < rs[2] and rs[3] > rs[1]
+
+
+def test_n14_l1_t6_l6_definitions():
+    t = {x["id"]: x for x in R.R3_TARGETS}
+    lim = {x["id"]: x for x in R.R3_LIMITS}
+    assert lim["L1"]["checks"] == [("C", "spread_med_bps", "<=", 2.5), ("C", "spread_p95_bps", "<=", 10.0)]
+    assert lim["L6"]["checks"] == [("C", "max_abs_gap", "<=", 10.0)]
+    assert ("S2", "spread_jump_ratio", "<=", 3.0) in t["T6"]["checks"]
+    assert ("S2n", "spread_jump_ratio", "<=", 3.0) in t["T6"]["checks"]
+

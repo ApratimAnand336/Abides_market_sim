@@ -162,3 +162,7 @@ web/dist/
 # Simulation logs and pickles (spec v1.1 M7; existing tracked files stay tracked)
 log/
 *.pkl
+
+# Committed by accident in 9e6b063, untracked in spec v1.4.1 Part 6 (owner keeps local copies)
+docs/finverse_journey/
+docs/v1.1/finverse_spec_v1.1 (1).txt

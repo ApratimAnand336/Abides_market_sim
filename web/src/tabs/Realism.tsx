@@ -57,7 +57,11 @@ function fmtVal(v: number | null | undefined, unit: string): string {
 /** The value text of one band for a dict of metric values (G5, G8 have two). */
 function bandValue(b: Band, get: (k: string) => number | null): string {
   if (b.rule === 'clustering') return `CS ${fmtVal(get('cs'), '')} · PS ${fmtVal(get('ps'), '')}`;
-  if (b.rule === 'spread') return `median ${fmtVal(get('spread_med_ticks'), '')} · p95 ${fmtVal(get('spread_p95_ticks'), '')} ticks`;
+  // spec v1.4.1: G8 is in bps of the mid; the band carries its metric keys and unit
+  if (b.rule === 'spread') {
+    const [mk, pk] = b.metrics ?? ['spread_med_bps', 'spread_p95_bps'];
+    return `median ${fmtVal(get(mk), '')} · p95 ${fmtVal(get(pk), '')} ${b.unit}`;
+  }
   const v = get(b.key);
   if (b.id === 'G10' && v == null) return 'none (no lag qualifies)';
   return fmtVal(b.transform === 'abs' && v != null ? Math.abs(v) : v, b.unit);
@@ -151,7 +155,10 @@ function LabBaseline({ bands, summary }: { bands: Band[]; summary: LabSummary })
     }
     const st = g.stats as Record<string, LabAgg>;
     if (b.rule === 'clustering') return `CS ${aggText(st.cs, '')} · PS ${aggText(st.ps, '')}`;
-    if (b.rule === 'spread') return `median ${aggText(st.spread_med_ticks, '')} · p95 ${aggText(st.spread_p95_ticks, '')}`;
+    if (b.rule === 'spread') {
+      const [mk, pk] = b.metrics ?? ['spread_med_bps', 'spread_p95_bps'];
+      return `median ${aggText(st[mk], '')} · p95 ${aggText(st[pk], '')} ${b.unit}`;
+    }
     return aggText(st[b.key], b.unit);
   };
   const imp = summary.impact;

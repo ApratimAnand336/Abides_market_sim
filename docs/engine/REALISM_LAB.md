@@ -348,3 +348,25 @@ The selection (§7.4) is `lab_v14.select_design`, and it is printed in full. Scr
 `r3_scorecard(..., screening=True)`, in which T5 and T6 are judged on S2 only. L4's run part
 is zero_sum over every run of the design; L5 is the median wall time over every run of the
 design.
+
+### Spec v1.4.1 changes (spreads in bps, new limit L6, diagnostics)
+
+- **Spread in bps.** `spread_bps = 1e4·(ask − bid)/mid` (`spread_bps`, `spread_bps_metrics`), giving
+  `spread_med_bps` and `spread_p95_bps` in every run. G8 uses them: PASS when the median is
+  ≤ 2.5 and the p95 ≤ 10 bps, WARN when the p95 is ≤ 25 bps. The tick metrics are still
+  reported. 1 tick = 0.1 bp at $1000.
+- **L1** = spread_med_bps ≤ 2.5 AND spread_p95_bps ≤ 10.
+- **L6** = the median over seeds of `max_abs_gap` (the day's max |mid − value|, $) ≤ 10.
+- **T6** = one_sided_share_jump ≤ 1% AND `spread_jump_ratio` ≤ 3, in both S2 and S2n.
+  `spread_jump_ratio` (in every jump_response) is the p95 spread_bps of the treated run in
+  [t0, t0 + 30 min] over the baseline's p95 in the same window.
+- **Diagnostics (not graded):**
+  - `vol_ratio_{5,15,30,60}m`: std of overlapping k-min log returns (sampled every minute)
+    of the price over those of the value;
+  - VR(30);
+  - `informed_share_updated_{1,2,5,10,15}m` (in jump_response): the share of fundamentalists
+    whose belief (10 s grid, EKF_UPDATE x̂) is within 10% of |J| of the treated value at
+    t0 + k min.
+- **Re-evaluation.** `scripts/lab_v14.report_s2` writes `docs/v1.4/lab/RESULTS_s2.md`. It
+  recomputes these keys for runs stored before v1.4.1 from their `series.npz`.
+
