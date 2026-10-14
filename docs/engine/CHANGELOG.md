@@ -3,7 +3,7 @@
 Sources: the git log of this repository and the specs in [`docs/specs/`](../specs/).
 Upstream ABIDES history (2021–2023, J.P. Morgan) is not repeated here.
 
-## v1.4 — R3: informed fundamentalists replace the value agents (in progress, branch `v1.4`)
+## v1.4 — R3: informed fundamentalists replace the value agents (complete 2026-10-14, branch `v1.4`)
 
 Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt).
 
@@ -20,6 +20,7 @@ Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt).
 | N4d (spec v1.4.2) | `docs/specs/spec_v1.4.2.txt`, `abides_markets/order_book.py`, `tests/test_orderbook_totals.py`, `tests/orderbook/conftest.py`, `scripts/fingerprint_run.py`, `docs/v1.4/lab/reference_hashes.json` | D-R3-7 … D-R3-11; OrderBook running visible totals (get_imbalance no longer sums every order; bit-identical, about −23% wall time); T-S1, T-S2, T-S3; learning from prices documented as a negative result |
 | N5 (spec v1.4.2) | `api/lab.py`, `scripts/lab_v14.py`, `scripts/diag_informed_bounds.py`, `docs/v1.4/lab/RESULTS_n5.md`, `summary*.json`, `figures/*_r3.png`, `stepdown_lines.png` | Step-down (P97/50/20 on 10 seeds, P0 on 20) and final campaigns (impact, news, no-MM) on D-60fl2M: 245 runs; R3 confirmed on 20 seeds (T1, T2, T4, T5, T7, L1–L6 PASS; T3, T6 FAIL); K16 finding |
 | N6 (spec v1.4 Part 6) | `api/{__init__,schema,jobs,export,server,cli,lab}.py`, `param_ranges.py`, `rmsc04_ekf.py`, `scripts/realism_lab.py`, `web/src/**`, tests | Default switch to P0 (RunParams defaults, budget auto); SCHEMA_VERSION 1.3, ENGINE_VERSION 1.4; payload detail ≤ 20 fundamentalists, research markers, learning series, informed ranges, `agents_detail_note`; dashboard (mode toggle, slider 0–200, informed parameter cards, research markers, R3 targets card, corrected G10); I8 re-recorded + I8-legacy; regression on P0 + regression-legacy; Realism-tab screenshot |
+| N7 (spec v1.4.2 Part 3) | `docs/v1.4/lab/RESULTS.md`, `docs/v1.4/REPORT.md`, `docs/engine/KNOWN_ISSUES.md`, `docs/engine/README.md`, `docs/v1.4/screenshots/realism_tab_seed42.png` | R3 closed: final RESULTS (in §12.3 order, E1–E15), implementation report, KNOWN_ISSUES (K2, K9, K10, K12, K13 closed; K14, K15, K16 new), glossary, Realism-tab screenshot on the clean v1.4 engine |
 
 ## v1.3 — R2: the realism lab, measurement only (2026-10-12, branch `v1.3`)
 

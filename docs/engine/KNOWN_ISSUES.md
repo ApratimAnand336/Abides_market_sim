@@ -5,32 +5,43 @@ see [DECISIONS.md](DECISIONS.md), "Roadmap"). Real-market references are approxi
 stylized facts (R. Cont, *Empirical properties of asset returns: stylized facts and
 statistical issues*, Quantitative Finance, 2001).
 
-**Source of the numbers (v1.3):** the realism lab's 20-seed baseline, configuration C-DEF (full
-day, 20 fundamentalists + 12 momentum, 97 value agents; seeds 42, 7, 1–6, 8–19), measured
-2026-10-12: median [p10–p90] ([`docs/v1.3/lab/BASELINE.md`](../v1.3/lab/BASELINE.md)). Grades are
-those of the provisional large-cap bands ([REALISM_LAB.md](REALISM_LAB.md)). The v1.2 single-run
-numbers are kept in [`docs/v1.2/REPORT.md`](../v1.2/REPORT.md).
+**Source of the numbers (v1.4, R3 closed 2026-10-14):** the final market P0 (the default since
+v1.4: 0 value agents, 60 informed fundamentalists of design D-60fl2M, 12 momentum EKF, 1000
+noise, 2 market makers, budget on; full day). The values are 20-seed medians [p10–p90], seeds
+42, 7, 1–6, 8–19, engine v1.3-c1dfa51 (2026-10-13/14), from
+[`docs/v1.4/lab/RESULTS.md`](../v1.4/lab/RESULTS.md). The v1.3 numbers (C-DEF, 97 value agents)
+are kept in brackets "v1.3:" and in [`docs/v1.3/lab/BASELINE.md`](../v1.3/lab/BASELINE.md).
 
 ## Open
 
-| # | Issue | Measured (20 seeds) | Real markets / band | Root cause | Plan |
+| # | Issue | Measured (P0, 20 seeds) | Real markets / band | Root cause | Plan |
 |---|---|---|---|---|---|
-| K1 | Volatility too low | 1-min σ **0.71 bps** [0.63–0.77]; a day moves 0.19% (std over seeds); the price has only **58%** of the true value's own 1-min volatility [0.54–0.63] (G1, G2 FAIL) | 5–10 bps; 1–2% a day | calm synthetic value (≈ 1.2 bps a minute) **and** a price that trails it (spec v1.3 §0.5, confirmed) | R4 (value dynamics) + endogenous volatility |
-| K2 | Predictable returns | lag-1 autocorrelation **+0.37** [0.31–0.43]; VR(5) **1.90** [1.74–2.15] (G3, G4 FAIL) | ≈ 0; VR ≈ 1 | the price trails the value step by step | R3/R4 |
-| K3 | Weak volatility clustering | CS **0.038** [0.014–0.079], PS ≈ 0 (G5 FAIL); \|r\| lag-1 0.20 | CS ≥ 0.10, slowly decaying | constant information flow | R4 |
-| K4 | Price pinned to value | gap std **$0.145** [0.132–0.156], half-life **1.5 min** [1.3–2.0], corr(mid, value) 0.979 (G9, G10 FAIL). With 20 value agents: $0.26 / 3.9 min | $1–3; 30–90 min | 97 value agents see the value every ≈ 175 s | R3 |
-| K5 | No regimes | regime contrast **2.39** [1.81–3.09] (chance alone ≈ 1.55; G11 FAIL) | ≥ 5 | constant-volatility value process | R4 |
-| K6 | News barely moves the price | a ±0.9 headline: beliefs move ±$0.69 (median), the price does not move measurably (R_peak 0.8–0.9 bps = divergence noise); a +2% value jump is priced only after ≈ 12 min, through a liquidity gap | news moves prices, with more volume | value agents pull the price back; the true value never changes on news; nobody supplies liquidity at a new price | R3/R4 |
-| K7 | Flat intraday activity | u_ratio **1.16** [1.11–1.18] | U-shaped volume, well above 1 | value agents (87% of volume) wake at a constant rate; noise agents' single wake is U-shaped but small | R4/R5 |
-| K8 | Market makers' P&L | total vs holding +$1,110 [−16,100 – +6,090] over 20 seeds: not a loss every day (v1.2's three runs all lost), but very volatile | MMs earn the spread on average | adverse selection by value agents; inventory skew disabled (`mm_skew_beta = 0`) | R4 |
-| K9 | Fundamentalists have no information edge | median −$2.92 per agent vs holding [−7.4 – +0.3]; −$112 for all 20 | — | they only see the price | R3 (research channel) |
-| K10 | Stock ABIDES agents have no budget limits | — | margin and short-sale limits | `ignore_risk = True`: unlimited shorting and leverage | R3 |
-| K11 | Price impact | **measured (v1.3):** a 1% order over 5 min moves the price 1.4 bps [0.9–2.6] (shortfall 1.2 bps); 5%: 4.9 bps at the end, 23 bps peak, 20 bps shortfall, up to 171 bps; exponent β = **0.90** (CI 0.77–1.25; G12 FAIL); fully transient (I_perm/I_peak ≈ 0; G13 FAIL); noise floor 0.40 bps | β ≈ 0.5, partly permanent | value agents (unlimited shorting) absorb small orders, MMs large ones; the value never changes | re-measure after R3 (D-R2-5) |
-| K12 | Dashboard payload large | 8.41 MB for a full day with 20 + 12 agents (v1.3; the realism block adds 6.4 KB) | budget 8 MB | per-agent series | open |
-| K13 | Volume falls when prices move | volume–volatility correlation **−0.25** [−0.35 – −0.09] (G7 FAIL); −25% volume after a value jump, −12% in a volatility burst | ≥ 0.30 | — (to investigate; see BASELINE.md §7) | R3/R4 |
+| K1 | Volatility too low | 1-min σ **0.62 bps** [0.55–0.71] (v1.3: 0.71); a day moves 0.20% (std over seeds) (G1, G2 FAIL) | 5–10 bps; 1–2% a day | calm synthetic value (≈ 1.2 bps a minute) and a price that is smoother than the value minute by minute (K14) | R4 (value dynamics) + endogenous volatility |
+| K3 | Weak volatility clustering | CS **0.087** [0.05–0.16], PS 0.032 (G5 **WARN**; v1.3: FAIL) | CS ≥ 0.10 | constant information flow; jumps and research arrivals give some clustering | R4 |
+| K4 | Price pinned to value | gap std **$0.197** [0.18–0.22], corrected half-life **3.6 min** [3.0–5.6] (G9, G10 FAIL), corr(mid, value) 0.963 (v1.3: $0.145, 1.5 min, 0.979) | $1–3; 30–90 min | 60 informed agents research every 1–5 min with 10–50¢ noise; slower or noisier research gives larger and slower gaps (D-60sh2M: $0.53, 38 min) but fails T1/T2 | R4 / R5 calibration |
+| K5 | No regimes | regime contrast **2.47** [1.9–4.0] (G11 FAIL) | ≥ 5 | constant-volatility value process | R4 |
+| K6 | News: fast overreaction | a +0.9 headline moves the price +5.5 bps within 0.27 min and half of it reverses within 1.1 min (v1.3: +0.9 bps at 22 min); beliefs move +$0.82 | news moves prices persistently when it carries information | headlines move beliefs only; the true value does not change on news (R4 "information news") | R4 |
+| K7 | Flat intraday activity | u_ratio **1.14** [1.06–1.23] | U-shaped volume, well above 1 | agents wake at constant rates | R4/R5 |
+| K8 | Market makers' P&L | total vs holding −$107 [−2,582 – +1,977] per run: about even, volatile | MMs earn the spread on average | adverse selection by informed agents; no inventory management (R4) | R4 |
+| K11 | Price impact | β = **0.94** [0.81–1.12] (sizes 0.5/1/5% of volume; G12 FAIL); recovery I_perm/I_peak **0.23** (G13 PASS; v1.3: −0.02); a 1% buy moves the price 0.56 bps at the end, 0.29 bps permanently; selling costs more than buying (shortfall 1.14 vs 0.72 bps) | β ≈ 0.5, partly permanent | informed agents absorb the flow (5,498 of 6,000 shares) and update beliefs from it | R4/R5 |
+| K14 | **Price too smooth at 1–5 min** (T3 FAIL) | price/value volatility ratio **0.49** at 1 min, 0.57 / 0.75 / 0.84 / 0.90 at 5 / 15 / 30 / 60 min | ≥ 0.90 at 1 min | value news reaches the price only through research readings (every 1–5 min per agent), and nothing else moves the price at short horizons | R4: short-horizon variation not driven by research arrivals (endogenous volatility, livelier value process) — D-R3-8 |
+| K15 | **The spread widens 15–16× after a value jump while informed agents disagree** (T6 FAIL) | spread_jump_ratio **14.8 / 16.0** (±2% jump, p95 spread in the 30 min after vs the same seed's baseline; 148 ticks); the book never empties (one-sided share 0); 33% of informed agents updated at +5 min, 86% at +10 | ≤ 3× | informed quotes split into an "old belief" and a "new belief" cluster with a hole between them; MMs do not fill it | R4: market makers with inventory, quoting around the last trade under stress — D-R3-8 |
+| K16 | **Informed budget slightly exceeded right after jumps** (new in N5) | in 13 of 100 jump runs, 1–3 fills by 1–2 informed agents end beyond [−0.5, 1.5] × wealth, at most 1.507× / −0.509× (`scripts/diag_informed_bounds.py`); quiet markets within ±1 share (T-N5, I4) | the bounds of spec v1.4 §4.5 | §4.5 checks at the order's limit price (a borrowing or short agent then fills at a better price) and does not count orders whose cancellation is still in flight | owner decides: worst-fill-price check or counting in-flight orders (changes the market; I8 re-record) |
 
-What passes: spreads (median 1 tick, p95 3; G8) and fat tails on the median (kurtosis 3.02, on the
-boundary; G6, pass share 50%).
+What passes on P0: T1/G3 (ac1 −0.005), T2/G4 (VR(5) 1.2488), T4/G7 (vv_corr +0.53), T5 (volume
+×2.5 after jumps), T7 (informed agents profit), spreads (0.30 / 1.0 bps; G8), G13. See
+[`docs/v1.4/lab/RESULTS.md`](../v1.4/lab/RESULTS.md).
+
+## Closed in v1.4 (R3, measured on P0, 20 seeds, 2026-10-14)
+
+| # | Issue | Fix | Status |
+|---|---|---|---|
+| K2 | Predictable returns (ac1 +0.37, VR(5) 1.90) | informed fundamentalists price from their beliefs (spec v1.4 Part 4); no ValueAgents | **closed**: ac1 −0.005, VR(5) 1.25 (T1, T2 PASS; T2 by 0.001) |
+| K9 | Fundamentalists have no information edge (−$112 for all 20) | research channel (informed mode) | **closed**: +$1,023 total, +$112 median per agent (T7) |
+| K10 | Stock ABIDES agents have no budget limits | GrossLimit L = 2 on Noise/Value/ABIDES-Momentum (spec v1.4 Part 5); MMs exempt until R4 | **closed** (I9); effect alone: volume −28% in the v1.3 market |
+| K12 | Dashboard payload large (8.41 MB) | detailed series for ≤ 20 fundamentalists, summaries for the rest (spec v1.4 §6.3) | **closed**: 4.60 MB for a full default day; 4.46 MB with 200 fundamentalists |
+| K13 | Volume falls when prices move (vv_corr −0.25; −25% after a jump) | volume now comes from informed disagreement | **closed**: vv_corr +0.53 (T4), volume ×2.5 after a ±2% jump (T5) |
+| — | v1.3 limitation "with num_mm = 0 and num_value = 0 the market cannot start" | informed agents quote into an empty book | **closed**: P0 without market makers trades all day (19.6–23.3k executions, 5 seeds; L3) |
 
 ## Closed in v1.2 (verified 2026-10-09, acceptance runs A, B, C, Z)
 
@@ -43,8 +54,8 @@ boundary; G6, pass share 50%).
 
 ## Known limitation kept on purpose
 
-- With `num_mm = 0` **and** `num_value = 0` the market still cannot start: no agent is
-  willing to quote into an empty book. R3 gives our fundamentalist that ability.
+- (v1.3) With `num_mm = 0` **and** `num_value = 0` the market could not start: closed in v1.4
+  (informed agents quote into an empty book).
 - Without value agents nothing anchors the price. With market makers the market now runs, but
   on seed 42 (5 + 4 of our agents) the price slid from $999.75 to about $589 within the first hour
   (2026-10-09). This is the baseline R3 starts from, not a v1.2 target.

@@ -22,8 +22,8 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 | N4c | done, STOPPED | 78deb78 | selected D-60fl2M fails T3, T6 -> STOP (§3.5); learning slows jumps |
 | N4d | done | 89a4f20 | v1.4.2: OrderBook totals, bit-identical, about −23% |
 | N5 | done | c1dfa51 + (this) | 245 runs; P0 20 seeds: T1,T2,T4,T5,T7,L1-L6 PASS; T3,T6 FAIL (open, R4) |
-| N6 | done | 65b1307 (WIP) + (this) | default = P0; I8 re-recorded, I8-legacy; payload 4.6 MB; regression + legacy PASSED |
-| N7 | todo | | |
+| N6 | done | 65b1307 (WIP) + 60152f0 | default = P0; I8 re-recorded, I8-legacy; payload 4.6 MB; regression + legacy PASSED |
+| N7 | done | (this) | R3 COMPLETE; reports, K14/K15/K16 |
 
 ## Key facts you would otherwise re-derive
 - R2 baseline (20 seeds, v1.3 default market): σ_1m 0.71 bps; ac1 +0.37; VR(5) 1.90;
@@ -46,6 +46,7 @@ Last updated: 2026-10-12, spec v1.4 in progress on branch `v1.4` (no upstream se
 - (sim_data.pkl: clean, owner-confirmed; HANDOFF.md tracked from N0; CLAUDE.md/.claude stay untracked.)
 
 ## Log (newest first, one line each)
+- 2026-10-14 N7: R3 complete (RESULTS.md, REPORT.md, KNOWN_ISSUES). Next: R4 spec.
 - 2026-10-14 N6 done: tests, I8 re-record + legacy, payload trim, regression sets, screenshot, docs.
 - 2026-10-14 N5: step + final campaigns (245 runs), RESULTS_n5.md, figures, docs/v1.4/lab/summary.json.
 - 2026-10-13 N4d: OrderBook running totals (T-S1/T-S2 pass), 63 s -> 48 s per D-60fl2M day.
