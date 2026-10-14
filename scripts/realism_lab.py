@@ -818,31 +818,44 @@ def figures(summary, fig_dir: Path):
 # regression set (spec §7.6)
 # ══════════════════════════════════════════════════════════════════════════
 
-REG_SCENARIO_KEYS = {"S2": ["t50", "t90", "settle"], "IMP-1": ["I_end", "I_peak", "I_perm"]}
+# spec v1.4 N6: in a value-jump run, G11's regime contrast is dominated by the
+# jump window itself (P0-S2 median 45 vs 2.5 quiet), so it measures the
+# trigger; its 3-seed median is a fixed sample of a heavy tail (seeds 42 and 1
+# are the 20-seed maximum and runner-up). Not compared (DECISIONS.md, N6).
+REG_SKIP = {"P0-S2": {"regime_contrast"}}
+REG_SCENARIO_KEYS = {"S2": ["t50", "t90", "settle"], "IMP-1": ["I_end", "I_peak", "I_perm"],
+                    "P0-S2": ["t50", "t90", "settle"], "P0-IMP-1": ["I_end", "I_peak", "I_perm"]}
 
 
-def regression(workers, engine, rebaseline=False, force=True) -> int:
-    seeds, configs = lab.REGRESSION["seeds"], lab.REGRESSION["configs"]
-    tasks = [(c, s) for c in configs for s in seeds if force or not is_done(REG_DIR, c, s, engine)]
+def regression(workers, engine, rebaseline=False, force=True, legacy=False) -> int:
+    """spec v1.3 §7.6 / v1.4 §10.5: 3 seeds of 3 configs, the seed-42 full-day
+    hash and every metric inside the stored 20-seed [p10, p90]. legacy=True:
+    the v1.3 set (C-DEF/S2/IMP-1 vs docs/v1.3); default: the v1.4 set on P0."""
+    R_ = lab.REGRESSION_LEGACY if legacy else lab.REGRESSION
+    seeds, configs = R_["seeds"], R_["configs"]
+    reg_dir = REPO / "runs" / R_["dir"]
+    doc_dir = REPO / "docs" / R_["doc"] / "lab"
+    tasks = [(c, s) for c in configs for s in seeds if force or not is_done(reg_dir, c, s, engine)]
     if tasks:
-        done, failed = run_all(tasks, REG_DIR, workers, engine)
+        done, failed = run_all(tasks, reg_dir, workers, engine)
         if failed:
             print("FAILED runs:", failed)
             return 1
-    ref = json.loads((DOC_DIR / "reference_hashes.json").read_text(encoding="utf-8"))
-    stored_path = DOC_DIR / "summary.json"
+    ref = json.loads((doc_dir / "reference_hashes.json").read_text(encoding="utf-8"))
+    stored_path = doc_dir / "summary.json"
     stored = json.loads(stored_path.read_text(encoding="utf-8"))
     problems = []
 
-    m42 = load_metrics(REG_DIR, "C-DEF", 42)
+    hc = R_["hash_config"]
+    m42 = load_metrics(reg_dir, hc, 42)
     fp = m42["fingerprint"]
-    want = ref["runs"]["A"]
+    want = ref["runs"][R_["ref_key"]]
     if fp["execs"] != want["execs"] or fp["holdings"] != want["holdings"]:
-        problems.append(f"HASH: seed-42 C-DEF {fp['execs'][:16]}… / {fp['holdings'][:16]}… != reference {want['execs'][:16]}… / {want['holdings'][:16]}…")
+        problems.append(f"HASH: seed-42 {hc} {fp['execs'][:16]}… / {fp['holdings'][:16]}… != reference {want['execs'][:16]}… / {want['holdings'][:16]}…")
     else:
-        print("(a) seed-42 C-DEF full-day EXEC and holdings hash equal reference_hashes.json run A")
+        print(f"(a) seed-42 {hc} full-day EXEC and holdings hash equal {doc_dir.relative_to(REPO)}/reference_hashes.json {R_['ref_key']}")
 
-    reg = build_summary(REG_DIR, seeds, min_seeds=1)
+    reg = build_summary(reg_dir, seeds, min_seeds=1)
     checks = []
     for cid in configs:
         if cid not in reg["configs"] or cid not in stored["configs"]:
@@ -850,6 +863,8 @@ def regression(workers, engine, rebaseline=False, force=True) -> int:
             continue
         for gid in R.RUN_GRADES:
             for k, a in reg["configs"][cid]["scorecard"][gid]["stats"].items():
+                if k in REG_SKIP.get(cid, ()):
+                    continue
                 b = stored["configs"][cid]["scorecard"][gid]["stats"].get(k)
                 checks.append((cid, k, a.get("median"), b))
         for k in REG_SCENARIO_KEYS.get(cid, []):
@@ -881,7 +896,8 @@ def regression(workers, engine, rebaseline=False, force=True) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--campaign", default="c1",
-                    choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression", "b", "s1", "s1r2", "s2", "s2r", "step", "final"])
+                        choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression", "regression-legacy",
+                                 "b", "s1", "s1r2", "s2", "s2r", "step", "final"])
     ap.add_argument("--winner", default=None, help="s1r2: the round-1 winner (default: from docs/v1.4/lab/selection_s1.json)")
     ap.add_argument("--seeds", default=None, help="comma-separated (default: the 20 lab seeds)")
     ap.add_argument("--workers", type=int, default=min((os.cpu_count() or 2) - 1, 6))
@@ -895,8 +911,10 @@ def main(argv=None) -> int:
     from api.jobs import engine_version
 
     engine = engine_version()
+    if a.campaign == "regression-legacy":  # spec v1.4 §10.5: the v1.3 set, kept
+        return regression(a.workers, engine, legacy=True)
     if a.campaign == "regression":
-        if a.rebaseline:
+        if a.rebaseline:  # v1.4: the stored baseline is written by the N5 report (lab_v14.write_lab_summary)
             s = build_summary(LAB_DIR, lab.SEEDS)
             (DOC_DIR / "summary.json").write_text(json.dumps(_jsonable(s), separators=(",", ":")), encoding="utf-8")
             print("stored 20-seed summary rewritten from runs/_lab (--rebaseline)")

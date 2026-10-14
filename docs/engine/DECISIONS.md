@@ -371,3 +371,19 @@ Spec: [`docs/specs/spec_v1.4.2.txt`](../specs/spec_v1.4.2.txt), approved by the 
 - **T-S3 (one full D-60fl2M day, seed 42, 1 worker, same machine, alternating old/new engine):** before 63.6 and 62.7 s; after 48.9 and 48.0 s, about **−23%**.
   - The profile had attributed about 40% to get_imbalance, but the old per-event summing also overlapped with other work.
   - After the change, no single hotspot remains: deepcopy of orders (about 15%) and `fmt_ts` in debug log calls that are formatted even when debug logging is off (about 8%) lead. Those are left for R4 (they touch ABIDES core logging/messaging).
+
+### 2026-10-14 (N6) The default switch: where the default lives, budget auto, I8 re-recorded
+- **Where.** "The default market" is the RunParams / `api.jobs.run_config_kwargs` path (dashboard, CLI, tests through `build_run_config`). RunParams defaults: num_fund 60 (0..200), num_mom 12, fund_mode "informed", num_value 0, budget None. run_config_kwargs passes `param_ranges.DEFAULT_INFORMED_DESIGN` (D-60fl2M, learning off).
+  - `rmsc04_ekf.build_config`'s own keyword defaults are unchanged: it is the low-level, legacy-compatible API, and every inert v1.3/v1.4 switch default keeps its meaning.
+  - Check: a full default day (seed 42) has the same fingerprint as the lab's P0-C seed-42 run (20,518 executions).
+- **budget = None (auto)** means on for informed and off for price-only. RunParams needs a budget field to express the legacy market (num_value=97, num_fund=20, fund_mode="price_only"); with "auto", those three parameters alone reproduce v1.3.
+- **The lab pins the v1.3 base for every config** (num_fund 20, num_mom 12, num_value 97, price_only, budget off), exactly as before the switch. v1.4 configs set their population through `params` / `extra`, so the lab's markets are unchanged; regression and regression-legacy both pass.
+- **I8 re-recorded** on the new invariant market (spec v1.4 §10.4: the default market, 09:30–10:30, seed 42, num_fund = 30): execs `bf455dc7…1579`, holdings `39be7b70…0b90`, 1,925 executions. **I8-legacy** keeps the v1.2/v1.3 hash (execs `5cfff6b2…c1f5`, 2,448 executions) for the legacy test market (5 price-only fundamentalists, 4 momentum, 97 value agents, no budget). The explicit-default tests (T-L4/L6/L8/L9) now run on the invariant market. T-N6 (price_only) and T-N13 (budget None) compare the legacy market with I8-legacy.
+- **T-M6 (cold start) gets its own market** (no value agents AND no fundamentalists). In the default market, informed agents quote into the empty book before the market makers wake, so the cold start is never needed; T-M6 tests the market makers' cold start. Liveness (T-M7) keeps "no value agents" (now the default).
+  - Measured on the way: in the no-fundamentalist market one MM woke 52 times in the hour (90% floor: 54). That is about one sd below Poisson(60) with reshuffled seeds; the test was not loosened.
+- **Payload (spec §6.3).** Detailed series are stored for ≤ 20 fundamentalists (evenly spaced over the sorted ids). The others keep their start/end holdings and every summary field; their value_1m and fills series are dropped.
+  - Without that trim, 200 fundamentalists gave 11.45 MB, of which 7 MB was those series.
+  - Sizes (full day, seed 42): the default day 4.60 MB; 200 fundamentalists 4.46 MB (limit 9 MB).
+- **Regression (spec §10.5).** P0-C / P0-S2 / P0-IMP-1 on seeds 42, 7, 1 against `docs/v1.4/lab/summary.json`; the old set is kept as `regression-legacy`.
+  - G11 regime contrast is not compared for P0-S2: in a jump run it is dominated by the jump window (median 45 vs 2.5 quiet), and seeds 42 and 1 are the 20-seed maximum and runner-up, so the fixed 3-seed median (64.5) always fell outside [34.4, 57.5]. The regression values equal the lab's per-seed values exactly.
+- **CLI.** `python -m api.cli export` defaults follow RunParams (60/12, informed); `--num-value` and `--fund-mode` reach the legacy market.

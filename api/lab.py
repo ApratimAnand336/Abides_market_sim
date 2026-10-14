@@ -88,7 +88,12 @@ CAMPAIGNS: Dict[str, List[str]] = {
     "c4": ["S6", "S7a", "S7b", "S7c"],
 }
 CAMPAIGNS["all"] = [c for k in ("c1", "c2", "c3", "c4") for c in CAMPAIGNS[k]]
-REGRESSION = {"seeds": [42, 7, 1], "configs": ["C-DEF", "S2", "IMP-1"]}
+# spec v1.4 §10.5 (N6): the regression set runs on the default market P0;
+# the v1.3 set is kept as REGRESSION_LEGACY (C-DEF/S2/IMP-1 vs docs/v1.3).
+REGRESSION_LEGACY = {"seeds": [42, 7, 1], "configs": ["C-DEF", "S2", "IMP-1"], "hash_config": "C-DEF",
+                     "doc": "v1.3", "ref_key": "A", "dir": "_lab_regression"}
+REGRESSION = {"seeds": [42, 7, 1], "configs": ["P0-C", "P0-S2", "P0-IMP-1"], "hash_config": "P0-C",
+              "doc": "v1.4", "ref_key": "P0-C/42", "dir": "_lab_regression_v14"}
 
 # ══════════════════════════════════════════════════════════════════════════
 # spec v1.4 (R3), Part 7. Outputs of these campaigns go to runs/_lab_v14 and

@@ -205,7 +205,7 @@ def test_pnl_vs_hold_arithmetic():
 
 def test_payload_v1_1_fields(sim):
     _, _, payload = sim
-    assert payload["schema_version"] == "1.2"
+    assert payload["schema_version"] == "1.3"  # spec v1.4 §6.4 (N6)
     close = payload["stats"]["close"]
     for a in payload["agents"]["fundamental"] + payload["agents"]["momentum"]:
         s, f = a["start"], a["final"]
@@ -242,11 +242,14 @@ def test_population_volume_shares(sim):
     assert sum(r["volume_share_pct"] for r in pop) == pytest.approx(100.0, abs=0.01)
     by = {r["class_name"]: r for r in pop}
     assert {"ExchangeAgent", "NewsOracleAgent"}.isdisjoint(by)
-    assert by["NoiseAgent"]["count"] == 1000 and by["ValueAgent"]["count"] == 97
+    # spec v1.4 N6: the default market has no value agents
+    assert by["NoiseAgent"]["count"] == 1000 and "ValueAgent" not in by and PARAMS.num_value == 0
     assert by["AdaptiveMarketMakerAgent"]["count"] == 2
     assert by["FundamentalistAgent"]["count"] == PARAMS.num_fund
     assert by["MomentumEKFAgent"]["count"] == PARAMS.num_mom
-    assert by["FundamentalistAgent"]["starting_shares_total"] == 50 * PARAMS.num_fund
+    # informed: $2M each, endowment floor(0.5 * wealth / r_bar) = 1,000 shares (spec v1.4 §4.6, D-R3-7)
+    assert by["FundamentalistAgent"]["starting_shares_total"] == 1000 * PARAMS.num_fund
+    assert by["FundamentalistAgent"]["label"] == "Fundamentalist (informed)"
     total = payload["market"]["totals"]["volume_shares"]
     assert sum(r["shares_traded"] for r in pop) == 2 * total
     # our agents' totals agree with the per-agent rows. Population values use

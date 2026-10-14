@@ -1,6 +1,7 @@
 """Command-line export without the server.
 
-    python -m api.cli export --seed 42 --end-time 16:00:00 --num-fund 5 --num-mom 5
+    python -m api.cli export --seed 42 --end-time 16:00:00          # v1.4 default market P0
+    python -m api.cli export --num-value 97 --num-fund 20 --fund-mode price_only   # v1.3 market
     python -m api.cli export --news "01:00:00|0.85|Company beats earnings"
 
 Writes runs/<run_id>.json (reusing the cache when possible) and prints a
@@ -31,15 +32,19 @@ def main(argv=None) -> int:
     ex = sub.add_parser("export", help="run a simulation and write its dashboard payload")
     ex.add_argument("--seed", type=int, default=42)
     ex.add_argument("--end-time", default="16:00:00")
-    ex.add_argument("--num-fund", type=int, default=5)
-    ex.add_argument("--num-mom", type=int, default=5)
+    # defaults = RunParams defaults (spec v1.4 §6.1: the default market P0)
+    ex.add_argument("--num-fund", type=int, default=60)
+    ex.add_argument("--num-mom", type=int, default=12)
+    ex.add_argument("--num-value", type=int, default=0)
+    ex.add_argument("--fund-mode", choices=["informed", "price_only"], default="informed")
     ex.add_argument("--news", action="append", default=[], help="'HH:MM:SS|sentiment|headline'")
     ex.add_argument("--force", action="store_true", help="re-run even if cached")
     args = parser.parse_args(argv)
 
     params = RunParams(
         seed=args.seed, end_time=args.end_time, num_fund=args.num_fund,
-        num_mom=args.num_mom, news=_parse_news(args.news),
+        num_mom=args.num_mom, num_value=args.num_value, fund_mode=args.fund_mode,
+        news=_parse_news(args.news),
     )
     params.check_news_in_session()
     engine = engine_version()
@@ -61,6 +66,8 @@ def main(argv=None) -> int:
     print(f"close:         ${payload['stats']['close']:.2f} ({payload['stats']['change_pct']:+.3f}%)")
     print(f"agents:        {len(payload['agents']['fundamental'])} fundamental, "
           f"{len(payload['agents']['momentum'])} momentum")
+    if payload.get("agents_detail_note"):
+        print(f"detail:        {payload['agents_detail_note']}")
     return 0
 
 

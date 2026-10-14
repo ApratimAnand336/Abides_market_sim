@@ -4,7 +4,21 @@
   "recorded_at_commit": "78deb78 (before the OrderBook speed-up)",
   "how": "scripts/fingerprint_run.py <config> 42 in a fresh process with PYTHONHASHSEED=0 (full day, api.lab.lab_config); equal to the stored s1 runs (engine v1.3-344fcbf)",
   "runs": {
-    "D-60fl2M-S2/42": {"execs": "54f5f4ff9b50839478ad0ac8414ea1c05b5e56dfdb1f688d26aa5f7e40c5a5a0", "holdings": "4f132bf5af78bac5164e7379651edfe963c9510c8ab19429256215630868308f", "n_execs": 22197},
-    "D-60fl2M/42": {"execs": "67f0b822340c270231ecfbe25b870e7f6130e5ad759d674b9a3940737f1b9a3d", "holdings": "1f332ba62ca4ba085e0532f06c50b497c2f98ce5428116a0a1284dc44e87fccb", "n_execs": 20518}
+    "D-60fl2M-S2/42": {
+      "execs": "54f5f4ff9b50839478ad0ac8414ea1c05b5e56dfdb1f688d26aa5f7e40c5a5a0",
+      "holdings": "4f132bf5af78bac5164e7379651edfe963c9510c8ab19429256215630868308f",
+      "n_execs": 22197
+    },
+    "D-60fl2M/42": {
+      "execs": "67f0b822340c270231ecfbe25b870e7f6130e5ad759d674b9a3940737f1b9a3d",
+      "holdings": "1f332ba62ca4ba085e0532f06c50b497c2f98ce5428116a0a1284dc44e87fccb",
+      "n_execs": 20518
+    },
+    "P0-C/42": {
+      "execs": "67f0b822340c270231ecfbe25b870e7f6130e5ad759d674b9a3940737f1b9a3d",
+      "holdings": "1f332ba62ca4ba085e0532f06c50b497c2f98ce5428116a0a1284dc44e87fccb",
+      "n_execs": 20518,
+      "note": "regression reference (spec v1.4 \u00a710.5), from the N5 lab run, engine v1.3-c1dfa51"
+    }
   }
 }

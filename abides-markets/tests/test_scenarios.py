@@ -18,6 +18,7 @@ import pytest
 from abides_core.utils import str_to_ns
 from abides_markets.oracles.pregenerated_oracle import PregeneratedOracle, generate_path
 
+from .sim_helpers import INVARIANT_PARAMS
 from .test_invariants import I8_EXPECTED
 
 REPO = Path(__file__).resolve().parents[2]
@@ -97,7 +98,7 @@ def _lab_kwargs(**extra):
     from api.jobs import run_config_kwargs
     from api.schema import RunParams
 
-    p = RunParams(seed=42, end_time="10:00:00", num_fund=5, num_mom=4).model_copy(update={"end_time": "10:30:00"})
+    p = RunParams(**INVARIANT_PARAMS).model_copy(update={"end_time": "10:30:00"})
     kw = run_config_kwargs(p)
     kw.update(extra)
     return kw
@@ -140,7 +141,7 @@ from api.jobs import run_config_kwargs
 from api.schema import RunParams
 from abides_core import abides
 from abides_markets.configs.rmsc04_ekf import build_config
-p = RunParams(seed=42, end_time="10:00:00", num_fund=5, num_mom=4).model_copy(update={"end_time": "10:30:00"})
+p = RunParams(**json.loads(sys.argv[3])).model_copy(update={"end_time": "10:30:00"})
 kw = run_config_kwargs(p)
 kw.update(json.loads(sys.argv[2]))
 es = abides.run(build_config(**kw))
@@ -152,13 +153,13 @@ print(json.dumps({"execs": hashlib.sha256(json.dumps(execs).encode()).hexdigest(
 """
 
 
-def fingerprint(tmp_path, extra: dict) -> dict:
+def fingerprint(tmp_path, extra: dict, base: dict = INVARIANT_PARAMS) -> dict:
     """I1/I8 fingerprint of the 1-hour invariant market built with extra
     build_config keyword arguments, in a fresh process (PYTHONHASHSEED=0).
     Holdings exclude an impact probe, so a null probe can be compared."""
     env = {**os.environ, "PYTHONHASHSEED": "0", "PYTHONWARNINGS": "ignore"}
     out = subprocess.run(
-        [sys.executable, "-c", _EXPLICIT_DEFAULTS, str(REPO), json.dumps(extra)],
+        [sys.executable, "-c", _EXPLICIT_DEFAULTS, str(REPO), json.dumps(extra), json.dumps(base)],
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=600,
     )
     assert out.returncode == 0, out.stderr[-2000:]
@@ -231,7 +232,9 @@ def test_l5_probe_executes_its_parent_order(probe_market):
     assert sum(s for _, s in after.values()) == sum(s for _, s in start.values())
     # I5 book sanity and zero_sum through the lab's own series builder
     s = R.series_from_end_state(es, config, start_holdings=start)
-    assert s["flags"] == {"book_sanity": True, "long_only": True, "conservation": True}
+    # spec v1.4 N6: the invariant market has informed fundamentalists, so the
+    # flags include informed_bounds (I4 split)
+    assert s["flags"] == {"book_sanity": True, "long_only": True, "conservation": True, "informed_bounds": True}
     zs = R.agent_sanity(s)
     assert zs["ok"] and zs["zero_sum_cents"] == 0.0
     assert s["probe"]["absorbed"] and sum(s["probe"]["absorbed"].values()) == summ["filled"]

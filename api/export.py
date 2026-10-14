@@ -279,6 +279,11 @@ def _fundamental(agent, clock, ticker, candles, close, detail: bool = True) -> D
         d["hyperparams"].update(w_min=float(INFORMED_W_MIN), w_max=float(INFORMED_W_MAX))
     d.update(kind="fundamental", mode=mode, detail=bool(detail))
     if not detail:
+        # spec v1.4 §6.3: per-agent series only for the detail set; the others
+        # keep their start and end holdings (and every summary field)
+        h = d["holdings"]
+        d.update(holdings={k: [h[k][0], h[k][-1]] if len(h[k]) > 1 else list(h[k]) for k in ("t", "cash", "shares")},
+                 value_1m={"t": [], "v": []}, fills={"t": [], "side": [], "qty": [], "price": []})
         d.update(research={"t": [], "y_r": []},
                  ekf={k: [] for k in ["t", "mid", "x_hat", "P", "R", "K", "ER", "ER_smooth", "Q", "sigma_f2"]},
                  caution={"t": [], "D": [], "E": [], "C": []}, news=[])

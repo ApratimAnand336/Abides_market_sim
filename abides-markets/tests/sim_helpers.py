@@ -9,16 +9,35 @@ from typing import Dict, List, Tuple
 MM_CLASS = "AdaptiveMarketMakerAgent"
 
 
+# spec v1.4 §10.4 (N6): the invariant market is the new default market P0
+# (informed fundamentalists, no value agents, budget on) with 30 informed
+# agents to keep it fast. The v1.3 invariant market (5 price-only
+# fundamentalists, 4 momentum, 97 value agents, no budget) is LEGACY_PARAMS:
+# I8-legacy keeps it bit-identical to v1.2/v1.3.
+INVARIANT_PARAMS = dict(seed=42, end_time="10:00:00", num_fund=30)
+LEGACY_PARAMS = dict(seed=42, end_time="10:00:00", num_fund=5, num_mom=4, num_value=97, fund_mode="price_only")
+
+
 def params(**kw):
-    """RunParams for a short test market: seed 42, 5 fundamentalists,
-    4 momentum, 1 hour (09:30-10:30) unless overridden. end_time 10:30 is not
-    a dashboard choice, so validation is skipped for it with model_copy."""
+    """RunParams for a short test market: the invariant market (seed 42,
+    default market with 30 informed fundamentalists), 1 hour (09:30-10:30)
+    unless overridden. end_time 10:30 is not a dashboard choice, so
+    validation is skipped for it with model_copy."""
+    return _params(INVARIANT_PARAMS, kw)
+
+
+def legacy_params(**kw):
+    """The v1.3 test market (LEGACY_PARAMS), 1 hour unless overridden."""
+    return _params(LEGACY_PARAMS, kw)
+
+
+def _params(base, kw):
     from api.schema import RunParams
 
     end = kw.pop("end_time", "10:30:00")
-    base = dict(seed=42, end_time="10:00:00", num_fund=5, num_mom=4)
-    base.update(kw)
-    return RunParams(**base).model_copy(update={"end_time": end})
+    b = dict(base)
+    b.update(kw)
+    return RunParams(**b).model_copy(update={"end_time": end})
 
 
 def run(run_params, log_dir, count_mm_wakes: bool = False) -> Tuple[Dict, Dict, Dict[int, List[int]]]:

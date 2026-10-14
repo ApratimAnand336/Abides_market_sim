@@ -52,15 +52,38 @@ headlines with a sentiment score; it knows nothing about value. The *oracle*
 
 ## The agent population
 
-Defaults of `rmsc04_ekf.build_config`; the dashboard sidebar changes the counts marked †.
-Agent ids are assigned in this order.
+**Since v1.4 (N6) the default market is P0**, the RunParams / dashboard / CLI defaults
+(spec v1.4 §6.1, v1.4.2 D-R3-7):
+- 0 ValueAgents;
+- 60 informed fundamentalists of design D-60fl2M: research every log-U[60, 300] s, noise
+  log-U[10, 50]¢, $2M each, learning from prices off;
+- 12 momentum EKF, 1000 noise agents, 2 market makers;
+- a gross budget L = 2 on the Noise/Value/ABIDES-Momentum agents.
+
+The **legacy (v1.3) market** stays reproducible by explicit parameters: `num_value=97,
+num_fund=20, fund_mode="price_only"`, which switches the budget off by default (`budget=None`
+means auto: on for informed). It is bit-identical to v1.2/v1.3 (I8-legacy). `build_config`'s
+own keyword defaults stay the low-level, legacy-compatible API; the default market is defined
+by RunParams and `api.jobs.run_config_kwargs`.
+
+| v1.4 default (P0) | count | starting position |
+|---|---|---|
+| NoiseAgent | 1000 † | $100,000 cash (gross budget 2×) |
+| ValueAgent | 0 † (0–150) | — |
+| FundamentalistAgent, informed | 60 † (0–200) | $2,000,000 = $1,000,000 cash + 1,000 shares |
+| AdaptiveMarketMakerAgent | 2 † | $100,000 cash (no budget in R3) |
+| MomentumEKFAgent | 12 † | $50,000 + 50 shares |
+
+The table below lists every agent class, with `rmsc04_ekf.build_config`'s own defaults (the
+legacy market). The dashboard sidebar changes the counts marked †. Agent ids are assigned in
+this order.
 
 | Group | Count | Starting position | Wakes | Information | Role |
 |---|---|---|---|---|---|
 | ExchangeAgent | 1 | – | on messages | everything in the book | matching engine |
 | NoiseAgent | 1000 † (0–2000) | $100,000 cash | **once per day**, at a time drawn from a U-quadratic distribution over 09:00–16:00 (more mass near both ends) | best bid/ask only | random-direction liquidity taker |
 | ValueAgent | 97 † (0–150) | $100,000 cash | Poisson, mean ≈175 s (`lambda_a = 5.7e-12`/ns) | **noisy true value** (variance 1000 cents², sd ≈ 32¢) + best bid/ask | informed trader; pulls price to value |
-| FundamentalistAgent (ours) | 0–20 † | $50,000 + 50 shares | every 10 s | market mid only (one noisy oracle look at start-up) | Kalman value investor |
+| FundamentalistAgent (ours) | 0–200 † | price-only: $50,000 + 50 shares; informed (v1.4): design wealth, half in shares | price-only: every 10 s; informed: Poisson, mean 30–120 s | price-only: market mid (one oracle look at start-up); informed: + research readings every Exp(T_r) | Kalman value investor; informed mode quotes around its belief (AGENT_FUNDAMENTALIST.md) |
 | AdaptiveMarketMakerAgent | 2 † (0–2) | $100,000 cash | Poisson, mean 60 s | best bid/ask, recent volume | quotes ladders on both sides |
 | MomentumAgent (ABIDES MA) | 12 − our momentum count | $100,000 cash | Poisson, mean 37 s | mid history | 20/50 moving-average crossover |
 | MomentumEKFAgent (ours) | 0–12 † | $50,000 + 50 shares | Poisson, mean `wake_mean` ∈ [10, 60] s | market mid only | Kalman trend follower |

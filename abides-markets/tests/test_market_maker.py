@@ -17,11 +17,20 @@ def no_value_market(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def empty_book_market(tmp_path_factory):
+    # spec v1.4 N6: the default market already has no value agents, and its
+    # informed fundamentalists quote into an empty book at their first wake.
+    # T-M6 tests the MARKET MAKERS' cold start, so nobody else may start the
+    # book: no value agents and no fundamentalists (DECISIONS.md, N6).
+    return run(params(num_value=0, num_fund=0), tmp_path_factory.mktemp("logs"), count_mm_wakes=True)
+
+
+@pytest.fixture(scope="module")
 def default_market(tmp_path_factory):
     return run(params(), tmp_path_factory.mktemp("logs"), count_mm_wakes=True)
 
 
-def test_empty_book_cold_start(no_value_market):
+def test_empty_book_cold_start(empty_book_market):
     """T-M6: no value agents, 1 hour: trades happen, each MM places orders in
     every 10-minute window, and the cold start is used.
 
@@ -29,7 +38,7 @@ def test_empty_book_cold_start(no_value_market):
     finds an empty book; the second already sees the first one's quotes, and
     cold_start_price is used ONLY without any mid (spec 4.1). So: at most one
     per MM, at least one in the market."""
-    config, end_state, _ = no_value_market
+    config, end_state, _ = empty_book_market
     h = history(end_state)
     assert sum(1 for x in h if x["type"] == "EXEC") > 0
     open_ns = config["_mkt_open_ns"]
@@ -72,7 +81,8 @@ def test_liveness_without_value_agents(no_value_market):
 
 def test_spread_cap_does_not_bind_in_default_market(default_market):
     """The adaptive-spread cap (v1.2) exists for markets without informed
-    traders; with the 97 value agents it never binds."""
+    traders; in the default market (v1.3: 97 value agents; v1.4: informed
+    fundamentalists) it never binds."""
     _, end_state, _ = default_market
     for mm in market_makers(end_state):
         assert mm.spread_cap_hits == 0

@@ -207,9 +207,20 @@ over seeds of a *treated − baseline* difference on the same seed.
 
 (to be completed with the runner, L2)
 
-## The regression set (spec §7.6)
+## The regression set (spec §7.6; v1.4 §10.5)
 
-`python scripts/realism_lab.py --campaign regression` re-runs C-DEF, S2 and IMP-1 on seeds 42, 7, 1
+**Since v1.4 (N6)** `--campaign regression` checks the default market P0:
+- it runs P0-C, P0-S2 and P0-IMP-1 on seeds 42, 7, 1 into `runs/_lab_regression_v14/`;
+- (a) the seed-42 P0-C full-day hash must equal `docs/v1.4/lab/reference_hashes.json` "P0-C/42";
+- (b) every 3-seed median must lie inside the stored 20-seed [p10, p90] of
+  `docs/v1.4/lab/summary.json`, which the N5 report writes;
+- G11's regime contrast is not compared on P0-S2: in a jump run it measures the jump window
+  (`REG_SKIP`, DECISIONS N6).
+
+Passed 2026-10-14 (41 checks). The v1.3 set below is kept as `--campaign regression-legacy`;
+it passed 2026-10-14 (42 checks, run A hash unchanged).
+
+Legacy: `python scripts/realism_lab.py --campaign regression-legacy` re-runs C-DEF, S2 and IMP-1 on seeds 42, 7, 1
 (9 runs into `runs/_lab_regression/`, about 1.5 minutes with 4 workers) and checks:
 
 - **(a)** the seed-42 C-DEF full-day EXEC and holdings hash equals run A in

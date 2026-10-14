@@ -12,7 +12,7 @@ I4 long-only safety       our price-only / momentum agents never hold < 0 shares
 I5 book sanity            bid < ask in every two-sided L1 snapshot; every fill price > 0
 I6 no value agents        = T-M6 (test_market_maker.py)
 I7 market-maker liveness  = T-M7 (test_market_maker.py)
-I8 no drift               (spec v1.3 Part 2) default parameters reproduce v1.2 (aa5f606)
+I8 no drift               (spec v1.3 Part 2; re-recorded in v1.4 N6) the invariant market (new default P0, 30 informed) is unchanged; I8-legacy: the v1.3 test market reproduces v1.2 (aa5f606)
                           bit for bit
 I9 budget respected       (spec v1.4 §10.4) = T-N13 (test_budget.py): with
                           abides_budget {"L": 2}, every Noise/Value/ABIDES
@@ -28,9 +28,10 @@ from pathlib import Path
 
 import pytest
 
-from .sim_helpers import history, params
+from .sim_helpers import INVARIANT_PARAMS, LEGACY_PARAMS, history, params
 from .test_market_maker import (  # noqa: F401  (collected here as I6 / I7)
     default_market,
+    empty_book_market,
     no_value_market,
     test_empty_book_cold_start as test_i6_runs_without_value_agents,
     test_liveness_default as test_i7_market_maker_liveness,
@@ -50,7 +51,7 @@ sys.path.insert(0, sys.argv[1])
 from api.jobs import build_run_config
 from api.schema import RunParams
 from abides_core import abides
-p = RunParams(seed=42, end_time="10:00:00", num_fund=5, num_mom=4).model_copy(update={"end_time": "10:30:00"})
+p = RunParams(**json.loads(sys.argv[2])).model_copy(update={"end_time": "10:30:00"})
 cfg = build_run_config(p)
 es = abides.run(cfg)
 h = es["agents"][0].order_books["ABM"].history
@@ -64,10 +65,10 @@ print(json.dumps({
 """
 
 
-def _fingerprint(tmp_path, hash_seed: str) -> dict:
+def _fingerprint(tmp_path, hash_seed: str, base: dict = INVARIANT_PARAMS) -> dict:
     env = {**os.environ, "PYTHONHASHSEED": hash_seed, "PYTHONWARNINGS": "ignore"}
     out = subprocess.run(
-        [sys.executable, "-c", _FINGERPRINT, str(REPO)],
+        [sys.executable, "-c", _FINGERPRINT, str(REPO), json.dumps(base)],
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=600,
     )
     assert out.returncode == 0, out.stderr[-2000:]
@@ -86,15 +87,24 @@ def test_i1_determinism_across_processes(tmp_path):
 
 # ── I8 no drift (spec v1.3 Part 2.2) ───────────────────────────────────────
 
-# Recorded ONCE on 2026-10-12 from a checkout of v1.2 (aa5f606) with
-# PYTHONHASHSEED=0, using the I1 fingerprint above (seed 42, 09:30-10:30,
-# 5 fundamentalists + 4 momentum, default RunParams). Re-record only when an
-# approved spec changes behaviour and its DECISIONS.md entry says so
-# (see docs/engine/TESTING.md, "I8").
-I8_EXPECTED = {
+# I8-legacy: recorded ONCE on 2026-10-12 from a checkout of v1.2 (aa5f606)
+# with PYTHONHASHSEED=0, using the I1 fingerprint above on the v1.3 test
+# market (LEGACY_PARAMS: seed 42, 09:30-10:30, 5 price-only fundamentalists +
+# 4 momentum, 97 value agents, no budget). It must hold forever (spec v1.4
+# §6.1): the legacy market stays reproducible by explicit parameters.
+I8_LEGACY_EXPECTED = {
     "execs": "5cfff6b231fc079fe3a3fb2c3bad354564d2d5dbbfc73b3b5721cbe0033bc1f5",
     "holdings": "34ec92b2a3763b3b1f32d455a042f2865e0b2f20a98fcdad7b2ceae9605032db",
     "n_execs": 2448,
+}
+# I8: re-recorded in N6 (spec v1.4 §10.4, DECISIONS.md 2026-10-14) on the new
+# invariant market (INVARIANT_PARAMS: the v1.4 default market P0 with 30
+# informed fundamentalists, seed 42, 09:30-10:30) with PYTHONHASHSEED=0.
+# Re-record only when an approved spec changes behaviour and says so.
+I8_EXPECTED = {
+    "execs": "bf455dc70f7c4746e52456d8df86972546f20f805e5dcf035d318fffe1751579",
+    "holdings": "39be7b70119451afa9b80642c89cc6480682d9504ca2650f675ca1e2ef360b90",
+    "n_execs": 1925,
 }
 
 
@@ -102,6 +112,11 @@ def test_i8_no_drift(tmp_path):
     """With every new parameter at its default the market is bit-identical to
     v1.2: same sha256 of every EXEC and of every agent's final holdings."""
     assert _fingerprint(tmp_path, "0") == I8_EXPECTED
+
+
+def test_i8_legacy_v13_market_unchanged(tmp_path):
+    """spec v1.4 §10.4: the legacy parameters reproduce the v1.3 hash exactly."""
+    assert _fingerprint(tmp_path, "0", LEGACY_PARAMS) == I8_LEGACY_EXPECTED
 
 
 # ── shared 1-hour market for I3-I5 ─────────────────────────────────────────

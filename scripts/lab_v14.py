@@ -760,7 +760,7 @@ def write_lab_summary(P0: Dict[str, Any], fin: Dict[str, Any]) -> None:
     plus the R3 scorecard."""
     seeds = lab.SEEDS
     ms = R.MIN_VALID_SEEDS
-    configs = {c: RL.config_block(ROOT, c, seeds, ms) for c in ("P0-C",)}
+    configs = {c: RL.config_block(ROOT, c, seeds, ms) for c in ("P0-C", "P0-S2", "P0-S2n", "P0-IMP-1")}
     scen = {c: RL.scenario_block(ROOT, c, seeds, ms) for c in ("P0-S2", "P0-S2n", "P0-IMP-1", "P0-IMP-1s", "P0-S4")}
     imp = None
     if fin.get("beta"):

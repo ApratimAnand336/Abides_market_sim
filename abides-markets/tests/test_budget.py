@@ -73,10 +73,12 @@ def test_n12_rule_is_the_worst_case_inequality():
 
 def test_n13_explicit_none_holds_i8(tmp_path):
     # imported here: test_invariants imports this module (I9)
-    from .test_invariants import I8_EXPECTED
+    from .sim_helpers import LEGACY_PARAMS
+    from .test_invariants import I8_LEGACY_EXPECTED
     from .test_scenarios import fingerprint
 
-    assert fingerprint(tmp_path, {"abides_budget": None}) == I8_EXPECTED
+    # spec v1.4 N6: budget off is the legacy (v1.3) market's setting
+    assert fingerprint(tmp_path, {"abides_budget": None}, LEGACY_PARAMS) == I8_LEGACY_EXPECTED
 
 
 def _watch(config, L):

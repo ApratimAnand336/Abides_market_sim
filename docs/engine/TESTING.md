@@ -57,6 +57,7 @@ agents, three news items) once per session and checks the payload against it.
 | 2026-10-13 | `v1.4` N4a | api/tests 157 passed, 1 skipped, 3 xfailed (strict); `npm run build` passes |
 | 2026-10-13 | `v1.4` N4b | 332 passed, 1 skipped, 3 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 153 s; invariants I1–I9 pass, I8 unchanged (T-N19) |
 | 2026-10-13 | `v1.4` N4d | 336 passed, 1 skipped, 3 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 277 s; I8 unchanged; T-S2 bit-identical |
+| 2026-10-14 | `v1.4` N6 | 338 passed, 1 skipped, 3 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 185 s; I8 re-recorded, I8-legacy passes; regression (v1.4, 41 checks) and regression-legacy (42 checks) PASSED; `npm run build` passes |
 
 ### Pre-existing failures (not caused by our code)
 
@@ -96,7 +97,8 @@ python -m pytest abides-markets/tests/test_invariants.py -q
 | I6 | Runs without value agents | The market starts and trades with no value agents (needs ≥ 1 MM) | T-M6 | 3 s |
 | I7 | Market-maker liveness | No market maker dies silently | T-M7: wakes ≥ 90% of duration / mean wake and no 10-minute silence | 3 s |
 | I9 | Budget respected (v1.4) | With `abides_budget {"L": 2}`, no budgeted ABIDES agent's gross position exceeds 2× its wealth at the fill price (one-order tolerance) | T-N13 on the 1-hour invariant market with the budget on | 9 s |
-| I8 | No drift (v1.3) | With every new (v1.3+) parameter at its default, the market is bit-identical to v1.2 | the I1 fingerprint in a fresh process with `PYTHONHASHSEED=0` must equal constants recorded from aa5f606 | 13 s |
+| I8 | No drift (re-recorded in v1.4 N6) | The invariant market (the v1.4 default market P0 with 30 informed fundamentalists, seed 42, 09:30–10:30) does not change | the I1 fingerprint in a fresh process with `PYTHONHASHSEED=0` must equal the constants recorded 2026-10-14 (DECISIONS N6) | 13 s |
+| I8-legacy | Legacy market (v1.4 N6) | The v1.3 test market (LEGACY_PARAMS: 5 price-only fundamentalists, 4 momentum, 97 value agents, no budget) stays bit-identical to v1.2 (aa5f606) | the same fingerprint must equal the original I8 constants | 13 s |
 
 \*Measured 2026-10-09 on the development laptop; the whole file takes about 32 s.
 

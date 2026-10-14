@@ -246,11 +246,13 @@ def test_n5_logs_and_modes(informed_market):
 
 
 def test_n6_price_only_with_explicit_defaults_holds_i8(tmp_path):
-    from .test_invariants import I8_EXPECTED
+    from .sim_helpers import LEGACY_PARAMS
+    from .test_invariants import I8_LEGACY_EXPECTED
     from .test_scenarios import fingerprint
 
     extra = {"fund_mode": "price_only", "informed_design": None, "abides_budget": None}
-    assert fingerprint(tmp_path, extra) == I8_EXPECTED
+    # spec v1.4 N6: price_only is the legacy (v1.3) market's mode
+    assert fingerprint(tmp_path, extra, LEGACY_PARAMS) == I8_LEGACY_EXPECTED
 
 
 # ── T-N7 RNG ───────────────────────────────────────────────────────────────

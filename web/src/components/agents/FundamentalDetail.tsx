@@ -297,7 +297,7 @@ export function FundamentalDetail({
         </>
       )}
 
-      <CashInventory agent={agent} duration={duration} group={GROUP} title="Live cash & inventory timeline" />
+      {agent.detail && <CashInventory agent={agent} duration={duration} group={GROUP} title="Live cash & inventory timeline" />}
     </div>
   );
 }
