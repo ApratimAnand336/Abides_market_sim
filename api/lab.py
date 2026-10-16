@@ -295,7 +295,68 @@ _v15_pair("A-RET", "P0 with the retail crowd instead of NoiseAgents (N_r 500, ka
 # A5.5: ABIDES market makers replaced by 2 LPs of $5M, synthetic_ou value
 LP_2x5M = {"mm_kind": "lp", "num_lp": 2, "lp_wealth": 500_000_000}
 _v15_pair("A-LP", "P0 with 2 LPs of $5M instead of the ABIDES market makers", LP_2x5M, "a-lp")
-V15_CAMPAIGNS = {"a-env", "a-retail", "a-lp"}
+
+# A7: design sweep. The full R4a population: P0's informed (D-60fl2M, informed_budget_v2)
+# and momentum agents, living_v1 (normal day, auto news), the retail crowd instead of
+# NoiseAgents, LPs instead of the ABIDES MMs, budget L = 2. Id R-<n_lp><W><N_r><k> as the
+# spec writes it, e.g. R-25M5001 = 2 LPs of $5M, N_r 500, kappa_v 1 (n_lp and k one digit).
+SWEEP_DIALS = {"n_lp": (2, 4), "W": ("5M", "20M"), "N_r": (500, 1500), "k": (1, 3)}
+SWEEP_REFINE = {"n_lp": 3, "W": "50M", "N_r": 3000, "k": 5}  # A7 refinement levels
+SWEEP_W_CENTS = {"5M": 500_000_000, "20M": 2_000_000_000, "50M": 5_000_000_000}
+SWEEP_SEEDS: List[int] = [42, 7, 1, 2, 3]
+_SWEEP_RE = re.compile(r"^R-(\d)(\d+M)(\d+)(\d)$")
+
+
+def sweep_id(d: Dict[str, Any]) -> str:
+    return f"R-{d['n_lp']}{d['W']}{d['N_r']}{d['k']}"
+
+
+def parse_sweep(rid: str) -> Dict[str, Any]:
+    m = _SWEEP_RE.match(rid)
+    if not m:
+        raise ValueError(f"not a sweep design id: {rid}")
+    return {"n_lp": int(m.group(1)), "W": m.group(2), "N_r": int(m.group(3)), "k": int(m.group(4))}
+
+
+def sweep_extra(rid: str) -> Dict[str, Any]:
+    d = parse_sweep(rid)
+    return {**LIVING_NORMAL, "informed_budget_v2": True,
+            "num_noise_agents": 0, "num_retail": d["N_r"], "retail_kappa_v": float(d["k"]),
+            "mm_kind": "lp", "num_lp": d["n_lp"], "lp_wealth": SWEEP_W_CENTS[d["W"]]}
+
+
+def _register_sweep(rid: str, campaign: str) -> None:
+    _v15_pair(rid, f"sweep design {rid}", sweep_extra(rid), campaign)
+    CONFIGS[rid + "-C"]["sweep"] = CONFIGS[rid + "-S2"]["sweep"] = rid
+
+
+SWEEP_DESIGNS: List[str] = [sweep_id({"n_lp": a, "W": b, "N_r": c, "k": e})
+                            for a in SWEEP_DIALS["n_lp"] for b in SWEEP_DIALS["W"]
+                            for c in SWEEP_DIALS["N_r"] for e in SWEEP_DIALS["k"]]
+
+
+def sweep_refinement(winner: str) -> List[str]:
+    """A7 refinement: the winner with one dial at a time moved to its refinement level."""
+    d = parse_sweep(winner)
+    return [sweep_id({**d, dial: lev}) for dial, lev in SWEEP_REFINE.items()]
+
+
+for _d in SWEEP_DESIGNS:
+    _register_sweep(_d, "a-sweep")
+for _d in SWEEP_DESIGNS:  # registered up front so that spawned workers know them
+    for _r in sweep_refinement(_d):
+        if _r + "-C" not in CONFIGS:
+            _register_sweep(_r, "a-sweep-r")
+CAMPAIGNS["a-sweep"] = [f"{d}-{c}" for d in SWEEP_DESIGNS for c in ("C", "S2")]
+
+
+def register_sweep_refinement(winner: str) -> List[str]:
+    ds = sweep_refinement(winner)
+    CAMPAIGNS["a-sweep-r"] = [f"{d}-{c}" for d in ds for c in ("C", "S2")]
+    return ds
+
+
+V15_CAMPAIGNS = {"a-env", "a-retail", "a-lp", "a-sweep", "a-sweep-r"}
 
 
 def run_params(config_id: str, seed: int) -> RunParams:

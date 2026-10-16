@@ -899,8 +899,8 @@ def main(argv=None) -> int:
     ap.add_argument("--campaign", default="c1",
                         choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression", "regression-legacy",
                                  "b", "s1", "s1r2", "s2", "s2r", "step", "final",
-                                 "a-env", "a-retail", "a-lp"])
-    ap.add_argument("--winner", default=None, help="s1r2: the round-1 winner (default: from docs/v1.4/lab/selection_s1.json)")
+                                 "a-env", "a-retail", "a-lp", "a-sweep", "a-sweep-r"])
+    ap.add_argument("--winner", default=None, help="s1r2: the round-1 winner (default: from docs/v1.4/lab/selection_s1.json); a-sweep-r: the A7 sweep winner (default: from docs/v1.5/lab/selection_sweep.json)")
     ap.add_argument("--seeds", default=None, help="comma-separated (default: the 20 lab seeds)")
     ap.add_argument("--workers", type=int, default=min((os.cpu_count() or 2) - 1, 6))
     ap.add_argument("--force", action="store_true")

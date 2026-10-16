@@ -146,3 +146,93 @@ def test_a6_2_impact_set_beta_on_four_sizes():
     assert out["beta_I_end"]["n_seeds"] == 10
     assert out["beta_I_end"]["beta"] == pytest.approx(0.5, abs=1e-9)
     assert out["beta_I_peak"]["beta"] == pytest.approx(0.5, abs=1e-9)
+
+
+# ── A7: design sweep ids, R4a scorecard and the mechanical selection ──────────
+def _lab_v15():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    import lab_v15
+
+    return lab_v15
+
+
+def _passing_summaries():
+    C = {"sigma_1m_bps": 7.0, "ac1": -0.02, "vr5": 1.0, "vol_ratio_price_value": 0.95, "vv_corr": 0.5,
+         "cs": 0.2, "ps": 0.05, "kurt": 4.0, "fund_pnl_total": 100.0, "fund_pnl_median": 5.0,
+         "mm_pnl_group_median": 0.0, "u_ratio": 1.5, "spread_med_bps": 1.0, "spread_p95_bps": 5.0,
+         "shares_executed": 400_000, "active_halfhours_share": 1.0, "zero_sum_all_zero": 1.0,
+         "flags_all_ok": 1.0, "wall_time_s": 40.0, "max_abs_gap": 3.0, "retail_share": 10.0}
+    S2 = {"volume_uplift": 2.0, "spread_jump_ratio": 2.0, "one_sided_share_jump": 0.0}
+    return C, S2
+
+
+def test_a7_r4a_scorecard_thresholds():
+    C, S2 = _passing_summaries()
+    sc = R.r4a_scorecard({"C": C, "S2": S2}, screening=True)
+    assert sc["all_pass"]
+    assert sc["targets"]["A-T3"]["status"] == sc["targets"]["A-T11"]["status"] == "NOT_SCREENED"
+    assert sc["n_targets_passed"] == 10 == len(R.R4A_SCREEN_TARGETS)
+    assert all(c["scope"] == "S2" for c in sc["targets"]["A-T9"]["checks"])
+    # boundaries exactly as A8 writes them
+    for key, val, tid in (("sigma_1m_bps", 10.0, "A-T1"), ("vv_corr", 0.30, "A-T6"), ("kurt", 3.0, "A-T8"),
+                          ("u_ratio", 1.3, "A-T12"), ("mm_pnl_group_median", 0.0, "A-T10")):
+        assert R.r4a_scorecard({"C": {**C, key: val}, "S2": S2}, screening=True)["targets"][tid]["status"] == "PASS"
+    for key, val, tid in (("sigma_1m_bps", 4.99, "A-T1"), ("ps", 0.03, "A-T7"), ("fund_pnl_median", 0.0, "A-T10"),
+                          ("vr5", 1.2501, "A-T4"), ("ac1", -0.11, "A-T2")):
+        assert R.r4a_scorecard({"C": {**C, key: val}, "S2": S2}, screening=True)["targets"][tid]["status"] == "FAIL"
+    for key, val, lid in (("retail_share", 4.9, "L7"), ("retail_share", 40.1, "L7"), ("flags_all_ok", 0.0, "L4"),
+                          ("max_abs_gap", 10.01, "L6")):
+        assert R.r4a_scorecard({"C": {**C, key: val}, "S2": S2}, screening=True)["limits"][lid]["status"] == "FAIL"
+    # A7 tie-break scales: sigma 4 bps is 1 bps short of 5 -> 1/5
+    t1 = R.r4a_scorecard({"C": {**C, "sigma_1m_bps": 4.0}, "S2": S2}, screening=True)["targets"]["A-T1"]
+    assert t1["norm_miss"] == pytest.approx(0.2)
+    # outside screening the day-mix and S2n checks are required (MISSING without them)
+    full = R.r4a_scorecard({"C": C, "S2": S2})
+    assert full["targets"]["A-T3"]["status"] == full["targets"]["A-T9"]["status"] == "MISSING"
+
+
+def test_a7_sweep_designs_and_refinement():
+    from api import lab
+
+    assert len(lab.SWEEP_DESIGNS) == 16 == len(set(lab.SWEEP_DESIGNS))
+    assert len(lab.CAMPAIGNS["a-sweep"]) == 32
+    for rid in lab.SWEEP_DESIGNS:
+        assert lab.sweep_id(lab.parse_sweep(rid)) == rid
+    assert lab.parse_sweep("R-420M15003") == {"n_lp": 4, "W": "20M", "N_r": 1500, "k": 3}
+    assert lab.sweep_refinement("R-25M5001") == ["R-35M5001", "R-250M5001", "R-25M30001", "R-25M5005"]
+    ex = lab.CONFIGS["R-420M15003-S2"]["extra"]
+    assert ex["informed_budget_v2"] is True and ex["mm_kind"] == "lp" and ex["num_lp"] == 4
+    assert ex["lp_wealth"] == 2_000_000_000 and ex["num_retail"] == 1500 and ex["retail_kappa_v"] == 3.0
+    assert ex["num_noise_agents"] == 0 and ex["value_process"] == "living_v1" and ex["day_type"] == "normal"
+    assert ex["auto_news"] is True and ex["abides_budget"] == {"L": 2.0}
+    assert lab.CONFIGS["R-420M15003-S2"]["baseline"] == "R-420M15003-C"
+    assert lab.CONFIGS["R-420M15003-C"]["params"]["num_value"] == 0
+    for r in lab.sweep_refinement("R-420M15003"):  # refinement configs exist up front
+        assert r + "-C" in lab.CONFIGS and r + "-S2" in lab.CONFIGS
+
+
+def test_a7_selection_mechanical():
+    V = _lab_v15()
+    C, S2 = _passing_summaries()
+
+    def mk(rid, c=None, s2=None):
+        cc, ss = {**C, **(c or {})}, {**S2, **(s2 or {})}
+        return {"design": rid, "dials": {}, "C": cc, "S2": ss, "r4a": R.r4a_scorecard({"C": cc, "S2": ss}, screening=True)}
+
+    sums = [mk("R-25M5001", {"retail_share": 3.0}),         # rejected by L7
+            mk("R-25M5003", {"kurt": 2.0}),                 # 9 targets
+            mk("R-45M5001", {"sigma_1m_bps": 4.0}),          # 9 targets, A-T1 miss 0.2
+            mk("R-45M5003", {"vr5": 1.30}),                  # 9 targets, A-T4 miss 0.05/0.45
+            mk("R-420M5001", {"vr5": 1.30, "wall_time_s": 30.0})]  # same miss, faster
+    win, P = V.select_sweep(sums, "t")
+    assert "R-25M5001: REJECTED" in "\n".join(P)
+    # all kept designs pass 9 targets; R-25M5003 misses only A-T8, which is not in the
+    # tie-break, so its miss sum over A-T1/2/4/5 is 0 and it wins
+    assert win == "R-25M5003"
+    win2, _ = V.select_sweep(sums[2:], "t")
+    assert win2 == "R-420M5001"  # VR miss 0.111 < sigma miss 0.2; equal misses -> lower wall time
+    win3, P3 = V.select_sweep([sums[0]], "t")
+    assert win3 is None and "names no winner" in P3[-1]

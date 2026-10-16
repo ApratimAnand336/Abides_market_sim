@@ -1434,10 +1434,12 @@ def _miss(value: Optional[float], op: str, thr: float) -> Optional[float]:
     return max(0.0, x - thr)
 
 
-def _r3_item(item: Dict[str, Any], summaries: Dict[str, Dict[str, Any]], screening: bool = False) -> Dict[str, Any]:
+def _r3_item(item: Dict[str, Any], summaries: Dict[str, Dict[str, Any]], screening: bool = False,
+             miss_scale: Optional[Dict[str, float]] = None, skip_scopes=("S2n",)) -> Dict[str, Any]:
+    miss_scale = R3_MISS_SCALE if miss_scale is None else miss_scale
     checks, oks, misses = [], [], []
     for scope, key, op, thr in item["checks"]:
-        if screening and scope == "S2n":  # §7.4: T5, T6 on S2 only in screening
+        if screening and scope in skip_scopes:  # §7.4: T5, T6 on S2 only in screening
             continue
         v = summaries.get(scope, {}).get(key)
         ok = _check(v, op, thr)
@@ -1452,8 +1454,8 @@ def _r3_item(item: Dict[str, Any], summaries: Dict[str, Dict[str, Any]], screeni
     else:
         status = "PASS" if all(oks) else "FAIL"
     out = {"id": item["id"], "label": item["label"], "checks": checks, "status": status}
-    if item["id"] in R3_MISS_SCALE:
-        out["norm_miss"] = (sum(misses) / R3_MISS_SCALE[item["id"]]) if len(misses) == len(checks) else None
+    if item["id"] in miss_scale:
+        out["norm_miss"] = (sum(misses) / miss_scale[item["id"]]) if len(misses) == len(checks) else None
     return out
 
 
@@ -1468,4 +1470,73 @@ def r3_scorecard(per_config_summaries: Dict[str, Dict[str, Any]], screening: boo
         "targets": targets, "limits": limits,
         "n_targets_passed": sum(t["status"] == "PASS" for t in targets.values()),
         "all_pass": all(x["status"] == "PASS" for x in list(targets.values()) + list(limits.values())),
+    }
+
+
+# ── R4a scorecard (spec v1.5 A8.1 / A8.2; pre-registered) ──────────────────
+# Scopes: "C" = no-trigger config medians, "S2"/"S2n" = jump responses (treated minus
+# the same seed's C), "MIX" = cross-seed measures of the default day mix (A-T3, A-T11),
+# which screening (A7, normal day only) cannot measure.
+R4A_TARGETS: List[Dict[str, Any]] = [
+    {"id": "A-T1", "label": "1-min volatility sigma_1m (bps)",
+     "checks": [("C", "sigma_1m_bps", ">=", 5.0), ("C", "sigma_1m_bps", "<=", 10.0)]},
+    {"id": "A-T2", "label": "|ac1| of 1-min returns", "checks": [("C", "ac1", "abs<=", 0.10)]},
+    {"id": "A-T3", "label": "daily volatility across seeds, default day mix (%)",
+     "checks": [("MIX", "sigma_day_xseed", ">=", 1.0), ("MIX", "sigma_day_xseed", "<=", 2.0)]},
+    {"id": "A-T4", "label": "VR(5)", "checks": [("C", "vr5", ">=", 0.80), ("C", "vr5", "<=", 1.25)]},
+    {"id": "A-T5", "label": "price/value vol ratio at 1 min", "checks": [("C", "vol_ratio_price_value", ">=", 0.90)]},
+    {"id": "A-T6", "label": "volume-volatility Spearman", "checks": [("C", "vv_corr", ">=", 0.30)]},
+    {"id": "A-T7", "label": "clustering CS and PS", "checks": [("C", "cs", ">=", 0.10), ("C", "ps", ">", 0.03)]},
+    {"id": "A-T8", "label": "excess kurtosis", "checks": [("C", "kurt", ">=", 3.0)]},
+    {"id": "A-T9", "label": "after a ±2% jump: volume uplift, spread ratio, one-sided share",
+     "checks": [("S2", "volume_uplift", ">", 1.0), ("S2", "spread_jump_ratio", "<=", 3.0),
+                ("S2", "one_sided_share_jump", "<=", 0.01),
+                ("S2n", "volume_uplift", ">", 1.0), ("S2n", "spread_jump_ratio", "<=", 3.0),
+                ("S2n", "one_sided_share_jump", "<=", 0.01)]},
+    {"id": "A-T10", "label": "informed P&L vs hold > 0 (total, median); MM group P&L median >= 0 ($)",
+     "checks": [("C", "fund_pnl_total", ">", 0.0), ("C", "fund_pnl_median", ">", 0.0),
+                ("C", "mm_pnl_group_median", ">=", 0.0)]},
+    {"id": "A-T11", "label": "regimes across days RS = p90/p10 of daily realised vol",
+     "checks": [("MIX", "day_rv_regime_spread", ">=", 2.5)]},
+    {"id": "A-T12", "label": "intraday U-shape u_ratio", "checks": [("C", "u_ratio", ">=", 1.3)]},
+]
+R4A_LIMITS: List[Dict[str, Any]] = [
+    {"id": "L1", "label": "spread median and p95 (bps)",
+     "checks": [("C", "spread_med_bps", "<=", 2.5), ("C", "spread_p95_bps", "<=", 10.0),
+                ("MIX", "spread_med_bps", "<=", 2.5), ("MIX", "spread_p95_bps", "<=", 10.0)]},
+    {"id": "L2", "label": "shares executed per day", "checks": [("C", "shares_executed", ">=", 295_500)]},
+    {"id": "L3", "label": "trades all day (share of half-hours with trades; empty book at the open)",
+     "checks": [("C", "active_halfhours_share", ">=", 1.0)]},
+    {"id": "L4", "label": "zero_sum = 0 and invariant flags pass in every run (1 = yes)",
+     "checks": [("C", "zero_sum_all_zero", ">=", 1.0), ("C", "flags_all_ok", ">=", 1.0)]},
+    {"id": "L5", "label": "median wall time of a full day (s)", "checks": [("C", "wall_time_s", "<=", 90.0)]},
+    {"id": "L6", "label": "max |mid - value| over a day without a scenario ($)",
+     "checks": [("C", "max_abs_gap", "<=", 10.0)]},
+    {"id": "L7", "label": "retail share of volume (%)",
+     "checks": [("C", "retail_share", ">=", 5.0), ("C", "retail_share", "<=", 40.0)]},
+]
+# A7 tie-break scales (normalised misses over A-T1, A-T2, A-T4, A-T5)
+R4A_MISS_SCALE = {"A-T1": 5.0, "A-T2": 0.10, "A-T4": 0.45, "A-T5": 0.90}
+# A7 step 2: targets measurable in screening (all but the day-mix targets)
+R4A_SCREEN_TARGETS = [t["id"] for t in R4A_TARGETS if t["id"] not in ("A-T3", "A-T11")]
+
+
+def r4a_scorecard(per_config_summaries: Dict[str, Dict[str, Any]], screening: bool = False) -> Dict[str, Any]:
+    """A-T1..A-T12 and L1..L7 of spec v1.5 A8 with value, threshold, PASS/FAIL.
+    screening=True (A7: normal day, +2% jump only) drops the S2n and MIX checks;
+    A-T3 and A-T11 then have no checks and are reported as NOT_SCREENED."""
+    skip = ("S2n", "MIX")
+    out_t, out_l = {}, {}
+    for t in R4A_TARGETS:
+        if screening and all(c[0] in skip for c in t["checks"]):
+            out_t[t["id"]] = {"id": t["id"], "label": t["label"], "checks": [], "status": "NOT_SCREENED"}
+        else:
+            out_t[t["id"]] = _r3_item(t, per_config_summaries, screening, R4A_MISS_SCALE, skip)
+    for x in R4A_LIMITS:
+        out_l[x["id"]] = _r3_item(x, per_config_summaries, screening, R4A_MISS_SCALE, skip)
+    judged = [v for v in list(out_t.values()) + list(out_l.values()) if v["status"] != "NOT_SCREENED"]
+    return {
+        "targets": out_t, "limits": out_l,
+        "n_targets_passed": sum(t["status"] == "PASS" for t in out_t.values()),
+        "all_pass": all(x["status"] == "PASS" for x in judged),
     }
