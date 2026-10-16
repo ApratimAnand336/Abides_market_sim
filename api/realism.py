@@ -129,9 +129,9 @@ BANDS: List[Dict[str, Any]] = [
     {
         "id": "G11", "key": "regime_contrast", "label": "Regime contrast", "unit": "×",
         "pass": [[5.0, None]], "warn": [[3.0, 5.0]],
-        "text": "PASS ≥ 5 · WARN 3–5",
-        "note": "Wildest / calmest 30-min volatility. Sampling noise alone gives about 1.55; real days have calm and stressed hours.",
-        "scope": "run", "source": SOURCE,
+        "text": "REPORTED, not graded (spec v1.5 A6.4; was PASS ≥ 5 · WARN 3–5)",
+        "note": "Wildest / calmest 30-min volatility. Sampling noise alone gives about 1.55. One day of 13 half-hours mostly measures the intraday U-shape and noise (even the true value gives 2.4–2.9), so regimes are graded across days (RS).",
+        "scope": "run", "source": SOURCE, "reported": True,
     },
     {
         "id": "G12", "key": "impact_beta", "label": "Impact exponent β", "unit": "",
@@ -387,7 +387,10 @@ def series_from_end_state(
     # I4 split (spec v1.4 §10.4): price-only fundamentalists and momentum EKF
     # are long-only; informed fundamentalists stay within [w_min, w_max] x
     # wealth at the fill price (one-share tolerance), checked after each fill
-    long_only_ok, informed_ok, n_informed = True, True, 0
+    # informed_budget (spec v1.5 A6.1): the same check on fills that INCREASED
+    # |position| only; a fill that reduces it while mark-to-market (a jump) has
+    # pushed the position past the bound is drift, not a budget-rule breach
+    long_only_ok, informed_ok, budget_ok, n_informed = True, True, True, 0
     for i in fund_ids + mom_ids:
         a = agents[i]
         if getattr(a, "mode", "price_only") == "informed":
@@ -395,6 +398,7 @@ def series_from_end_state(
             from abides_markets.agents.fundamental import INFORMED_W_MAX, INFORMED_W_MIN
 
             p_fill = None
+            n_prev = (start_holdings or {}).get(a.id, start_position(a, ticker))[1]
             for _, typ, ev in a.log:
                 if typ == "ORDER_EXECUTED":
                     p_fill = float(ev.get("fill_price") or 0) or None
@@ -402,7 +406,11 @@ def series_from_end_state(
                     n, W = ev.get(ticker, 0), ev.get("CASH", 0) + ev.get(ticker, 0) * p_fill
                     if n * p_fill > INFORMED_W_MAX * W + p_fill + 1e-6 or n * p_fill < INFORMED_W_MIN * W - p_fill - 1e-6:
                         informed_ok = False
+                        if abs(n) > abs(n_prev):
+                            budget_ok = False
                     p_fill = None
+                if typ == "HOLDINGS_UPDATED":
+                    n_prev = ev.get(ticker, 0)
             continue
         for _, typ, ev in a.log:
             if typ == "HOLDINGS_UPDATED" and (ev.get(ticker, 0) < 0 or ev.get("CASH", 0) < 0):
@@ -410,6 +418,7 @@ def series_from_end_state(
     flags = {"book_sanity": book_ok, "long_only": long_only_ok}
     if n_informed:
         flags["informed_bounds"] = informed_ok
+        flags["informed_budget"] = budget_ok
     if start_holdings is not None:
         flags["conservation"] = (
             sum(r["cash1"] for r in records) == sum(r["cash0"] for r in records)
@@ -1009,7 +1018,10 @@ def _in(x: float, intervals) -> bool:
 def grade_value(band: Dict[str, Any], values: Dict[str, Any]) -> Optional[str]:
     """PASS / WARN / FAIL for one band, given the metric values it needs.
     Boundaries take the better grade (closed intervals, PASS tested first).
-    Returns None when the metric is missing, except G10 (None -> FAIL)."""
+    Returns None when the metric is missing, except G10 (None -> FAIL), and
+    always for a REPORTED band (G11 since spec v1.5 A6.4: shown, not graded)."""
+    if band.get("reported"):
+        return None
     rule = band.get("rule")
     if rule == "clustering":
         cs, ps = _f(values.get("cs")), _f(values.get("ps"))

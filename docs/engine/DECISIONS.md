@@ -459,3 +459,23 @@ Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt), approved by the owne
 - **Budget:** GrossLimit(L = 2), the same worst-case rule as the stock agents (open same-side orders counted).
 - **Inventory check (T-LP6):** with log_orders off, the LP's fills are replayed from the exchange's EXEC history. This is also how I4-for-LPs is checked in a market.
 - **E-A9 measurement added:** `retail_stop_trigger_pct` (share of stop users whose stop fired that day) and the stop counts in `metrics.json["diagnostics"]["retail_stops"]`.
+
+### 2026-10-16 (A6) K16 fix, impact set, G11 to reported
+- **K16 diagnosis (A6.1, targeted first).** `scripts/diag_k16.py` on the failing P0-S2 runs (seeds 7, 13, 14, 18, 19; v1 check):
+  - 7 breach fills, all increased |position|, all marketable buys of a borrowing long (w ≈ 1.5, cash < 0) that filled at once BELOW the limit (e.g. seed 14: limit 1019.63, fill 1016.02, 1.5024×; at the limit price it would have been 1.4997×).
+  - P0-S2n seeds 3, 8 (−2% jump): the mirror case, shorts selling at once ABOVE the limit (−0.5058× at worst).
+  - In-flight cancels: 0 of ~125k decision cycles had an own open order left at the cycle (the cancel confirmation arrives before the spread reply). Counted anyway, as the spec says.
+- **The spec's premise is wrong for the binding cases (spec question for the owner).** A6.1 says the worst-case fill price is the limit price. The post-fill ratio n·p / (cash + n·p) falls with p when cash < 0 (borrowing long) and grows in size with p when n < 0 (short). So the limit is the BEST end exactly where the ±bounds bind (w > 1 or w < 0). Checking at the limit price alone (= the v1.4 check) cannot close K16.
+- **Decision: `informed_budget_v2` checks both ends of the fill range**, which follows the spec's own principle ("the worst-case price at which the order can fill"):
+  - the limit price (resting fills happen there), and the best opposite quote seen in this cycle when it is better than the limit (the immediate fill of a marketable order); the smaller allowed quantity wins. The ratio is monotone in the fill price, so both ends cover the range in between.
+  - B/S start from every own order still in `self.orders` (resting, or cancel sent but not confirmed).
+  - With cash ≥ 0 and n ≥ 0 the limit price is the worst end and v2 = v1 (T-K16-1).
+  - Default False (build_config `informed_budget_v2`, agent `budget_v2`), no RNG draw, I8 unchanged until A9.
+- **Result.** v2 on all 15 previously failing jump runs (P0-S2 ×5, P0-S2n ×4, A-ENV-S2 ×2, A-RET-S2 ×2, A-LP-S2 ×1, plus seed 14 targeted): 0 fills that increase |position| end outside the bounds.
+- **What v2 cannot do: "every fill" is unreachable by any order rule.** Two fills remain outside the bounds: P0-S2n seed 11 1.5069× and A-RET-S2 seed 5 −0.5089×. Both REDUCED |position|. The jump had already pushed the position past the bound by mark-to-market (the agent sat at the bound; the price moved); the fill moved it back toward the bound.
+  - Tightened I4 (informed) therefore means: every fill that increases |position| stays within [−0.5, 1.5] × wealth at the fill price, one share tolerance (T-K16-3 on the jump market). The lab now reports both `informed_bounds` (every fill, unchanged) and `informed_budget` (increasing fills only).
+  - The owner decides whether "every fill" in A6.1 should read "every fill that increases exposure" (recommended), or whether the agent should actively de-lever after a jump (new behaviour, not in the spec).
+- **A6.2 impact set:** `lab_v15.IMPACT_SET` = IMP-0, IMP-0.1, IMP-0.5, IMP-1, IMP-5, IMP-1s. β is fitted on the four sizes (0.1, 0.5, 1, 5) by `realism_lab.impact_summary`. The configs are registered for N (normal day) in A8.
+- **A6.3:** no action. VR(5) is reported (below and in RESULTS_A).
+- **A6.4 G11 → REPORTED.** The band is kept in `BANDS` with `"reported": True`. `grade_value` returns None (shown "n/a"), the metric is still computed and shown, and regimes are graded across days (RS, A8).
+  - Reason (spec A6.4, from the model's own maths, before any R4 sweep run): even the true value gives a median per-day 30-min contrast of 2.4–2.9 under realistic day types, so ≥ 5 per day is unreachable by construction.

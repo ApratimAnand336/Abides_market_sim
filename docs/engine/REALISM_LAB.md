@@ -115,7 +115,7 @@ D-R2-1, 2026-10-11, large-cap reference* (a liquid stock moving about 1–2% a d
 | G8 | spread (ticks) | median ≤ 1 and p95 ≤ 5 | p95 ≤ 10 | otherwise |
 | G9 | gap std ($) | 1–3 | 0.50–1 or 3–5 | otherwise |
 | G10 | gap half-life (min) | 30–90 | 10–30 or 90–180 | otherwise, or none |
-| G11 | regime contrast | ≥ 5 | 3–5 | < 3 |
+| G11 | regime contrast | REPORTED, not graded since v1.5 A6.4 (was ≥ 5 / 3–5 / < 3) | | |
 | G12 | impact exponent β (lab only) | 0.40–0.70 | 0.25–0.40 or 0.70–0.90 | otherwise |
 | G13 | impact recovery I_perm / I_peak (lab only) | 0.1–0.8 | 0–0.1 or 0.8–1 | otherwise |
 
@@ -353,7 +353,11 @@ RunParams' num_fund bound (20) stays until N6 (§4.7). The `params.num_fund = 20
 a design run's metrics.json is therefore overridden by `extra.num_ekf_agents`; the config hash
 covers both.
 
-Run flags (v1.4): `long_only` covers price-only fundamentalists and momentum EKF; `informed_bounds` (present when informed agents exist) checks [−0.5, 1.5] × wealth at every fill (I4 split).
+Run flags (v1.4): `long_only` covers price-only fundamentalists and momentum EKF; `informed_bounds` (present when informed agents exist) checks [−0.5, 1.5] × wealth at every fill (I4 split). v1.5 A6.1 adds `informed_budget`: the same check on the fills that increased |position| only. A fill that reduces |position| after a jump has pushed the position past the bound by mark-to-market is drift, not a budget breach (K16, DECISIONS A6).
+
+**G11 (v1.5 A6.4):** per-day regime contrast is REPORTED only (`"reported": True` in the band, grade None). Even the true value has a median per-day contrast of 2.4–2.9 under realistic day types, so regimes are graded across days (RS) in A8.
+
+**Impact set (v1.5 A6.2):** `lab_v15.IMPACT_SET` = IMP-0 (placebo), IMP-0.1, IMP-0.5, IMP-1, IMP-5 (β on these four sizes), IMP-1s; `lab_v15.impact_configs(prefix)` and `impact_summary(prefix, ...)`.
 
 The selection (§7.4) is `lab_v14.select_design`, and it is printed in full. Screening uses
 `r3_scorecard(..., screening=True)`, in which T5 and T6 are judged on S2 only. L4's run part

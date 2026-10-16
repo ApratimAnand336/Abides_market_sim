@@ -116,3 +116,33 @@ def test_run_metrics_v15_keys_are_payload_scalars():
         assert ok, k
     d = R.run_diagnostics(s)
     assert len(d["mm_inventory"]) == 2 and d["info_news"]["n"] == 2 and d["day_info"]["day_type"] == "normal"
+
+
+def test_a6_2_impact_set_beta_on_four_sizes():
+    """Spec v1.5 A6.2: IMP-0.1 is back in the impact set and beta is fitted on four
+    sizes. Synthetic I = 2 * q^0.5 on every seed gives beta = 0.5 exactly."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    import lab_v15
+    import realism_lab as RL
+    from api import lab
+
+    assert lab_v15.IMPACT_BETA_SIZES == ("IMP-0.1", "IMP-0.5", "IMP-1", "IMP-5")
+    assert set(lab_v15.IMPACT_BETA_SIZES) < set(lab_v15.IMPACT_SET)
+    assert lab_v15.impact_configs("N")[1] == "N-IMP-0.1"
+    qty = {k: lab.CONFIGS[k]["extra"]["probe"]["quantity"] for k in lab_v15.IMPACT_BETA_SIZES}
+    assert qty["IMP-0.1"] == 600 and len(set(qty.values())) == 4
+    seeds = list(range(10))
+    scen = {}
+    for k in lab_v15.IMPACT_SET:
+        q = 0.0 if k == "IMP-0" else qty.get(k, qty["IMP-1"]) / 500_000
+        rows = [{"seed": s, "q": q, "I_end": 2.0 * q ** 0.5 + 0.01 * (s - 4.5) * (k == "IMP-0"),
+                 "I_peak": 3.0 * q ** 0.5, "I_perm": q ** 0.5, "recovery": 0.4} for s in seeds]
+        stats = {m: {"median": float(np.median([r[m] for r in rows]))} for m in ("q", "I_end", "I_perm")}
+        scen[k] = {"per_seed": rows, "stats": stats}
+    out = RL.impact_summary(scen, 5)
+    assert out["beta_I_end"]["n_seeds"] == 10
+    assert out["beta_I_end"]["beta"] == pytest.approx(0.5, abs=1e-9)
+    assert out["beta_I_peak"]["beta"] == pytest.approx(0.5, abs=1e-9)

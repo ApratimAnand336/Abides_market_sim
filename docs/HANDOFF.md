@@ -7,27 +7,26 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 - **Now: spec v1.5 (R4)**, `docs/specs/spec_v1.5.txt`. Part A living market (A0–A9), Part B
   crashes (B1–B4, STOP to owner after B4), Part C circuit breaker (C1–C2).
 
-## Resume here (2026-10-16: A5 done; next milestone A6)
-- **A5 done** (b27d161 code/tests, then "A5: campaign a-lp results"). Full suite 392 passed,
-  only `test_ou_process` failed. a-lp 40/40 runs, zero_sum 0.
-- **NEXT STEP: A6** (spec lines 339-360): A6.1 K16 diagnose first with a targeted test, then
-  fix behind `informed_budget_v2` (default off); A6.2 IMP-0.1 back in the impact set; A6.3 no
-  action, report VR(5); A6.4 G11 to reported. Read only spec lines 339-360 to start.
-- **Remaining checklist:** A6 → A7 sweep (160 runs) → A8 confirmation (240) + RESULTS_A.md → A9
-  switch → B1–B4 → C1–C2. lab_v15.py still needs the sweep/confirm/crash campaign code.
-- **Numbers found:** a-env: σ1m 5.04 bps, vol ratio 0.80 (E-A1 not confirmed, better), ABIDES
-  MMs −$28.8k/day. a-retail: retail 3.5% of volume, E-A2 not confirmed. a-lp: E-A3 NOT
-  confirmed, T6 ratio 18.7 (P0 11.7) because the calm baseline spread halves (0.45 vs 1.0 bps)
-  while the post-jump p95 falls only 21% (8.4 vs 10.7 bps); LPs −$4.4k/day, informed +$5.0k,
-  LP share 17.7%; ac1 0.159, VR(5) 1.67 (G4 FAIL).
-- **K16 diagnosis note (for A6):** the current §4.5 check already prices position AND wealth at
-  the limit price; uncounted in-flight cancels are a real gap. A third cause: after a down-jump,
-  mark-to-market alone lifts a leveraged long's w (1.5 → ~1.515 for −2%), which no order rule can
-  stop. Diagnose with the targeted test first (spec A6.1); the spec's fix may not reach
-  "every fill within one share". If so, that is a spec question for the owner.
-  K16 seen in a-lp: P0-S2 seed 7, A-LP-S2 seed 8.
-- **Open questions:** none blocking. For the owner (A8): T6 as a ratio penalises a tight calm
-  book; LPs lose to informed flow on calm days.
+## Resume here (2026-10-16: A6 done; next milestone A7)
+- **A6 done** (one commit). Full suite 398 passed, only `test_ou_process` failed; regression PASSED.
+- **NEXT STEP: A7** design sweep (spec A7, from line 362; 16 designs × 10 seeds = 160 runs, +40).
+  Population per spec: informed with `informed_budget_v2=True` (build_config kwarg; pass it in
+  the lab "extra"), living_v1 + auto news, retail crowd, LPs, L = 2. lab_v15.py needs the sweep
+  campaign code (register configs in api/lab.py V15 section, realism_lab.py choices).
+- **K16 result (A6.1):** cause = marketable orders of borrowing longs / shorts fill at once
+  BETTER than the limit, which is the worse end for them (the spec's "limit = worst case" is wrong
+  where the bound binds). v2 checks limit AND best opposite quote, counts own open orders. On 15
+  failing jump runs: 0 exposure-increasing breaches. In-flight cancels: never seen (counted anyway).
+  Left: 2 reducing fills after jumps outside by mark-to-market (1.5069×, −0.5089×), which no order rule
+  can stop. New lab flag `informed_budget` (increasing fills only); `informed_bounds` unchanged.
+- **Remaining checklist:** A7 → A8 confirmation (240) + RESULTS_A.md → A9 switch → B1–B4 → C1–C2.
+  A8 impact: use `lab_v15.IMPACT_SET` / `impact_configs("N")` / `impact_summary` (β on 4 sizes).
+- **Numbers found:** a-env σ1m 5.04 bps, vol ratio 0.80; a-retail retail 3.5% of volume; a-lp T6
+  ratio 18.7, LPs −$4.4k/day. **VR(5) (A6.3, 10 seeds):** P0 1.239, a-env 1.219, a-retail 1.278
+  (G4 WARN), a-lp 1.666 (G4 FAIL).
+- **Open questions for the owner:** (1) A6.1 "every fill" → "every fill that increases exposure"?
+  (recommended; DECISIONS A6). (2) A8: T6 as a ratio penalises a tight calm book; LPs lose to
+  informed flow on calm days.
 
 ## Milestone status (spec v1.5)
 | ID | Status | Commit | Notes |
@@ -38,7 +37,7 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 | A3 | done | e1c9714, c57015f | living_v1, auto news; a-env: σ1m 5.0 bps, vol ratio 0.80, ABIDES MMs −$29k |
 | A4 | done | dcfb205, 8f77538 | crowd N_r 500: 3.5% of volume; E-A2 not confirmed on the calm value |
 | A5 | done | b27d161, (this) | LPs; a-lp: E-A3 not confirmed (ratio 18.7), LPs −$4.4k/day |
-| A6 | todo | | K16 fix (informed_budget_v2), IMP-0.1, G11 to reported |
+| A6 | done | (this) | K16 v2 (0 increasing breaches), IMP-0.1 set, G11 REPORTED, flag informed_budget |
 | A7 | todo | | design sweep 160 (+40) runs |
 | A8 | todo | | confirmation 240 runs, RESULTS_A.md (STOP if A8.4 fails) |
 | A9 | todo | | default switch, dashboard, I8 re-record, legacy invariants |
@@ -69,11 +68,12 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
   add the id to the realism_lab.py choices, and to `lab_v15.COMPONENTS`/`campaign_configs`.
 
 ## Open issues / owner decisions pending
-- K14, K15, K16 (`docs/engine/KNOWN_ISSUES.md`) are R4's starting point.
+- K14, K15 (`docs/engine/KNOWN_ISSUES.md`) open; K16 fixed behind informed_budget_v2 (A9 switch).
 - `git stash` holds 2 stale generated-report entries (safe to drop). `sim_data.pkl` clean.
   CLAUDE.md and .claude/ stay untracked.
 
 ## Log (newest first, one line each)
+- 2026-10-16 A6: K16 diagnosed and fixed behind informed_budget_v2; IMP-0.1 in the impact set; G11 REPORTED.
 - 2026-10-16 A5 (WIP): LPs + tests done; paused before full suite check and campaign a-lp.
 - 2026-10-16 A4: retail crowd (T-RT1..6); a-retail 40 runs: retail 3.5% of volume, −$820/day.
 - 2026-10-16 A3: living_v1 + auto news; a-env 40 runs (E-A1 not confirmed: σ1m 5.0 bps, ratio 0.80).

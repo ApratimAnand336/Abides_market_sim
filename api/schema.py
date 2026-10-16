@@ -478,6 +478,7 @@ class RealismBand(Strict):
     transform: Optional[Literal["abs"]] = None
     rule: Optional[Literal["clustering", "spread"]] = None
     metrics: Optional[List[str]] = None
+    reported: Optional[bool] = None  # spec v1.5 A6.4: shown, never graded (G11)
 
 
 class Realism(Strict):

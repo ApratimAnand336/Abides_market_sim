@@ -86,6 +86,7 @@ export interface Band {
   source: string;
   transform?: 'abs';
   rule?: 'clustering' | 'spread';
+  reported?: boolean; // spec v1.5 A6.4: shown, never graded (G11)
   metrics?: string[];
 }
 

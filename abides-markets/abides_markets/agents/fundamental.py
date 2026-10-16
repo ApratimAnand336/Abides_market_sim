@@ -122,6 +122,9 @@ class FundamentalistAgent(TradingAgent):
         n_pl: int = 3,                    # looks in a row the price must disagree
         eps_thr: float = 2.0,             # surprise threshold (in units of normal noise)
         a_pl: float = 0.3,                # EWMA weight of the gated surprise
+        # --- spec v1.5 A6.1 (K16): budget check v2 (informed mode only).
+        #     False is exactly the v1.4 check (I8 until the A9 switch). ---
+        budget_v2: bool = False,
     ) -> None:
         super().__init__(id, name, type, random_state, starting_cash, log_orders)
         if mode not in MODES:
@@ -143,6 +146,7 @@ class FundamentalistAgent(TradingAgent):
         self.n_pl: int = int(n_pl)
         self.eps_thr: float = eps_thr
         self.a_pl: float = a_pl
+        self.budget_v2: bool = bool(budget_v2)
         self.eps_hist: List[float] = []  # the last n_pl surprises
         self.epsbar: float = 0.0
 
@@ -811,13 +815,30 @@ class FundamentalistAgent(TradingAgent):
         return {"z": z, "z_den": z_den, "w_star": w_star, "w_now": w_now, "d_star": d_star, "d": d,
                 "skipped_reason": skipped_reason, "W": W}
 
-    def budget_qty(self, is_buy: bool, q: int, price: int, open_same_side: int) -> int:
+    def budget_qty(self, is_buy: bool, q: int, price: int, open_same_side: int,
+                   best_opposite: Optional[int] = None) -> int:
         """§4.5: largest allowed quantity <= q, worst case over this cycle's
-        own open orders on the same side (older orders were cancelled at the wake)."""
-        return allowed_qty_wealth(
-            is_buy, q, price, self.holdings.get("CASH", 0), self.holdings.get(self.symbol, 0),
-            open_same_side, INFORMED_W_MIN, INFORMED_W_MAX,
+        own open orders on the same side (older orders were cancelled at the wake).
+
+        budget_v2 (spec v1.5 A6.1, K16): the post-fill position / wealth ratio
+        at the fill price is monotone in that price, so the rule is checked at
+        BOTH ends of the range the order can fill in: its limit price (resting
+        fills) and the best opposite quote, when better than the limit (the
+        immediate fill of a marketable order). For a borrowing long (w > 1) or a
+        short, the limit price is the best end, not the worst (A6 diagnosis).
+        open_same_side then also counts every own order still in self.orders
+        (resting, or cancelled but not yet confirmed); see informed_cycle."""
+        cash, n = self.holdings.get("CASH", 0), self.holdings.get(self.symbol, 0)
+        allowed = allowed_qty_wealth(
+            is_buy, q, price, cash, n, open_same_side, INFORMED_W_MIN, INFORMED_W_MAX,
         )
+        if self.budget_v2 and best_opposite and allowed > 0:
+            better = best_opposite < price if is_buy else best_opposite > price
+            if better:
+                allowed = allowed_qty_wealth(
+                    is_buy, allowed, best_opposite, cash, n, open_same_side, INFORMED_W_MIN, INFORMED_W_MAX,
+                )
+        return allowed
 
     def informed_cycle(self) -> None:
         """One decision cycle of the informed fundamentalist (spec v1.4 §4.3),
@@ -906,11 +927,20 @@ class FundamentalistAgent(TradingAgent):
 
         # Step 7: budget per order, target first, then quotes
         B = S = 0
+        opp_buy = opp_sell = None
+        if self.budget_v2:
+            # spec v1.5 A6.1: every own order that can still fill counts
+            for o in self.orders.values():
+                if o.side.is_bid():
+                    B += o.quantity
+                else:
+                    S += o.quantity
+            opp_buy, opp_sell = (ask or None), (bid or None)
         d_req = decision["d"] if decision is not None else 0
         d, side, limit_price = 0, None, None
         if d_req > 0:
             side, limit_price = "BUY", pr["buy"]
-            d = self.budget_qty(True, d_req, limit_price, B)
+            d = self.budget_qty(True, d_req, limit_price, B, opp_buy)
             if d > 0:
                 self.place_limit_order(self.symbol, d, Side.BID, limit_price)
                 B += d
@@ -918,7 +948,7 @@ class FundamentalistAgent(TradingAgent):
                 skipped = "budget"
         elif d_req < 0:
             side, limit_price = "SELL", pr["sell"]
-            q = self.budget_qty(False, -d_req, limit_price, S)
+            q = self.budget_qty(False, -d_req, limit_price, S, opp_sell)
             if q > 0:
                 self.place_limit_order(self.symbol, q, Side.ASK, limit_price)
                 S += q
@@ -926,13 +956,13 @@ class FundamentalistAgent(TradingAgent):
             else:
                 skipped = "budget"
         blocked = []
-        bid_qty = self.budget_qty(True, q_q, pr["bid"], B)
+        bid_qty = self.budget_qty(True, q_q, pr["bid"], B, opp_buy)
         if bid_qty > 0:
             self.place_limit_order(self.symbol, bid_qty, Side.BID, pr["bid"])
             B += bid_qty
         else:
             blocked.append("BID")
-        ask_qty = self.budget_qty(False, q_q, pr["ask"], S)
+        ask_qty = self.budget_qty(False, q_q, pr["ask"], S, opp_sell)
         if ask_qty > 0:
             self.place_limit_order(self.symbol, ask_qty, Side.ASK, pr["ask"])
             S += ask_qty

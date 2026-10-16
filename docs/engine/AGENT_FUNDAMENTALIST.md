@@ -178,7 +178,7 @@ and borrow, within limits.
 | 4 | clock, caution | t_last = t; C = update_caution(mid) (unchanged), only with a mid |
 | 5 | target position (only with a mid) | z = (x̂ − mid)/√(P + R_noise); w* = clip(0.5 + a_max·C·tanh(z/z0), −0.5, 1.5); W = cash + shares·mid; d* = round((w*·W − shares·mid)/mid); step cap ⌊s_max·W/mid⌋; dead band \|d\|·mid < b_f·W or \|d\| < 1 → 0 |
 | 6 | **prices from the belief** (no bid/ask) | m = m0 + κ_m·√P (required edge); h = m + h0 (quote half-width); target BUY at ⌊x̂ − m⌋, SELL at ⌈x̂ + m⌉; quotes: bid at ⌊x̂ − h⌋, ask at ⌈x̂ + h⌉, each of q_q = max(1, ⌊θ_q·W_ref/x̂⌋) shares (W_ref = W with a mid, else cash + shares·x̂); every price ≥ 1¢ |
-| 7 | budget, send | each order passes the §4.5 check (below); the target order is sent first, then the bid quote, then the ask quote; log FUND_DECISION and FUND_QUOTES |
+| 7 | budget, send | each order passes the §4.5 check (below; v2 since A6); the target order is sent first, then the bid quote, then the ask quote; log FUND_DECISION and FUND_QUOTES |
 
 The order is predict → research → market: two standard scalar Kalman updates of the same state.
 A large ρ (price distrust) means the agent learns mainly from research; ρ near 1 makes it follow
@@ -215,6 +215,21 @@ p = the order's limit price, and W_p = cash + n·p:
 - if W_p ≤ 0, only orders that reduce |n| are allowed.
 
 The arithmetic is shared with the ABIDES gross limit (`utils/budget.allowed_qty_wealth`).
+
+**Budget v2 (spec v1.5 A6.1, K16; `budget_v2=True`, build_config `informed_budget_v2`, default
+off until A9).** The post-fill ratio n·p / W_p moves with the fill price p, and for a borrowing
+long (cash < 0) or a short (n < 0) the limit price is the *best* end of the fill range, not the
+worst. A marketable order fills at once at the best opposite quote, which is better than its
+limit, and so it overshot the bound (K16). v2 makes two changes:
+- the rule is checked at the limit price AND at the best opposite quote of this cycle (ask for
+  a buy, bid for a sell) when that quote is better than the limit; the smaller quantity wins.
+  The ratio is monotone in p, so the two ends cover every price in between;
+- B/S start from every own order still open (`self.orders`: resting, or cancel sent but not
+  yet confirmed), then add this cycle's orders.
+With cash ≥ 0 and n ≥ 0 the limit price is the worst end and v2 = v1. A position can still pass
+the bound by mark-to-market alone (the price jumps while the agent sits at the bound); v2 then
+allows only orders that reduce |n| on that side, but a fill that reduces |n| can still end
+outside the bound (DECISIONS A6).
 
 ### Parameters (§4.6, `param_ranges.INFORMED_RANGES`)
 

@@ -147,6 +147,9 @@ def build_config(
     #     [lo, hi], "wealth_c": int}. The count stays num_ekf_agents.
     fund_mode="price_only",
     informed_design=None,
+    # spec v1.5 A6.1 (K16): informed budget check v2 (worst fill price at both
+    # ends, in-flight orders counted). False -> the v1.4 check (I8). No RNG draw.
+    informed_budget_v2=False,
     # 11) spec v1.5 A3.5: the true-value process. "synthetic_ou" (v1.4, I8) or
     #     "living_v1" (day types, intraday shape, stress episodes, information
     #     jumps). day_type "auto" (30/50/20 mix) | "calm" | "normal" | "volatile";
@@ -363,6 +366,8 @@ def build_config(
                 fkw.update(price_learning=_PL, n_pl=lv["n_pl"],
                            eps_thr=draw(lv, "eps_thr"), a_pl=draw(lv, "a_pl"))
             cash_j = int(informed_design["wealth_c"])
+            if informed_budget_v2:
+                fkw["budget_v2"] = True
         agents.append(
             FundamentalistAgent(
                 id=j,

@@ -146,6 +146,26 @@ def report_component(name: str, engine: str) -> str:
     return md
 
 
+# A6.2: the R4 impact set. beta is fitted on four sizes again (IMP-0.1 = BUY 600, which
+# the v1.4.2 trim dropped), next to the IMP-0 placebo and the IMP-1s sell probe.
+IMPACT_SET = ("IMP-0", "IMP-0.1", "IMP-0.5", "IMP-1", "IMP-5", "IMP-1s")
+IMPACT_BETA_SIZES = ("IMP-0.1", "IMP-0.5", "IMP-1", "IMP-5")
+
+
+def impact_configs(prefix: str) -> List[str]:
+    """Config ids of the impact set for one market, e.g. prefix "N" -> N-IMP-0 ... N-IMP-1s."""
+    return [f"{prefix}-{k}" for k in IMPACT_SET]
+
+
+def impact_summary(prefix: str, seeds, min_seeds: int) -> Optional[Dict[str, Any]]:
+    """Noise floor, beta on the four sizes (G12) and recovery (G13) for one market;
+    None until every config of the set has enough valid seeds."""
+    scen = {k: RL.scenario_block(ROOT, f"{prefix}-{k}", seeds, min_seeds) for k in IMPACT_SET}
+    if not all(scen.values()):
+        return None
+    return RL.impact_summary(scen, min_seeds)
+
+
 def campaign_configs(name: str):
     if name in COMPONENTS:
         return REF + COMPONENTS[name]["configs"], COMPONENT_SEEDS

@@ -204,8 +204,9 @@ BOUNDARIES = [
     ("G10", {"gap_half_life_corr_min": 30.0}, "PASS"), ("G10", {"gap_half_life_corr_min": 90.0}, "PASS"),
     ("G10", {"gap_half_life_corr_min": 10.0}, "WARN"), ("G10", {"gap_half_life_corr_min": 180.0}, "WARN"),
     ("G10", {"gap_half_life_corr_min": 9.9}, "FAIL"), ("G10", {"gap_half_life_corr_min": None}, "FAIL"),
-    ("G11", {"regime_contrast": 5.0}, "PASS"), ("G11", {"regime_contrast": 3.0}, "WARN"),
-    ("G11", {"regime_contrast": 2.99}, "FAIL"),
+    # G11 is REPORTED since spec v1.5 A6.4: never graded
+    ("G11", {"regime_contrast": 5.0}, None), ("G11", {"regime_contrast": 3.0}, None),
+    ("G11", {"regime_contrast": 2.99}, None),
     ("G12", {"impact_beta": 0.40}, "PASS"), ("G12", {"impact_beta": 0.70}, "PASS"),
     ("G12", {"impact_beta": 0.25}, "WARN"), ("G12", {"impact_beta": 0.90}, "WARN"),
     ("G12", {"impact_beta": 0.91}, "FAIL"),

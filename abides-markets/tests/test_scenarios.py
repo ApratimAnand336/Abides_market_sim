@@ -234,7 +234,8 @@ def test_l5_probe_executes_its_parent_order(probe_market):
     s = R.series_from_end_state(es, config, start_holdings=start)
     # spec v1.4 N6: the invariant market has informed fundamentalists, so the
     # flags include informed_bounds (I4 split)
-    assert s["flags"] == {"book_sanity": True, "long_only": True, "conservation": True, "informed_bounds": True}
+    assert s["flags"] == {"book_sanity": True, "long_only": True, "conservation": True, "informed_bounds": True,
+                          "informed_budget": True}
     zs = R.agent_sanity(s)
     assert zs["ok"] and zs["zero_sum_cents"] == 0.0
     assert s["probe"]["absorbed"] and sum(s["probe"]["absorbed"].values()) == summ["filled"]
