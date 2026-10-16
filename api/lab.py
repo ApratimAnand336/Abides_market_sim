@@ -305,10 +305,16 @@ def config_hash(config_id: str, seed: int) -> str:
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
+LAB_BOOK_LOG_DEPTH_INTERVAL_S = 1.0
+
+
 def lab_config(config_id: str, seed: int) -> Dict[str, Any]:
     """The build_config(...) dict of one entry of the run matrix."""
     from abides_markets.configs.rmsc04_ekf import build_config
 
     kw = run_config_kwargs(run_params(config_id, seed))
     kw.update(CONFIGS[config_id].get("extra", {}))
+    # spec v1.5 A1.2c: lab runs read only L1 from book_log2, so depth rows are kept at
+    # 1 s spacing (lab metrics identical, T-S5); the dashboard path keeps every event
+    kw.setdefault("book_log_depth_interval_s", LAB_BOOK_LOG_DEPTH_INTERVAL_S)
     return build_config(**kw)

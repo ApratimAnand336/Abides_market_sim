@@ -73,6 +73,7 @@ def build_config(
     # 1) Exchange Agent
     book_logging=True,
     book_log_depth=10,
+    book_log_depth_interval_s=None,  # spec v1.5 A1.2c (None: depth at every event)
     stream_history_length=500,
     exchange_log_orders=None,
     # 2) Noise Agent
@@ -200,6 +201,7 @@ def build_config(
                 symbols=[ticker],
                 book_logging=book_logging,
                 book_log_depth=book_log_depth,
+                book_log_depth_interval_s=book_log_depth_interval_s,
                 log_orders=exchange_log_orders,
                 pipeline_delay=0,
                 computation_delay=0,

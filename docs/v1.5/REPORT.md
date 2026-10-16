@@ -8,4 +8,5 @@ deviation below).
 
 | milestone | commit | content |
 |---|---|---|
-| A0 | (this) | spec copy, D-R4-1..9, doc skeletons, HANDOFF rows |
+| A0 | 528ae6e | spec copy, D-R4-1..9, doc skeletons, HANDOFF rows |
+| A1 | (this) | bit-identical engine speed-up (−47% per full P0 day), PROFILE.md, T-S4, T-S5 |

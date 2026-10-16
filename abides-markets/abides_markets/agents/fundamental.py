@@ -513,7 +513,8 @@ class FundamentalistAgent(TradingAgent):
         # ── 1. Observe the market ────────────────────────────────────────
         bid, bid_vol, ask, ask_vol = self.get_known_bid_ask(self.symbol)
         if not bid or not ask:
-            logger.debug(f"{self.name}: No bid/ask available, skipping cycle.")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"{self.name}: No bid/ask available, skipping cycle.")
             return
 
         mid = (bid + ask) / 2.0
@@ -529,7 +530,8 @@ class FundamentalistAgent(TradingAgent):
                 self.symbol, self.current_time, sigma_n=self.sigma_n, random_state=self.random_state
             )
             self.x_hat = obs
-            logger.debug(f"{self.name}: Initialized x_hat = {self.x_hat:.0f} via Oracle")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"{self.name}: Initialized x_hat = {self.x_hat:.0f} via Oracle")
             return  # Need at least one prior before we can predict+correct
 
         # ── 4. Prediction step (F3) ──────────────────────────────────────
@@ -558,10 +560,11 @@ class FundamentalistAgent(TradingAgent):
             "sigma_f2": round(self.sigma_f2_hat, 4),
         })
 
-        logger.debug(
-            f"{self.name}: mid={mid:.0f}  x̂={self.x_hat:.0f}  "
-            f"P={self.P:.0f}  R={R:.0f}  K={K:.4f}  ER={er:.4f}"
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"{self.name}: mid={mid:.0f}  x̂={self.x_hat:.0f}  "
+                f"P={self.P:.0f}  R={R:.0f}  K={K:.4f}  ER={er:.4f}"
+            )
 
         # ── 7.5. Update Caution Modulator ────────────────────────────────
         confidence = self.update_caution(mid)
@@ -631,7 +634,8 @@ class FundamentalistAgent(TradingAgent):
 
         if not self.trading:
             self.trading = True
-            logger.debug(f"{self.name} is ready to start trading.")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"{self.name} is ready to start trading.")
 
         if self.mkt_closed:
             return
@@ -686,10 +690,11 @@ class FundamentalistAgent(TradingAgent):
             if message.symbol == self.symbol and self.x_hat is not None:
                 self.apply_news(message.sentiment, message.headline)
 
-                logger.debug(
-                    f"{self.name}: News [{message.symbol}] sent={message.sentiment:+.2f} "
-                    f"=> x_hat shifted to {self.x_hat:.0f}"
-                )
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        f"{self.name}: News [{message.symbol}] sent={message.sentiment:+.2f} "
+                        f"=> x_hat shifted to {self.x_hat:.0f}"
+                    )
 
                 # Force an immediate trading cycle to react to the news
                 if not self.mkt_closed:

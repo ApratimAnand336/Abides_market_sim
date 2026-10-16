@@ -58,6 +58,7 @@ agents, three news items) once per session and checks the payload against it.
 | 2026-10-13 | `v1.4` N4b | 332 passed, 1 skipped, 3 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 153 s; invariants I1–I9 pass, I8 unchanged (T-N19) |
 | 2026-10-13 | `v1.4` N4d | 336 passed, 1 skipped, 3 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 277 s; I8 unchanged; T-S2 bit-identical |
 | 2026-10-14 | `v1.4` N6 | 338 passed, 1 skipped, 3 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 185 s; I8 re-recorded, I8-legacy passes; regression (v1.4, 41 checks) and regression-legacy (42 checks) PASSED; `npm run build` passes |
+| 2026-10-16 | `v1.5` A1 | 338 passed, 1 skipped, 3 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 147 s, plus 13 errors in `test_export.py` caused by the uncommitted A2 work in `api/realism.py` (nested metrics vs the payload schema; fixed in A2); on the A1 state alone `test_export.py` 23 passed; invariants 11 passed (I8, I8-legacy unchanged); T-S4 bit-identical, T-S5 lab metrics identical; regression (41 checks) and regression-legacy (42) PASSED |
 
 ### Pre-existing failures (not caused by our code)
 

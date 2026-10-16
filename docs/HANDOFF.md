@@ -10,8 +10,8 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 ## Milestone status (spec v1.5)
 | ID | Status | Commit | Notes |
 |---|---|---|---|
-| A0 | done | (see log) | spec copy, D-R4-1..9, skeletons |
-| A1 | todo | | engine speed-up (bit-identical), PROFILE.md |
+| A0 | done | 528ae6e | spec copy, D-R4-1..9, skeletons |
+| A1 | done | (see log) | bit-identical speed-up 22.7 → 12.1 s per P0 day (1 worker) |
 | A2 | todo | | measurement additions |
 | A3 | todo | | living_v1 value, auto news, templates; campaign a-env |
 | A4 | todo | | retail crowd; campaign a-retail |
@@ -38,6 +38,8 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 - Campaigns need a committed, clean engine label ("+dirty" redoes every run). 2 workers when
   L5 is measured. Memory ~0.6 GB per 60-agent run; machine 15.6 GB, often 3–5 GB free.
 - Lab seeds `api.lab.SEEDS` (42, 7, 1–6, 8–19); screening 42, 7, 1, 2, 3; t0 = 11:00.
+- **Engine (A1):** full P0 day 12.1 s in `abides.run` (1 worker). The lab writes L2–L10 depth
+  rows every 1 s only (`LAB_BOOK_LOG_DEPTH_INTERVAL_S`); build_config default = every event.
 - A3.3 check (A0, DECISIONS): long-run normal-day daily sd is 1.32% vs spec 1.49%; T-O5's
   ±10% band may be borderline on that statistic.
 
@@ -47,5 +49,6 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
   CLAUDE.md and .claude/ stay untracked.
 
 ## Log (newest first, one line each)
+- 2026-10-16 A1: bit-identical speed-up (heap, event copy, log guards, fmt_ts, dropout loop, order copy, sparse lab depth), −47%.
 - 2026-10-16 A0: spec v1.5 stored, D-R4-1..9, doc skeletons, branch v1.5.
 - 2026-10-14 N7: R3 complete (RESULTS.md, REPORT.md, KNOWN_ISSUES K14–K16).

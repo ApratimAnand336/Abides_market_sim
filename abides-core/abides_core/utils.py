@@ -3,6 +3,7 @@ General purpose utility functions for the simulator, attached to no particular c
 Available to any agent or other module/utility.  Should not require references to
 any simulator object (kernel, agent, etc).
 """
+import datetime
 import inspect
 import hashlib
 import os
@@ -75,10 +76,35 @@ def get_wake_time(open_time, close_time, a=0, b=1):
     return wake_time
 
 
+_FMT_TS_EPOCH = datetime.datetime(1970, 1, 1)
+_FMT_TS_CACHE: Dict[int, str] = {}
+_FMT_TS_LO = int(pd.Timestamp.min.value)
+_FMT_TS_HI = int(pd.Timestamp.max.value)
+
+
 def fmt_ts(timestamp: NanosecondTime) -> str:
     """
     Converts a timestamp stored as nanoseconds into a human readable string.
+
+    Integer timestamps take a fast path (spec v1.5 A1): floor to whole seconds and
+    format with datetime, which gives the same string as
+    pd.Timestamp(timestamp, unit="ns").strftime("%Y-%m-%d %H:%M:%S") (strftime drops
+    the sub-second part; floor division matches for negative times too). Anything
+    else, or a value outside pandas' range, uses pandas as before.
     """
+    if type(timestamp) is int or isinstance(timestamp, np.integer):
+        t = int(timestamp)
+        if _FMT_TS_LO <= t <= _FMT_TS_HI:
+            sec = t // 1_000_000_000
+            out = _FMT_TS_CACHE.get(sec)
+            if out is None:
+                if len(_FMT_TS_CACHE) > 200_000:
+                    _FMT_TS_CACHE.clear()
+                out = (_FMT_TS_EPOCH + datetime.timedelta(seconds=sec)).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                _FMT_TS_CACHE[sec] = out
+            return out
     return pd.Timestamp(timestamp, unit="ns").strftime("%Y-%m-%d %H:%M:%S")
 
 

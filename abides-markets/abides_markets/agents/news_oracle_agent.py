@@ -80,10 +80,11 @@ class NewsOracleAgent(Agent):
         # Schedule wakeup for the first news event
         if self._news_queue:
             self.set_wakeup(self._news_queue[0][0])
-            logger.info(
-                f"{self.name}: {len(self._news_queue)} news events queued. "
-                f"First at t={self._news_queue[0][0]}"
-            )
+            if logger.isEnabledFor(logging.INFO):
+                logger.info(
+                    f"{self.name}: {len(self._news_queue)} news events queued. "
+                    f"First at t={self._news_queue[0][0]}"
+                )
 
     def kernel_stopping(self) -> None:
         pass
@@ -129,10 +130,11 @@ class NewsOracleAgent(Agent):
             "recipients": num_recipients,
         })
 
-        logger.info(
-            f"{self.name}: Broadcast [{symbol}] sentiment={sentiment:+.4f} "
-            f"to {num_recipients} agents  |  \"{headline}\""
-        )
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                f"{self.name}: Broadcast [{symbol}] sentiment={sentiment:+.4f} "
+                f"to {num_recipients} agents  |  \"{headline}\""
+            )
 
     # ── We don't process inbound messages ────────────────────────────────
 

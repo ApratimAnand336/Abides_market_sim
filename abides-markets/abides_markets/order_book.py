@@ -86,6 +86,8 @@ class OrderBook:
 
         # Create an empty list of dictionaries to log the full order book depth (price and volume) each time it changes.
         self.book_log2: List[Dict[str, Any]] = []
+        # time of the last full-depth book_log2 row (spec v1.5 A1.2c)
+        self._last_depth_log_ts: Optional[NanosecondTime] = None
         self.quotes_seen: Set[int] = set()
 
         # Create an order history for the exchange to report to certain agent types.
@@ -213,7 +215,8 @@ class OrderBook:
                 trade_price += p * q
 
             avg_price = int(round(trade_price / trade_qty))
-            logger.debug(f"Avg: {trade_qty} @ ${avg_price:0.4f}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Avg: {trade_qty} @ ${avg_price:0.4f}")
             self.owner.logEvent("LAST_TRADE", f"{trade_qty},${avg_price:0.4f}")
 
             self.last_trade = avg_price
@@ -711,11 +714,37 @@ class OrderBook:
             # append current OB state to book_log2
             self.append_book_log2()
 
+    @staticmethod
+    def _l2_top(levels: List[PriceLevel], depth: int) -> List[Tuple[int, int]]:
+        """The first row of get_l2_*_data(depth) (or [] if that is empty)."""
+        for price_level in levels[:depth]:
+            qty = price_level.total_quantity
+            if qty > 0:
+                return [(price_level.price, qty)]
+        return []
+
     def append_book_log2(self):
+        depth = self.owner.book_log_depth
+        interval = getattr(self.owner, "book_log_depth_interval_ns", None)
+        now = self.owner.current_time
+        if (
+            interval is not None
+            and self._last_depth_log_ts is not None
+            and now - self._last_depth_log_ts < interval
+        ):
+            # spec v1.5 A1.2c: L1 only between full-depth rows; the row's first entry
+            # (and its emptiness) is exactly that of the full-depth query
+            bids = np.array(self._l2_top(self.bids, depth))
+            asks = np.array(self._l2_top(self.asks, depth))
+        else:
+            bids = np.array(self.get_l2_bid_data(depth=depth))
+            asks = np.array(self.get_l2_ask_data(depth=depth))
+            if interval is not None:
+                self._last_depth_log_ts = now
         row = {
-            "QuoteTime": self.owner.current_time,
-            "bids": np.array(self.get_l2_bid_data(depth=self.owner.book_log_depth)),
-            "asks": np.array(self.get_l2_ask_data(depth=self.owner.book_log_depth)),
+            "QuoteTime": now,
+            "bids": bids,
+            "asks": asks,
         }
         # if (row["bids"][0][0]>=row["asks"][0][0]): print("WARNING: THIS IS A REAL PROBLEM: an order book contains bids and asks at the same quote price!")
         self.book_log2.append(row)

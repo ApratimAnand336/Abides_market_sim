@@ -156,6 +156,7 @@ class ExchangeAgent(FinancialAgent):
         stream_history: int = 0,
         log_orders: bool = False,
         use_metric_tracker: bool = True,
+        book_log_depth_interval_s: Optional[float] = None,
     ) -> None:
         super().__init__(id, name, type, random_state)
 
@@ -183,6 +184,13 @@ class ExchangeAgent(FinancialAgent):
 
         self.book_logging: bool = book_logging
         self.book_log_depth: int = book_log_depth
+        # spec v1.5 A1.2c: with an interval, book_log2 keeps every L1 snapshot but the
+        # L2..L(depth) levels only at >= this spacing (None: every event, as before)
+        self.book_log_depth_interval_ns: Optional[int] = (
+            None
+            if book_log_depth_interval_s is None
+            else int(round(book_log_depth_interval_s * 1e9))
+        )
 
         # Log all order activity?
         self.log_orders: bool = log_orders
@@ -234,13 +242,15 @@ class ExchangeAgent(FinancialAgent):
                 self.order_books[symbol].last_trade = self.oracle.get_daily_open_price(
                     symbol, self.mkt_open
                 )
-                logger.debug(
-                    "Opening price for {} is {}".format(
-                        symbol, self.order_books[symbol].last_trade
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "Opening price for {} is {}".format(
+                            symbol, self.order_books[symbol].last_trade
+                        )
                     )
-                )
             except AttributeError as e:
-                logger.debug(str(e))
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(str(e))
 
         # Set a wakeup for the market close so we can send market close price messages.
         self.set_wakeup(self.mkt_close)
@@ -329,20 +339,22 @@ class ExchangeAgent(FinancialAgent):
             # for final trade prices or such.
             if isinstance(message, OrderMsg):
                 if isinstance(message, ModifyOrderMsg):
-                    logger.debug(
-                        "{} received {}: OLD: {} NEW: {}".format(
-                            self.name,
-                            message.type(),
-                            message.old_order,
-                            message.new_order,
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            "{} received {}: OLD: {} NEW: {}".format(
+                                self.name,
+                                message.type(),
+                                message.old_order,
+                                message.new_order,
+                            )
                         )
-                    )
                 else:
-                    logger.debug(
-                        "{} received {}: {}".format(
-                            self.name, message.type(), message.order
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            "{} received {}: {}".format(
+                                self.name, message.type(), message.order
+                            )
                         )
-                    )
 
                 self.send_message(sender_id, MarketClosedMsg())
 
@@ -353,11 +365,12 @@ class ExchangeAgent(FinancialAgent):
                 # final trade of the day as their "daily close" price for a symbol.
                 pass
             else:
-                logger.debug(
-                    "{} received {}, discarded: market is closed.".format(
-                        self.name, message.type()
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "{} received {}, discarded: market is closed.".format(
+                            self.name, message.type()
+                        )
                     )
-                )
                 self.send_message(sender_id, MarketClosedMsg())
 
                 # Don't do any further processing on these messages!
@@ -385,11 +398,12 @@ class ExchangeAgent(FinancialAgent):
                 return
 
             if message.cancel == True:
-                logger.debug(
-                    "{} received MarketDataSubscriptionCancellation request from agent {}".format(
-                        self.name, sender_id
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "{} received MarketDataSubscriptionCancellation request from agent {}".format(
+                            self.name, sender_id
+                        )
                     )
-                )
 
                 for data_sub in self.data_subscriptions[message.symbol]:
                     if (
@@ -401,11 +415,12 @@ class ExchangeAgent(FinancialAgent):
                         self.data_subscriptions[message.symbol].remove(data_sub)
 
             else:
-                logger.debug(
-                    "{} received MarketDataSubscriptionRequest request from agent {}".format(
-                        self.name, sender_id
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "{} received MarketDataSubscriptionRequest request from agent {}".format(
+                            self.name, sender_id
+                        )
                     )
-                )
 
                 if isinstance(message, L1SubReqMsg):
                     sub: self.BaseDataSubscription = self.L1DataSubscription(
@@ -433,11 +448,12 @@ class ExchangeAgent(FinancialAgent):
                 self.data_subscriptions[message.symbol].append(sub)
 
         if isinstance(message, MarketHoursRequestMsg):
-            logger.debug(
-                "{} received market hours request from agent {}".format(
-                    self.name, sender_id
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "{} received market hours request from agent {}".format(
+                        self.name, sender_id
+                    )
                 )
-            )
 
             # The exchange is permitted to respond to requests for simple
             # immutable data (like "what are your hours?") instantly. This does
@@ -456,11 +472,12 @@ class ExchangeAgent(FinancialAgent):
             if symbol not in self.order_books:
                 warnings.warn(f"Last trade request discarded. Unknown symbol: {symbol}")
             else:
-                logger.debug(
-                    "{} received QUERY_LAST_TRADE ({}) request from agent {}".format(
-                        self.name, symbol, sender_id
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "{} received QUERY_LAST_TRADE ({}) request from agent {}".format(
+                            self.name, symbol, sender_id
+                        )
                     )
-                )
 
                 # Return the single last executed trade price (currently not
                 # volume) for the requested symbol. This will return the average
@@ -483,11 +500,12 @@ class ExchangeAgent(FinancialAgent):
                     f"Bid-ask spread request discarded. Unknown symbol: {symbol}"
                 )
             else:
-                logger.debug(
-                    "{} received QUERY_SPREAD ({}:{}) request from agent {}".format(
-                        self.name, symbol, depth, sender_id
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "{} received QUERY_SPREAD ({}:{}) request from agent {}".format(
+                            self.name, symbol, depth, sender_id
+                        )
                     )
-                )
 
                 # Return the requested depth on both sides of the order book for
                 # the requested symbol. Returns price levels and aggregated
@@ -519,11 +537,12 @@ class ExchangeAgent(FinancialAgent):
                     f"Order stream request discarded. Unknown symbol: {symbol}"
                 )
             else:
-                logger.debug(
-                    "{} received QUERY_ORDER_STREAM ({}:{}) request from agent {}".format(
-                        self.name, symbol, length, sender_id
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "{} received QUERY_ORDER_STREAM ({}:{}) request from agent {}".format(
+                            self.name, symbol, length, sender_id
+                        )
                     )
-                )
 
             # We return indices [1:length] inclusive because the agent will want
             # "orders leading up to the last L trades", and the items under
@@ -547,11 +566,12 @@ class ExchangeAgent(FinancialAgent):
                     f"Order stream request discarded. Unknown symbol: {symbol}"
                 )
             else:
-                logger.debug(
-                    "{} received QUERY_TRANSACTED_VOLUME ({}:{}) request from agent {}".format(
-                        self.name, symbol, lookback_period, sender_id
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "{} received QUERY_TRANSACTED_VOLUME ({}:{}) request from agent {}".format(
+                            self.name, symbol, lookback_period, sender_id
+                        )
                     )
-                )
 
             bid_volume, ask_volume = self.order_books[symbol].get_transacted_volume(
                 lookback_period
@@ -568,7 +588,8 @@ class ExchangeAgent(FinancialAgent):
             )
 
         elif isinstance(message, LimitOrderMsg):
-            logger.debug("{} received LIMIT_ORDER: {}".format(self.name, message.order))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("{} received LIMIT_ORDER: {}".format(self.name, message.order))
 
             if message.order.symbol not in self.order_books:
                 warnings.warn(
@@ -582,9 +603,10 @@ class ExchangeAgent(FinancialAgent):
                 self.publish_order_book_data()
 
         elif isinstance(message, MarketOrderMsg):
-            logger.debug(
-                "{} received MARKET_ORDER: {}".format(self.name, message.order)
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "{} received MARKET_ORDER: {}".format(self.name, message.order)
+                )
 
             if message.order.symbol not in self.order_books:
                 warnings.warn(
@@ -601,9 +623,10 @@ class ExchangeAgent(FinancialAgent):
             tag = message.tag
             metadata = message.metadata
 
-            logger.debug(
-                "{} received CANCEL_ORDER: {}".format(self.name, message.order)
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "{} received CANCEL_ORDER: {}".format(self.name, message.order)
+                )
 
             if message.order.symbol not in self.order_books:
                 warnings.warn(
@@ -620,11 +643,12 @@ class ExchangeAgent(FinancialAgent):
             tag = message.tag
             metadata = message.metadata
 
-            logger.debug(
-                "{} received PARTIAL_CANCEL_ORDER: {}, new order: {}".format(
-                    self.name, message.order, message.quantity
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "{} received PARTIAL_CANCEL_ORDER: {}, new order: {}".format(
+                        self.name, message.order, message.quantity
+                    )
                 )
-            )
 
             if message.order.symbol not in self.order_books:
                 warnings.warn(
@@ -640,11 +664,12 @@ class ExchangeAgent(FinancialAgent):
             old_order = message.old_order
             new_order = message.new_order
 
-            logger.debug(
-                "{} received MODIFY_ORDER: {}, new order: {}".format(
-                    self.name, old_order, new_order
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "{} received MODIFY_ORDER: {}, new order: {}".format(
+                        self.name, old_order, new_order
+                    )
                 )
-            )
 
             if old_order.symbol not in self.order_books:
                 warnings.warn(
@@ -661,11 +686,12 @@ class ExchangeAgent(FinancialAgent):
             order = message.old_order
             new_order = message.new_order
 
-            logger.debug(
-                "{} received REPLACE_ORDER: {}, new order: {}".format(
-                    self.name, order, new_order
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "{} received REPLACE_ORDER: {}, new order: {}".format(
+                        self.name, order, new_order
+                    )
                 )
-            )
 
             if order.symbol not in self.order_books:
                 warnings.warn(
@@ -910,9 +936,11 @@ class ExchangeAgent(FinancialAgent):
         if len(book) == 0:
             return
 
-        df = pd.DataFrame(book)
-
-        total_time = df["QuoteTime"].iloc[-1] - df["QuoteTime"].iloc[0]
+        # spec v1.5 A1: the same scan as the former DataFrame.iterrows loop, over the
+        # list itself (bit-identical: QuoteTime values are integer ns, exact in
+        # float64; total_time keeps the int64 Series subtraction it had before).
+        quote_times = pd.Series([row["QuoteTime"] for row in book])
+        total_time = quote_times.iloc[-1] - quote_times.iloc[0]
         is_null_bids = False
         t_null_bids_first = 0
         T_null_bids = 0
@@ -921,7 +949,7 @@ class ExchangeAgent(FinancialAgent):
         t_null_asks_first = 0
         T_null_asks = 0
 
-        for _, row in df.iterrows():
+        for row in book:
             if (len(row["bids"]) == 0) & (is_null_bids == False):
                 t_null_bids_first = row["QuoteTime"]
                 is_null_bids = True

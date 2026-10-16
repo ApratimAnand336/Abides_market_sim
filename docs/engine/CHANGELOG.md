@@ -10,6 +10,7 @@ Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt).
 | Milestone | Files | Change |
 |---|---|---|
 | A0 | `docs/specs/spec_v1.5.txt`, `docs/engine/DECISIONS.md`, `docs/engine/{NEWS,AGENTS_RETAIL,AGENTS_LP,CRASHES}.md`, `docs/v1.5/REPORT.md`, `docs/HANDOFF.md` | Spec v1.5 stored; D-R4-1..9; pre-run check of the A3.3 value statistics; doc skeletons |
+| A1 | `abides-core/abides_core/{kernel,agent,utils}.py`, `agents/{exchange_agent,trading_agent,fundamental,news_oracle_agent}.py`, `order_book.py`, `configs/rmsc04_ekf.py`, `api/lab.py`, `tests/test_engine_speed.py`, `scripts/profile_{day,report}.py`, `docs/v1.5/PROFILE.md` | Bit-identical speed-up: kernel heap, exact fast event copy, guarded debug logs, pandas-free `fmt_ts`, `get_time_dropout` loop, no agent-side order copy, `book_log_depth_interval_s` (lab 1 s); full P0 day 22.7 → 12.1 s (−47%); T-S4, T-S5 |
 
 ## v1.4 — R3: informed fundamentalists replace the value agents (complete 2026-10-14, branch `v1.4`)
 

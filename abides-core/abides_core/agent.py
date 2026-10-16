@@ -13,6 +13,59 @@ from .utils import fmt_ts
 logger = logging.getLogger(__name__)
 
 
+
+# Types whose deepcopy is the object itself (or, for numpy scalars, an equal immutable
+# value), as in copy._deepcopy_atomic.
+_ATOMIC = frozenset(
+    {type(None), int, float, bool, complex, str, bytes,
+     np.float64, np.float32, np.int64, np.int32, np.bool_}
+)
+
+
+def _event_copy(x: Any, memo: dict) -> Any:
+    """copy.deepcopy(x, memo) for the plain containers events are made of (spec v1.5 A1).
+
+    dict, list and tuple are copied exactly as copy.deepcopy does (same memo, so shared
+    sub-objects stay shared, and a tuple whose items copy to themselves is returned as
+    is); immutable scalars are returned as is; anything else goes to copy.deepcopy with
+    the same memo. The logged event is therefore equal to deepcopy(event), only faster.
+    """
+    t = type(x)
+    if t in _ATOMIC:
+        return x
+    if t is dict:
+        y = memo.get(id(x))
+        if y is not None:
+            return y
+        y = {}
+        memo[id(x)] = y
+        for k, v in x.items():
+            y[_event_copy(k, memo)] = _event_copy(v, memo)
+        return y
+    if t is list:
+        y = memo.get(id(x))
+        if y is not None:
+            return y
+        y = []
+        memo[id(x)] = y
+        for v in x:
+            y.append(_event_copy(v, memo))
+        return y
+    if t is tuple:
+        items = [_event_copy(v, memo) for v in x]
+        y = memo.get(id(x))
+        if y is not None:
+            return y
+        for a, b in zip(x, items):
+            if a is not b:
+                y = tuple(items)
+                break
+        else:
+            y = x
+        memo[id(x)] = y
+        return y
+    return deepcopy(x, memo)
+
 class Agent:
     """
     Base Agent class
@@ -90,7 +143,8 @@ class Agent:
 
         self.kernel = kernel
 
-        logger.debug("{} exists!".format(self.name))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("{} exists!".format(self.name))
 
     def kernel_starting(self, start_time: NanosecondTime) -> None:
         """
@@ -108,11 +162,12 @@ class Agent:
 
         assert self.kernel is not None
 
-        logger.debug(
-            "Agent {} ({}) requesting kernel wakeup at time {}".format(
-                self.id, self.name, fmt_ts(start_time)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Agent {} ({}) requesting kernel wakeup at time {}".format(
+                    self.id, self.name, fmt_ts(start_time)
+                )
             )
-        )
 
         self.set_wakeup(start_time)
 
@@ -168,7 +223,7 @@ class Agent:
         # class instance) for both potential log targets, because we don't
         # alter logs once recorded.
         if deepcopy_event:
-            event = deepcopy(event)
+            event = _event_copy(event, {})
 
         self.log.append((self.current_time, event_type, event))
 
