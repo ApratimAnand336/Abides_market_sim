@@ -427,3 +427,18 @@ Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt), approved by the owne
 - **Result:** 22.69 → 12.13 s per full P0 day (−47%, 1 worker, median of 3); 24/24 runs share the v1.4 fingerprint (T-S4); T-S5 lab metrics identical with sparse depth.
 - **Sparse depth is a lab-only setting:** `api.lab.lab_config` sets `book_log_depth_interval_s = 1.0` (LAB_BOOK_LOG_DEPTH_INTERVAL_S) unless a config overrides it; `build_config`'s default stays None (every event), so the dashboard's depth chart and I8 are untouched. Lab code reads only L1 from `book_log2`.
 - The ABIDES stock agents (noise, value, market maker) needed no change: none of their log calls formats eagerly.
+
+### 2026-10-16 (A3) living_v1: implementation choices and one spec-number finding
+- **Day-type draw always made.** A3.2 lists "1 day type (if auto: u ~ U(0,1) ...)". The uniform is drawn in every case and used only for "auto", so a requested type equal to the drawn one gives the identical path (T-O6) and a seed's later draws do not shift with the request. With a fixed day type the request simply replaces the drawn type.
+- **U normalisation over the oracle grid**, which build_config always generates for the full 09:30–16:00 session (whatever end_time), so c_U and the path do not depend on session length (T-O7).
+- **Stress chain convention:** S_0 = 1 (start in state 1); u_k decides the transition after step k; computed episode by episode (identical to the loop, test). p_in and p_out are per grid step, i.e. per second on the 1 s grid.
+- **Signs and templates:** sign = + if a uniform < 0.5; template index = randint(bucket size), the last draws, so the path never depends on the templates (the oracle can be built without them).
+- **Agents unchanged** (A3.7 "everything else v1.4"): informed agents learn the value speed sigma_f2_hat online from the market, so no parameter follows the faster value.
+- **Spec-number finding (T-O5).**
+  - Measured vs A3.3: the 1-min sd matches for every type and the mix (within 5%); daily sd matches for calm, volatile and the mix (within 9%).
+  - Normal-day daily sd measures 1.28% (seeds 0–199; 1.32% over 1,500 days) vs 1.49% in A3.3 (−14%). That one case is `xfail(strict=True)` with this reason.
+  - The model is not changed (nothing is tuned outside a pre-registered sweep). The default mix still gives 1.43%/day, inside the 1–2% target.
+- **Component campaigns run C + S2.**
+  - A3.7/A4.5/A5.5 count 10 runs each (C only), but "T-measures vs P0" includes T5/T6, and E-A3 is a post-jump spread ratio; both need the +2% jump run.
+  - So each component runs C and S2 on the first 10 lab seeds, plus the same-seed P0-C/P0-S2 rerun on the current engine as the reference: 40 runs per component instead of 10.
+- **Two commits for A3** (code, then campaign results), as N5 did: lab runs record the engine label, which must be a clean commit.

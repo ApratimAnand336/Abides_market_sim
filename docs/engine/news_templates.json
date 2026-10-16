@@ -1,0 +1,288 @@
+{
+ "spec": "v1.5 A3.4",
+ "model": "ProsusAI/finbert",
+ "score": "P(positive) - P(negative), rounded to 4 decimals",
+ "computed": "2026-10-16",
+ "size_edges_pct": [
+  0.3,
+  1.0
+ ],
+ "buckets": {
+  "positive_small": [
+   {
+    "headline": "ABM wins a small supply contract with a regional distributor",
+    "sentiment": 0.9145
+   },
+   {
+    "headline": "Analyst raises ABM price target slightly on solid demand",
+    "sentiment": 0.8125
+   },
+   {
+    "headline": "ABM reports slightly better than expected monthly sales",
+    "sentiment": 0.8854
+   },
+   {
+    "headline": "ABM announces modest expansion of its share buyback program",
+    "sentiment": 0.9188
+   },
+   {
+    "headline": "ABM receives regulatory approval for a new product line",
+    "sentiment": 0.8904
+   },
+   {
+    "headline": "ABM customer satisfaction scores improve modestly in survey",
+    "sentiment": 0.9133
+   },
+   {
+    "headline": "ABM opens a new regional office to support growth",
+    "sentiment": 0.8138
+   },
+   {
+    "headline": "ABM signs a small partnership agreement with a technology firm",
+    "sentiment": 0.8872
+   },
+   {
+    "headline": "ABM web traffic data points to steady demand growth",
+    "sentiment": 0.9361
+   },
+   {
+    "headline": "ABM director buys a small block of shares",
+    "sentiment": 0.0264
+   },
+   {
+    "headline": "ABM reports a small rise in weekly bookings",
+    "sentiment": 0.9146
+   }
+  ],
+  "positive_medium": [
+   {
+    "headline": "ABM quarterly earnings beat consensus estimates",
+    "sentiment": 0.9278
+   },
+   {
+    "headline": "ABM raises full-year revenue guidance",
+    "sentiment": 0.8231
+   },
+   {
+    "headline": "ABM secures a multi-year contract with a major retailer",
+    "sentiment": 0.9352
+   },
+   {
+    "headline": "Major broker upgrades ABM to buy",
+    "sentiment": 0.3183
+   },
+   {
+    "headline": "ABM margins improve as cost cuts take hold",
+    "sentiment": 0.9358
+   },
+   {
+    "headline": "ABM raises its dividend by more than expected",
+    "sentiment": 0.9187
+   },
+   {
+    "headline": "ABM wins approval for its flagship product in a key market",
+    "sentiment": 0.9209
+   },
+   {
+    "headline": "ABM reports strong growth in new customer orders",
+    "sentiment": 0.9387
+   },
+   {
+    "headline": "ABM unveils new product with strong early demand",
+    "sentiment": 0.9294
+   },
+   {
+    "headline": "ABM settles legal dispute on favourable terms",
+    "sentiment": 0.486
+   },
+   {
+    "headline": "ABM credit rating upgraded by a major agency",
+    "sentiment": 0.9047
+   }
+  ],
+  "positive_large": [
+   {
+    "headline": "ABM profit surges far above expectations, guidance raised sharply",
+    "sentiment": 0.9029
+   },
+   {
+    "headline": "ABM agrees to be acquired at a substantial premium",
+    "sentiment": 0.4543
+   },
+   {
+    "headline": "ABM announces breakthrough product, analysts see major revenue boost",
+    "sentiment": 0.9272
+   },
+   {
+    "headline": "ABM wins landmark government contract worth billions",
+    "sentiment": 0.7639
+   },
+   {
+    "headline": "ABM record quarterly revenue smashes all estimates",
+    "sentiment": 0.1434
+   },
+   {
+    "headline": "ABM receives full regulatory approval for blockbuster drug",
+    "sentiment": 0.8393
+   },
+   {
+    "headline": "ABM doubles its earnings forecast for the year",
+    "sentiment": 0.8338
+   },
+   {
+    "headline": "ABM announces massive share buyback after record profits",
+    "sentiment": 0.5435
+   },
+   {
+    "headline": "ABM strikes transformational partnership with industry leader",
+    "sentiment": 0.8903
+   },
+   {
+    "headline": "ABM sales soar as new product becomes a market hit",
+    "sentiment": 0.9101
+   },
+   {
+    "headline": "ABM swings to a large profit, beating every analyst estimate",
+    "sentiment": 0.9017
+   }
+  ],
+  "negative_small": [
+   {
+    "headline": "ABM misses monthly sales estimate by a small margin",
+    "sentiment": -0.8559
+   },
+   {
+    "headline": "Analyst trims ABM price target slightly",
+    "sentiment": -0.0236
+   },
+   {
+    "headline": "ABM reports a minor delay in a product shipment",
+    "sentiment": -0.9425
+   },
+   {
+    "headline": "ABM faces a small product recall in one region",
+    "sentiment": -0.9464
+   },
+   {
+    "headline": "ABM profit squeezed slightly by higher input costs",
+    "sentiment": -0.3864
+   },
+   {
+    "headline": "ABM loses a small contract to a competitor",
+    "sentiment": -0.9294
+   },
+   {
+    "headline": "ABM director sells a small block of shares",
+    "sentiment": -0.0078
+   },
+   {
+    "headline": "ABM web traffic data points to softer demand",
+    "sentiment": -0.3837
+   },
+   {
+    "headline": "ABM warns of slightly higher operating expenses",
+    "sentiment": -0.8501
+   },
+   {
+    "headline": "ABM customer complaints tick up in latest survey",
+    "sentiment": -0.5033
+   },
+   {
+    "headline": "ABM reports a small drop in weekly bookings",
+    "sentiment": -0.9606
+   }
+  ],
+  "negative_medium": [
+   {
+    "headline": "ABM quarterly earnings miss consensus estimates",
+    "sentiment": -0.9417
+   },
+   {
+    "headline": "ABM cuts full-year revenue guidance",
+    "sentiment": -0.9606
+   },
+   {
+    "headline": "Major broker downgrades ABM to sell",
+    "sentiment": -0.8607
+   },
+   {
+    "headline": "ABM loses a key contract with a major retailer",
+    "sentiment": -0.9279
+   },
+   {
+    "headline": "ABM margins shrink as costs rise",
+    "sentiment": -0.9617
+   },
+   {
+    "headline": "ABM faces regulatory investigation into sales practices",
+    "sentiment": -0.6106
+   },
+   {
+    "headline": "ABM product launch delayed by several months",
+    "sentiment": -0.8332
+   },
+   {
+    "headline": "ABM reports weak growth in new orders",
+    "sentiment": -0.9614
+   },
+   {
+    "headline": "ABM credit rating downgraded by a major agency",
+    "sentiment": -0.9534
+   },
+   {
+    "headline": "ABM cuts its dividend",
+    "sentiment": -0.9181
+   },
+   {
+    "headline": "ABM hit by lawsuit over product defects",
+    "sentiment": -0.9302
+   }
+  ],
+  "negative_large": [
+   {
+    "headline": "ABM profit collapses, guidance slashed",
+    "sentiment": -0.9244
+   },
+   {
+    "headline": "ABM chief executive resigns amid accounting probe",
+    "sentiment": -0.9138
+   },
+   {
+    "headline": "ABM loses patent case, key product faces ban",
+    "sentiment": -0.8162
+   },
+   {
+    "headline": "Regulator rejects ABM flagship product",
+    "sentiment": -0.7919
+   },
+   {
+    "headline": "ABM issues profit warning, sees steep revenue decline",
+    "sentiment": -0.88
+   },
+   {
+    "headline": "ABM swings to a large loss, missing every estimate",
+    "sentiment": -0.944
+   },
+   {
+    "headline": "ABM major customer cancels multi-year contract",
+    "sentiment": -0.9498
+   },
+   {
+    "headline": "ABM faces fraud allegations in short seller report",
+    "sentiment": -0.9119
+   },
+   {
+    "headline": "ABM suspends dividend after sharp fall in earnings",
+    "sentiment": -0.9509
+   },
+   {
+    "headline": "ABM recalls flagship product nationwide over safety concerns",
+    "sentiment": -0.9523
+   },
+   {
+    "headline": "ABM plant shutdown halts most production",
+    "sentiment": -0.941
+   }
+  ]
+ }
+}

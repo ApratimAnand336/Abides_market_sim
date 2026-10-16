@@ -99,6 +99,27 @@ DEFAULT_INFORMED_DESIGN: Dict = {"T_r_range_s": [60.0, 300.0], "sigma_r_range_c"
 DEFAULT_NUM_INFORMED = 60
 INFORMED_W_BOUNDS = (-0.5, 1.5)  # = fundamental.INFORMED_W_MIN / _MAX (spec v1.4 §4.5)
 
+# spec v1.5 A3.1: the living true-value process (oracle path source "living_v1").
+# Fixed model constants (not drawn per agent); every random element of the day is
+# drawn by the oracle from the symbol's own RandomState (A3.2).
+LIVING_V1: Dict = {
+    "sigma_base_c_per_sqrt_s": 7.1,  # cents per sqrt(s) = 5.5 bps/min at $1000
+    "m_day": {"calm": 0.6, "normal": 1.0, "volatile": 1.6},
+    "day_mix": {"calm": 0.30, "normal": 0.50, "volatile": 0.20},  # D-R4-1
+    # intraday shape U(t) = (1 + a_open exp(-t/tau) + a_close exp(-(T - t)/tau)) / c_U
+    "u_open": 0.6, "u_close": 0.4, "u_tau_h": 0.5, "session_h": 6.5,
+    # stress: 2-state Markov chain on the 1 s grid, S in {1, s_mult}
+    "stress_mult": 2.5,
+    "stress_episodes_per_day": {"calm": 0.2, "normal": 0.7, "volatile": 1.5},
+    "stress_mean_s": 45 * 60,
+    # information jumps: Poisson count, times U(open + 5 min, open + 6 h 25 min)
+    "news_per_day": {"calm": 2, "normal": 3, "volatile": 4},
+    "news_window_s": (5 * 60, 6 * 3600 + 25 * 60),
+    "jump_median_frac": 0.0020, "jump_sigma_ln": 0.6, "jump_cap_frac": 0.02,
+    "size_edges_pct": (0.3, 1.0),  # small < 0.3% <= medium <= 1% < large
+}
+DAY_TYPES = ("calm", "normal", "volatile")
+
 # spec v1.4.1 §2.3: learning from prices. n_pl fixed per level; eps_thr and
 # a_pl drawn per agent AFTER all its other informed draws; "off" draws nothing.
 PRICE_LEARNING_LEVELS: Dict[str, Dict] = {

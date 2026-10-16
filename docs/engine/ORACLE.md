@@ -152,6 +152,64 @@ bit-identical to v1.2 (invariant I8). Because the symbol's RandomState is drawn 
 before, a scenario and its baseline share every agent's parameters and random stream
 (test T-L4): only the true value differs, and only from the event on.
 
+## Path source "living_v1" (v1.5, spec A3): day types, stress, information news
+
+`build_config(value_process="living_v1", day_type="auto"|"calm"|"normal"|"volatile",
+auto_news=True)`. The v1.4 default stays `"synthetic_ou"` until milestone A9 (I8). Code:
+`living_v1_day` in `oracles/pregenerated_oracle.py`; constants `LIVING_V1` in
+`configs/param_ranges.py`.
+
+**Model** (cents, seconds; the 1 s grid 09:30–16:00, N = 23,401 points):
+
+    v_{k+1} = r_bar + (v_k − r_bar)·a + sd0 · m_day · U(t_k) · S_k · eps_k + J_{k+1}
+
+| piece | value |
+|---|---|
+| sd0 | the synthetic_ou step sd with fund_vol = 7.1 / sqrt(1e9) c/sqrt(ns), i.e. sigma_base = 7.1 c per sqrt(s) = 5.5 bps per minute at $1000; a = exp(−kappa_oracle·d) (a jump decays by 0.3% over a day) |
+| m_day | calm 0.6, normal 1.0, volatile 1.6 |
+| U(t) | (1 + 0.6·e^(−t/0.5) + 0.4·e^(−(6.5−t)/0.5)) / c_U, t in hours since 09:30, c_U = mean over the oracle grid (the full session, whatever end_time is), so mean U = 1 |
+| S_k | stress chain, S in {1, 2.5}, S_0 = 1; from 1, u_k < p_in = e_day/(6.5·3600) enters (e_day calm 0.2, normal 0.7, volatile 1.5 episodes a day); from 2.5, u_k < 1/2700 leaves (mean 45 min) |
+| J | information jumps: count ~ Poisson(2 / 3 / 4); times ~ U(09:35, 15:55), sorted; size r_bar·min(LogNormal(ln 0.002, 0.6), 0.02) (median 0.20%, cap 2%); sign 50/50. A jump enters at the first grid point >= its time |
+| megashocks | none |
+
+Scripted `oracle_events` (jump / vol windows, the lab's S2 etc.) are applied on top, as in
+"scenario", without extra draws.
+
+**Draw order** (the symbol's own RandomState; fixed):
+1. one uniform for the day type: always drawn, used only when `day_type="auto"` (calm if
+   u < 0.30, normal if u < 0.80, else volatile), so a seed's path is the same whether its type
+   was drawn or requested (DECISIONS A3);
+2. N uniforms for the stress chain;
+3. N − 1 normals eps;
+4. news count, times, sizes, signs (uniform < 0.5 gives +), then one template index per jump,
+   uniform within the jump's bucket. The template draws are last, so the path never depends
+   on the templates.
+
+**Day info:** `oracle.day_info(symbol=None)` returns `{"day_type", "stress_episodes": [(start_ns,
+end_ns)], "news": [(t_ns, J_cents, headline, sentiment, bucket)]}` (None for other sources).
+With `auto_news`, build_config enqueues each news item on the NewsOracleAgent at `t_ns`
+(the jump's grid time): public news AT the jump (NEWS.md).
+
+**Verified statistics of the value** (T-O5, seeds 0–199 per type; spec A3.3 in brackets):
+
+| day type | 1-min sd median (bps) | daily move sd (%) | per-day 30-min regime contrast, median / p90 |
+|---|---|---|---|
+| calm | 3.76 (3.8) | 0.75 (0.78) | 2.51 / 4.29 |
+| normal | 6.24 (6.3) | **1.28 (1.49)**, outside ±10%, strict xfail | 2.42 / 3.63 |
+| volatile | 10.77 (11.3) | 2.21 (2.42) | 2.73 / 3.98 |
+| default mix 30/50/20 | 6.13 (6.2) | 1.43 (1.53) | 2.43 / 4.02 |
+
+The model is implemented exactly as A3.1; the normal-day daily sd in A3.3 is about 11–14% above
+what this model gives (1,500 days: 1.32%), see DECISIONS (A0, A3). The value's own regime
+contrast (2.4–2.7 median) is why G11 per day is moved to "reported" (A6.4).
+
+**Guarantees (tests/test_living_oracle.py):**
+- T-O6: day-type override (requesting the type that was drawn gives the same path), and the auto mix over 2000 seeds (31.8 / 48.7 / 19.5%).
+- T-O7: the path and day info are identical across agent mixes, news on/off, informed mode and session length (I2 extended).
+- T-O8: headline bucket and sign; T-O9: synthetic_ou unchanged (seed-42 path hash).
+- The stress chain equals the per-step loop, and the draw order is re-implemented independently.
+- A scripted +2% jump adds exactly J·a^(k−k0).
+
 ## Future path sources (designed for, not built)
 
 New sources are one function `generate(params, times_ns, rng) -> values`, registered in

@@ -36,10 +36,12 @@ from abides_markets.configs.param_ranges import (
     FUNDAMENTAL_RANGES as FUND,
     INFORMED_DESIGN_KEYS,
     INFORMED_RANGES as INF,
+    LIVING_V1,
     MOMENTUM_RANGES as MOM,
     PRICE_LEARNING_LEVELS,
     draw,
 )
+from abides_markets.configs.news_templates import load_news_templates
 from abides_markets.models import OrderSizeModel
 from abides_markets.oracles import PregeneratedOracle
 from abides_markets.utils import generate_latency_model
@@ -141,6 +143,14 @@ def build_config(
     #     [lo, hi], "wealth_c": int}. The count stays num_ekf_agents.
     fund_mode="price_only",
     informed_design=None,
+    # 11) spec v1.5 A3.5: the true-value process. "synthetic_ou" (v1.4, I8) or
+    #     "living_v1" (day types, intraday shape, stress episodes, information
+    #     jumps). day_type "auto" (30/50/20 mix) | "calm" | "normal" | "volatile";
+    #     auto_news: publish each information jump's headline (living_v1 only).
+    #     No global RNG draw: everything comes from the oracle's own RandomState.
+    value_process="synthetic_ou",
+    day_type="auto",
+    auto_news=True,
 ):
     np.random.seed(seed)
 
@@ -181,6 +191,15 @@ def build_config(
         # spec v1.3 §6.1: same draws, scripted events (no global RNG used)
         symbols[ticker]["path_source"] = "scenario"
         symbols[ticker]["events"] = _oracle_events(oracle_events, MKT_OPEN, r_bar)
+
+    if value_process == "living_v1":
+        # spec v1.5 A3: scripted oracle_events (if any) stay on top of the living path
+        symbols[ticker]["path_source"] = "living_v1"
+        symbols[ticker]["day_type"] = day_type
+        symbols[ticker]["living"] = LIVING_V1
+        symbols[ticker]["news_templates"] = load_news_templates()["buckets"]
+    elif value_process != "synthetic_ou":
+        raise ValueError(f"value_process must be 'synthetic_ou' or 'living_v1', got {value_process!r}")
 
     # Spec v1.2 Part 3: the whole true-value path (to 16:00, whatever end_time
     # is) is generated here from the symbol's own RandomState, drawn before any
@@ -495,6 +514,10 @@ def build_config(
             delivery_time = MKT_OPEN + str_to_ns(time_offset)
             news_oracle.enqueue_news(symbol, sentiment, headline, delivery_time)
 
+    # spec v1.5 A3.4: automatic information news, one headline AT each value jump
+    if value_process == "living_v1" and auto_news:
+        for t_ns, _jump, headline, sentiment, _bucket in oracle.day_info(ticker)["news"]:
+            news_oracle.enqueue_news(ticker, sentiment, headline, t_ns)
     agents.append(news_oracle)
     agent_count += 1
     agent_types.extend(["NewsOracleAgent"])

@@ -10,12 +10,14 @@ Path sources are plain functions ``generate(params, times_ns, rng) -> values``
 registered in PATH_SOURCES; adding a source (historical CSV replay, scripted
 scenarios) means writing one function. v1.2 has "synthetic_ou"; v1.3 (spec
 v1.3 §6.1) adds "scenario": the same path plus scripted events (value jumps,
-volatility windows) for the realism lab, with no extra random draws.
+volatility windows) for the realism lab, with no extra random draws. v1.5 (spec v1.5
+A3) adds "living_v1": day types, an intraday volatility shape, stress episodes and
+information jumps with headlines (automatic news), all drawn from the same RNG.
 """
 
 import logging
-from math import ceil, exp, expm1, sqrt
-from typing import Any, Callable, Dict, List, Tuple
+from math import ceil, exp, expm1, log, sqrt
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.signal import lfilter
@@ -161,9 +163,182 @@ def generate_scenario_ou(params: Dict[str, Any], times: np.ndarray, rng: np.rand
     return dr["r_bar"] + x
 
 
+# ── spec v1.5 A3: the living value process "living_v1" ─────────────────────
+
+LIVING_DAY_TYPES = ("calm", "normal", "volatile")
+
+
+def _living_cfg(params: Dict[str, Any]) -> Dict[str, Any]:
+    cfg = params.get("living")
+    if cfg is None:
+        from ..configs.param_ranges import LIVING_V1 as cfg
+    return cfg
+
+
+def living_u_shape(times: np.ndarray, cfg: Dict[str, Any]) -> np.ndarray:
+    """U(t) = (1 + u_open exp(-t/tau) + u_close exp(-(T - t)/tau)) / c_U, t in hours
+    since the first grid point (the 09:30 open), T = session_h; c_U = mean of the
+    numerator over the grid, so mean U = 1 over the oracle grid (the full session)."""
+    t_h = (np.asarray(times, dtype=np.int64) - int(times[0])) / 3.6e12
+    tau, T = float(cfg["u_tau_h"]), float(cfg["session_h"])
+    num = 1.0 + cfg["u_open"] * np.exp(-t_h / tau) + cfg["u_close"] * np.exp(-(T - t_h) / tau)
+    return num / num.mean()
+
+
+def living_stress_chain(u: np.ndarray, p_in: float, p_out: float, mult: float) -> np.ndarray:
+    """Two-state Markov chain S_k in {1, mult}, S_0 = 1, driven by one uniform per step:
+    S_k is the state in force at step k; then, from state 1, u_k < p_in enters stress,
+    and from the stressed state, u_k < p_out leaves it. (Computed episode by episode
+    with searchsorted; equal to the per-step loop, tests/test_living_oracle.py.)"""
+    n = len(u)
+    S = np.ones(n)
+    enter = np.flatnonzero(u < p_in)
+    leave = np.flatnonzero(u < p_out)
+    pos, stressed = 0, False
+    while pos < n:
+        arr = leave if stressed else enter
+        j = int(np.searchsorted(arr, pos))
+        if j >= len(arr):
+            if stressed:
+                S[pos:] = mult
+            break
+        k = int(arr[j])
+        if stressed:
+            S[pos:k + 1] = mult
+        pos, stressed = k + 1, not stressed
+    return S
+
+
+def living_day_type(u: float, requested: str, cfg: Dict[str, Any]) -> str:
+    """Day type: the requested one, or for "auto" calm if u < p_calm, normal if
+    u < p_calm + p_normal, else volatile (30/50/20, D-R4-1)."""
+    if requested != "auto":
+        if requested not in LIVING_DAY_TYPES:
+            raise ValueError(f"day_type must be 'auto' or one of {LIVING_DAY_TYPES}, got {requested!r}")
+        return requested
+    mix = cfg["day_mix"]
+    c_calm = float(mix["calm"])
+    c_normal = round(c_calm + float(mix["normal"]), 12)
+    return "calm" if u < c_calm else ("normal" if u < c_normal else "volatile")
+
+
+def jump_bucket(jump_cents: float, r_bar: float, edges_pct=(0.3, 1.0)) -> str:
+    """Template bucket of a value jump: sign x size (small < 0.3% <= medium <= 1% < large)."""
+    pct = 100.0 * abs(jump_cents) / r_bar
+    size = "small" if pct < edges_pct[0] else ("medium" if pct <= edges_pct[1] else "large")
+    return ("positive_" if jump_cents > 0 else "negative_") + size
+
+
+def living_v1_day(params: Dict[str, Any], times: np.ndarray, rng: np.random.RandomState) -> Dict[str, Any]:
+    """The "living_v1" path (spec v1.5 A3.1) and its day info.
+
+        v_{k+1} = r_bar + (v_k - r_bar) a + sd0 * m_day * U(t_k) * S_k * eps_k + J_{k+1}
+
+    a = exp(-kappa d) and sd0 as in synthetic_ou with fund_vol = sigma_base / sqrt(1e9)
+    (sigma_base = 7.1 c per sqrt(s)); m_day by day type; U the intraday shape; S the
+    stress chain (p_in = e_day / (6.5 h) per second, p_out = 1 / 45 min); J information
+    jumps entering at the first grid point >= their time. Scripted "events" (jump/vol, as
+    "scenario") are applied on top without extra draws. No megashocks.
+
+    Draw order from rng (fixed, A3.2):
+      1 one uniform for the day type (always drawn; used only when day_type = "auto",
+        so a seed's path is the same whether its type was drawn or requested);
+      2 N uniforms for the stress chain; 3 N-1 normals eps;
+      4 news count ~ Poisson(n_day), times ~ U(open + 5 min, open + 6 h 25 min) (sorted),
+        sizes m ~ LogNormal(ln 0.002, 0.6) capped at 2%, signs (uniform < 0.5 -> +),
+        then one template index per jump, uniform within the jump's bucket (only if
+        params["news_templates"] is given; these are the last draws, so the path never
+        depends on the templates).
+    """
+    cfg = _living_cfg(params)
+    n = len(times)
+    r_bar = float(params["r_bar"])
+    kappa = float(params["kappa"])
+
+    # 1-3: day type, stress uniforms, diffusion normals
+    u_day = float(rng.random_sample())
+    day_type = living_day_type(u_day, params.get("day_type", "auto"), cfg)
+    u_stress = rng.random_sample(n)
+    eps = rng.normal(size=max(n - 1, 0))
+
+    # 4: information jumps and their headlines
+    n_news = int(rng.poisson(float(cfg["news_per_day"][day_type])))
+    lo_s, hi_s = cfg["news_window_s"]
+    t0 = float(times[0]) if n else 0.0
+    t_news = np.sort(rng.uniform(t0 + lo_s * 1e9, t0 + hi_s * 1e9, size=n_news))
+    m = rng.lognormal(mean=log(float(cfg["jump_median_frac"])), sigma=float(cfg["jump_sigma_ln"]), size=n_news)
+    sign = np.where(rng.random_sample(n_news) < 0.5, 1.0, -1.0)
+    jumps = r_bar * np.minimum(m, float(cfg["jump_cap_frac"])) * sign
+    templates = params.get("news_templates")
+    edges = tuple(cfg.get("size_edges_pct", (0.3, 1.0)))
+    heads = []
+    for J in jumps:
+        b = jump_bucket(float(J), r_bar, edges)
+        if templates:
+            items = templates[b]
+            item = items[int(rng.randint(len(items)))]
+            heads.append((item["headline"], float(item["sentiment"]), b))
+        else:
+            heads.append((None, None, b))
+
+    if n == 0:
+        return {"values": np.array([], dtype=float),
+                "info": {"day_type": day_type, "stress_episodes": [], "news": []}}
+
+    # path
+    d = float(times[1] - times[0]) if n > 1 else 1.0
+    fv = float(cfg["sigma_base_c_per_sqrt_s"]) / sqrt(1e9)  # cents per sqrt(ns)
+    kd = kappa * d
+    if kd < 1e-12:
+        a, sd0 = 1.0, fv * sqrt(d)
+    else:
+        a = exp(-kd)
+        sd0 = sqrt(fv ** 2 / (2.0 * kappa) * -expm1(-2.0 * kd))
+    U = living_u_shape(times, cfg)
+    step_s = d / 1e9
+    p_in = float(cfg["stress_episodes_per_day"][day_type]) / (float(cfg["session_h"]) * 3600.0) * step_s
+    p_out = step_s / float(cfg["stress_mean_s"])
+    S = living_stress_chain(u_stress, p_in, p_out, float(cfg["stress_mult"]))
+    m_day = float(cfg["m_day"][day_type])
+
+    innov = np.zeros(n)
+    innov[1:] = sd0 * m_day * U[:-1] * S[:-1] * eps
+    events = applied_events(list(params.get("events") or []), times)
+    for ev in events:
+        if ev["type"] == "vol" and ev["n_steps"]:
+            ks = np.flatnonzero((times >= ev["t0_ns"]) & (times < ev["t1_ns"]))
+            ks = ks[ks >= 1]
+            innov[ks] *= ev["mult"]
+    news = []
+    for t_j, J, (h, sent, b) in zip(t_news, jumps, heads):
+        k = int(np.searchsorted(times, int(t_j), side="left"))
+        if k < n:
+            innov[k] += J
+            news.append((int(times[k]), float(J), h, sent, b))
+    for ev in events:
+        if ev["type"] == "jump" and ev["k"] is not None:
+            innov[ev["k"]] += ev["cents"]
+    x = lfilter([1.0], [1.0, -a], innov)
+
+    stressed = S > 1.0
+    starts = np.flatnonzero(stressed & ~np.concatenate([[False], stressed[:-1]]))
+    episodes = []
+    for k0 in starts:
+        rest = np.flatnonzero(~stressed[k0:])
+        k1 = int(k0 + rest[0]) if len(rest) else n - 1
+        episodes.append((int(times[k0]), int(times[k1])))
+    info = {"day_type": day_type, "stress_episodes": episodes, "news": news}
+    return {"values": r_bar + x, "info": info}
+
+
+def generate_living_v1(params: Dict[str, Any], times: np.ndarray, rng: np.random.RandomState) -> np.ndarray:
+    return living_v1_day(params, times, rng)["values"]
+
+
 PATH_SOURCES: Dict[str, PathFn] = {
     "synthetic_ou": generate_synthetic_ou,
     "scenario": generate_scenario_ou,  # spec v1.3 §6.1 (realism lab)
+    "living_v1": generate_living_v1,  # spec v1.5 A3 (day types, stress, information news)
     # "csv": historical (time, value) shape rescaled to r_bar        (planned)
 }
 
@@ -208,9 +383,15 @@ class PregeneratedOracle(Oracle):
         self._values: Dict[str, np.ndarray] = {}
         self.f_log: Dict[str, List[Dict[str, Any]]] = {}
         self.events: Dict[str, List[Dict[str, Any]]] = {}
+        self._day_info: Dict[str, Dict[str, Any]] = {}
         for symbol, params in symbols.items():
-            v = generate_path(params, self.times, params["random_state"])
-            if params.get("path_source") == "scenario":
+            if params.get("path_source") == "living_v1":
+                res = living_v1_day(params, self.times, params["random_state"])
+                v = res["values"]
+                self._day_info[symbol] = res["info"]
+            else:
+                v = generate_path(params, self.times, params["random_state"])
+            if params.get("path_source") in ("scenario", "living_v1"):
                 self.events[symbol] = applied_events(list(params.get("events") or []), self.times)
                 for ev in self.events[symbol]:
                     logger.info("PregeneratedOracle: %s scenario event %s", symbol, ev)
@@ -241,6 +422,18 @@ class PregeneratedOracle(Oracle):
     def value_at(self, symbol: str, t: NanosecondTime) -> float:
         """Exact (float, cents) true value in force at time t."""
         return float(self._values[symbol][self._index(t)])
+
+    def day_info(self, symbol: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """spec v1.5 A3.5: {"day_type", "stress_episodes": [(start_ns, end_ns)],
+        "news": [(t_ns, J_cents, headline, sentiment, bucket)]} for a "living_v1"
+        symbol (default: the first symbol); None for other path sources."""
+        if symbol is None:
+            symbol = next(iter(self.symbols))
+        info = self._day_info.get(symbol)
+        if info is None:
+            return None
+        return {"day_type": info["day_type"], "stress_episodes": list(info["stress_episodes"]),
+                "news": list(info["news"])}
 
     def path(self, symbol: str) -> Tuple[np.ndarray, np.ndarray]:
         """(grid times in ns, float values in cents) — copies."""

@@ -276,6 +276,21 @@ CAMPAIGNS["final"] = ["P0-IMP-0", "P0-IMP-0.5", "P0-IMP-1", "P0-IMP-5", "P0-IMP-
 
 V14_CAMPAIGNS = {"b", "s1", "s1r2", "s2", "s2r", "step", "final"}
 
+# ── spec v1.5 (R4): component campaigns (scripts/lab_v15.py, runs/_lab_v15) ──
+# Base = P0 (the v1.4 default market: 0 value agents, D-60fl2M); each component
+# changes one thing. C and S2 (+2% value jump at 11:00) on the first 10 lab seeds.
+LIVING_NORMAL = {"value_process": "living_v1", "day_type": "normal", "auto_news": True}
+
+
+def _v15_pair(prefix: str, label: str, extra: Dict[str, Any], campaign: str) -> None:
+    _p_config(f"{prefix}-C", f"{label} (no trigger)", 0, extra, campaign=campaign)
+    _p_config(f"{prefix}-S2", f"{label}: value jump +2%", 0, {**extra, "oracle_events": [JUMP_UP]},
+              campaign=campaign, baseline=f"{prefix}-C", kind="jump", jump_pct=2.0)
+
+
+_v15_pair("A-ENV", "P0 + living_v1 (normal day, auto news)", LIVING_NORMAL, "a-env")
+V15_CAMPAIGNS = {"a-env"}
+
 
 def run_params(config_id: str, seed: int) -> RunParams:
     """The RunParams part of one entry: full day, 20 + 12 of our agents."""
