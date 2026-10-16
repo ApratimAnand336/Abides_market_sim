@@ -10,4 +10,5 @@ deviation below).
 |---|---|---|
 | A0 | 528ae6e | spec copy, D-R4-1..9, doc skeletons, HANDOFF rows |
 | A1 | d6ad914 | bit-identical engine speed-up (−47% per full P0 day), PROFILE.md, T-S4, T-S5 |
-| A2 | (this) | measurement additions (day_rv, RS, retail/mm shares, MM inventory, info-news response), T-R4-1/2 |
+| A2 | f7245d2 | measurement additions (day_rv, RS, retail/mm shares, MM inventory, info-news response), T-R4-1/2 |
+| A3 | e1c9714, (this) | living_v1 value process, automatic information news (66 stored-FinBERT templates), day_info, T-O5..T-O9, v1.5 lab runner; campaign a-env (40 runs) |

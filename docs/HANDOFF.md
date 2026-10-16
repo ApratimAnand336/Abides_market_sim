@@ -12,8 +12,8 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 |---|---|---|---|
 | A0 | done | 528ae6e | spec copy, D-R4-1..9, skeletons |
 | A1 | done | d6ad914 | bit-identical speed-up 22.7 → 12.1 s per P0 day (1 worker) |
-| A2 | done | (see log) | day_rv, RS, shares, MM inventory, info_news; detail in metrics.json diagnostics |
-| A3 | todo | | living_v1 value, auto news, templates; campaign a-env |
+| A2 | done | f7245d2 | day_rv, RS, shares, MM inventory, info_news; detail in metrics.json diagnostics |
+| A3 | done | e1c9714 + (see log) | living_v1, auto news; a-env: σ1m 5.0 bps, vol ratio 0.80, ABIDES MMs −$29k |
 | A4 | todo | | retail crowd; campaign a-retail |
 | A5 | todo | | liquidity providers; campaign a-lp |
 | A6 | todo | | K16 fix (informed_budget_v2), IMP-0.1, G11 to reported |
@@ -40,8 +40,11 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 - Lab seeds `api.lab.SEEDS` (42, 7, 1–6, 8–19); screening 42, 7, 1, 2, 3; t0 = 11:00.
 - **Engine (A1):** full P0 day 12.1 s in `abides.run` (1 worker). The lab writes L2–L10 depth
   rows every 1 s only (`LAB_BOOK_LOG_DEPTH_INTERVAL_S`); build_config default = every event.
-- A3.3 check (A0, DECISIONS): long-run normal-day daily sd is 1.32% vs spec 1.49%; T-O5's
-  ±10% band may be borderline on that statistic.
+- A3: T-O5 normal-day daily sd 1.28% vs spec 1.49% is a strict xfail (spec number; DECISIONS).
+- **v1.5 lab:** `scripts/lab_v15.py`, root `runs/_lab_v15`, reports `docs/v1.5/lab/`. Component
+  campaigns = P0-C/S2 reference + C/S2 of the component on the first 10 seeds (40 runs, ~3 min
+  at 4 workers). New campaigns: register configs in `api/lab.py` (V15 section, V15_CAMPAIGNS),
+  add the id to the realism_lab.py choices, and to `lab_v15.COMPONENTS`/`campaign_configs`.
 
 ## Open issues / owner decisions pending
 - K14, K15, K16 (`docs/engine/KNOWN_ISSUES.md`) are R4's starting point.
@@ -49,6 +52,7 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
   CLAUDE.md and .claude/ stay untracked.
 
 ## Log (newest first, one line each)
+- 2026-10-16 A3: living_v1 + auto news; a-env 40 runs (E-A1 not confirmed: σ1m 5.0 bps, ratio 0.80).
 - 2026-10-16 A2: measurement additions (scalar keys in run_metrics; run_diagnostics in the lab).
 - 2026-10-16 A1: bit-identical speed-up (heap, event copy, log guards, fmt_ts, dropout loop, order copy, sparse lab depth), −47%.
 - 2026-10-16 A0: spec v1.5 stored, D-R4-1..9, doc skeletons, branch v1.5.

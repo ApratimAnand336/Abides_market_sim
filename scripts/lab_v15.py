@@ -175,6 +175,6 @@ def main_v15(a, engine: str) -> int:
         for key, msg in failed:
             print("  FAILED", key, msg)
     if a.campaign in COMPONENTS:
-        md = report_component(a.campaign, engine)
-        print(md)
+        report_component(a.campaign, engine)
+        print(f"report: {(DOC / f'RESULTS_{a.campaign}.md').relative_to(RL.REPO)}")
     return 1 if failed else 0
