@@ -120,6 +120,29 @@ LIVING_V1: Dict = {
 }
 DAY_TYPES = ("calm", "normal", "volatile")
 
+# spec v1.5 A4: the retail trader crowd (RetailCrowdAgent + RetailTraderAgent). Fixed
+# constants; the sweep dials (A7) are the trader count N_r and kappa_v.
+RETAIL: Dict = {
+    "mu_per_agent": 4.0,  # actions per trader per day (spread over 23,400 s)
+    "kappa_n": 2.0,  # intensity per unit of news level Nn
+    "kappa_v_levels": (1.0, 3.0),  # sweep dial (A7); refinement 5
+    "cap": 10.0,  # cap on the intensity multiplier
+    "dt_c_s": 5.0,  # crowd tick, s
+    "buffer_s": 3600.0,  # ring buffer of 5-s mids
+    "n_short": 24,  # sigma_short over the last 24 5-s intervals (2 min)
+    "ref_half_life_s": 3600.0,  # sigma_ref EWMA half-life
+    "warmup_s": 600.0,  # V = 1 during the first 10 min
+    "news_half_life_s": 600.0,  # Nn half-life
+    "wealth_c": 5_000_000,  # $50,000 per trader
+    "stock_frac": 0.5,  # half in stock at r_bar (25 shares at $1000)
+    "p_kinds": (0.5, 0.25, 0.25),  # liquidity, trend, contrarian
+    "beta": 0.87,  # P(buy) = 0.85 after a +2 sd 30-min rise (trend)
+    "p_stop": 0.4,  # stop-loss users (0.6 in the crash fragility profile, B2.3)
+    "stop_d_range": (0.02, 0.06),  # stop distance below the buy fill, per trader
+    "size_median": 30.0, "size_sigma_ln": 0.8,  # order size LogNormal(ln 30, 0.8) shares
+    "collar": 0.02,  # broker collar on marketable orders
+}
+
 # spec v1.4.1 §2.3: learning from prices. n_pl fixed per level; eps_thr and
 # a_pl drawn per agent AFTER all its other informed draws; "off" draws nothing.
 PRICE_LEARNING_LEVELS: Dict[str, Dict] = {

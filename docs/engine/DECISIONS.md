@@ -442,3 +442,11 @@ Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt), approved by the owne
   - A3.7/A4.5/A5.5 count 10 runs each (C only), but "T-measures vs P0" includes T5/T6, and E-A3 is a post-jump spread ratio; both need the +2% jump run.
   - So each component runs C and S2 on the first 10 lab seeds, plus the same-seed P0-C/P0-S2 rerun on the current engine as the reference: 40 runs per component instead of 10.
 - **Two commits for A3** (code, then campaign results), as N5 did: lab runs record the engine label, which must be a clean commit.
+
+### 2026-10-16 (A4) Retail crowd: implementation choices
+- **Trader wakes:** traders keep the standard TradingAgent start wake (market hours and the close-price request that end-of-day mark-to-market needs) and one wake at the open, then act only on crowd messages.
+  - `RetailTraderAgent.wakeup` must return None. The first smoke run stopped the kernel at 09:30 because `TradingAgent.wakeup` returns a bool, which the kernel treats as a gym interruption. Found and fixed before any test or campaign.
+- **Clipping counts in-flight orders.** The spec clips by cash or shares held. Because an order whose cancel is still in flight can fill, the clip uses cash and shares minus the worst-case commitment of the trader's own open orders. This is what makes T-RT4 ("never negative at any fill") hold.
+- **σ_ref EWMA** starts at the first 5-s sample (the spec gives no start value). The 10-min warm-up (V = 1) covers the start. With less than 30 (5) minutes of history, r_30 (r_5) is measured against the oldest mid kept.
+- **One stop per trader**, replaced by every new buy fill. The stop is cleared when a sell leaves the trader flat, so a stop never fires for a trader with nothing to sell (keeps E-A9's trigger counts meaningful).
+- **Ordering and RNG:** the crowd and traders are appended after every existing agent. Their RNGs come from one global draw made after the latency model (the last existing draw), per rule 2.3. `num_retail=0` builds and draws nothing (I8 unchanged).

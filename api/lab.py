@@ -289,7 +289,10 @@ def _v15_pair(prefix: str, label: str, extra: Dict[str, Any], campaign: str) -> 
 
 
 _v15_pair("A-ENV", "P0 + living_v1 (normal day, auto news)", LIVING_NORMAL, "a-env")
-V15_CAMPAIGNS = {"a-env"}
+# A4.5: NoiseAgents replaced by the retail crowd (N_r 500, kappa_v 1), synthetic_ou value
+RETAIL_500 = {"num_noise_agents": 0, "num_retail": 500, "retail_kappa_v": 1.0}
+_v15_pair("A-RET", "P0 with the retail crowd instead of NoiseAgents (N_r 500, kappa_v 1)", RETAIL_500, "a-retail")
+V15_CAMPAIGNS = {"a-env", "a-retail"}
 
 
 def run_params(config_id: str, seed: int) -> RunParams:

@@ -32,12 +32,14 @@ from abides_markets.agents.fundamental import FundamentalistAgent
 from abides_markets.agents.impact_probe_agent import ImpactProbeAgent
 from abides_markets.agents.momentum_ekf import MomentumEKFAgent
 from abides_markets.agents.news_oracle_agent import NewsOracleAgent
+from abides_markets.agents.retail import RetailCrowdAgent, RetailTraderAgent
 from abides_markets.configs.param_ranges import (
     FUNDAMENTAL_RANGES as FUND,
     INFORMED_DESIGN_KEYS,
     INFORMED_RANGES as INF,
     LIVING_V1,
     MOMENTUM_RANGES as MOM,
+    RETAIL,
     PRICE_LEARNING_LEVELS,
     draw,
 )
@@ -151,6 +153,12 @@ def build_config(
     value_process="synthetic_ou",
     day_type="auto",
     auto_news=True,
+    # 12) spec v1.5 A4.5: the retail trader crowd (1 RetailCrowdAgent + num_retail
+    #     RetailTraderAgents), appended after every existing agent with RNGs from one
+    #     global draw made after the latency model. 0 -> none, no draw (I8).
+    num_retail=0,
+    retail_kappa_v=1.0,
+    retail_p_stop=None,  # None -> RETAIL["p_stop"] (0.4)
 ):
     np.random.seed(seed)
 
@@ -561,7 +569,34 @@ def build_config(
     random_state_kernel = np.random.RandomState(
         seed=np.random.randint(low=0, high=2**31, dtype="uint32")
     )
-    latency_model = generate_latency_model(agent_count)
+    # spec v1.5: agents added by v1.5 come after every existing agent (ids, latency
+    # coordinates and RNG draws), so the existing agents are unchanged by them
+    n_v15 = (num_retail + 1) if num_retail else 0
+    latency_model = generate_latency_model(agent_count + n_v15)
+    retail_crowd_id, retail_ids = None, []
+    if n_v15:
+        rs_v15 = np.random.RandomState(seed=np.random.randint(low=0, high=2**31, dtype="uint32"))
+        retail_crowd_id = agent_count
+        retail_ids = list(range(agent_count + 1, agent_count + 1 + num_retail))
+        agents.append(
+            RetailCrowdAgent(
+                id=retail_crowd_id, name="RETAIL_CROWD", type="RetailCrowdAgent", symbol=ticker,
+                trader_ids=retail_ids, kappa_v=retail_kappa_v,
+                random_state=np.random.RandomState(seed=rs_v15.randint(low=0, high=2**31, dtype="uint32")),
+            )
+        )
+        agent_types.append("RetailCrowdAgent")
+        p_stop = RETAIL["p_stop"] if retail_p_stop is None else retail_p_stop
+        for j in retail_ids:
+            agents.append(
+                RetailTraderAgent(
+                    id=j, name=f"RETAIL_{j}", type="RetailTraderAgent", symbol=ticker,
+                    crowd_id=retail_crowd_id, r_bar=r_bar, p_stop=p_stop,
+                    random_state=np.random.RandomState(seed=rs_v15.randint(low=0, high=2**31, dtype="uint32")),
+                )
+            )
+        agent_types.extend(["RetailTraderAgent"] * num_retail)
+        agent_count += n_v15
     default_computation_delay = 50
 
     kernelStartTime = DATE
@@ -587,6 +622,8 @@ def build_config(
         "_fund_mode": fund_mode,
         "_informed_design": informed_design if fund_mode == "informed" else None,
         "_probe_id": probe_id,
+        "_retail_crowd_id": retail_crowd_id,
+        "_retail_ids": retail_ids,
         "_mkt_open_ns": MKT_OPEN,
         "_mkt_close_ns": MKT_CLOSE,
     }
