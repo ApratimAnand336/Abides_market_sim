@@ -479,3 +479,16 @@ Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt), approved by the owne
 - **A6.3:** no action. VR(5) is reported (below and in RESULTS_A).
 - **A6.4 G11 → REPORTED.** The band is kept in `BANDS` with `"reported": True`. `grade_value` returns None (shown "n/a"), the metric is still computed and shown, and regimes are graded across days (RS, A8).
   - Reason (spec A6.4, from the model's own maths, before any R4 sweep run): even the true value gives a median per-day 30-min contrast of 2.4–2.9 under realistic day types, so ≥ 5 per day is unreachable by construction.
+
+### 2026-10-16 (A7) Design sweep: implementation choices
+- **Population per design** (`api/lab.py` `sweep_extra`): P0 base (0 value agents, D-60fl2M, 12 momentum, budget L = 2) + `informed_budget_v2=True`, living_v1 (day type "normal", auto news), `num_noise_agents=0`, retail crowd (`num_retail` = N_r, `retail_kappa_v` = κ_v, every other retail parameter at its A4 default), `mm_kind="lp"` with `num_lp` = n_lp LPs of W each (LP l_max at its A5 default).
+- **Design id** exactly as A7 writes it, R-<n_lp><W><N_r><κ_v> (e.g. R-25M5001, R-420M15003); n_lp and κ_v are one digit, so the id parses unambiguously (`lab.parse_sweep`). Reports also print the dials in separate columns.
+- **R4a scorecard** (`realism.r4a_scorecard`, A8.1/A8.2 thresholds as written). In screening (`screening=True`): A-T3 and A-T11 are NOT_SCREENED (day mix), A-T9 uses S2 only (A7 runs the +2% jump only), L1 is judged on the normal day only.
+- **L4 in the sweep** = zero_sum 0 in every run AND every invariant flag passes, except `informed_bounds`. That flag keeps the A6 "every fill" reading, which no order rule can meet after a jump (A6). The budget rule itself is judged by `informed_budget` (fills that increase exposure), the reading recommended to the owner in A6. `informed_bounds` failures are counted and reported per design. If the owner keeps "every fill", L4 is re-read from the stored flags without new runs.
+- **L5** is measured at 2 workers (the campaign runs at 2 workers), median over the design's C and S2 runs. The A7 tie-break also uses this median.
+- **Jump response minimum seeds** = 1 per design, as in the v1.4 screening (`design_summary`). The completeness table shows each config's valid seeds.
+- **No winner case:** if every design fails a limit, step 1 keeps none. A7 does not cover this, so the printout says so and the owner decides. The rule is not relaxed.
+- **Outcome (recorded, not acted on):** 13 of 16 designs fail L7. Retail volume share is 1.2–4.8%, below the 5% floor; only the N_r 1500 designs with 2 LPs of $5M, or 4 LPs with κ_v 3, reach it. The selection keeps 3 designs and picks R-25M15003 (5/10 screened targets).
+  - The refinement round (40 runs) keeps it: R-25M30003 passes 7/10 targets but fails L6 (max gap $20.7), and R-250M15003 fails L7.
+  - Larger LP capital lowers σ1m and the vol ratio and raises VR(5), kurtosis and the LP losses (main effects in RESULTS_a-sweep.md).
+  - A7 continues with R-25M15003 as written. It fails A-T1 (4.9 bps), A-T5 (0.81), A-T7 (CS 0.026, PS < 0), A-T10 (LP group −$6.0k) and A-T12 (u 1.2).

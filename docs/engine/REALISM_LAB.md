@@ -359,6 +359,8 @@ Run flags (v1.4): `long_only` covers price-only fundamentalists and momentum EKF
 
 **Impact set (v1.5 A6.2):** `lab_v15.IMPACT_SET` = IMP-0 (placebo), IMP-0.1, IMP-0.5, IMP-1, IMP-5 (β on these four sizes), IMP-1s; `lab_v15.impact_configs(prefix)` and `impact_summary(prefix, ...)`.
 
+**A7 design sweep (v1.5):** `--campaign a-sweep` = 16 designs R-<n_lp><W><N_r><κ_v> (`lab.SWEEP_DESIGNS`, n_lp 2|4, W $5M|$20M, N_r 500|1500, κ_v 1|3) × C/S2 × seeds 42, 7, 1, 2, 3; `--campaign a-sweep-r [--winner R-...]` = the refinement round (n_lp 3, W $50M, N_r 3000, κ_v 5, one dial at a time; winner read from `docs/v1.5/lab/selection_sweep.json`). Targets and limits are `realism.r4a_scorecard` (A8.1/A8.2; screening: A-T3/A-T11 not screened, A-T9 on S2, L1 normal day). L4 ignores `informed_bounds` and uses `informed_budget` (DECISIONS A7). The selection is `lab_v15.select_sweep`, printed in full in `RESULTS_a-sweep.md`.
+
 The selection (§7.4) is `lab_v14.select_design`, and it is printed in full. Screening uses
 `r3_scorecard(..., screening=True)`, in which T5 and T6 are judged on S2 only. L4's run part
 is zero_sum over every run of the design; L5 is the median wall time over every run of the
