@@ -13,8 +13,8 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 | A0 | done | 528ae6e | spec copy, D-R4-1..9, skeletons |
 | A1 | done | d6ad914 | bit-identical speed-up 22.7 → 12.1 s per P0 day (1 worker) |
 | A2 | done | f7245d2 | day_rv, RS, shares, MM inventory, info_news; detail in metrics.json diagnostics |
-| A3 | done | e1c9714 + (see log) | living_v1, auto news; a-env: σ1m 5.0 bps, vol ratio 0.80, ABIDES MMs −$29k |
-| A4 | todo | | retail crowd; campaign a-retail |
+| A3 | done | e1c9714, c57015f | living_v1, auto news; a-env: σ1m 5.0 bps, vol ratio 0.80, ABIDES MMs −$29k |
+| A4 | done | dcfb205 + (see log) | crowd N_r 500: 3.5% of volume; E-A2 not confirmed on the calm value |
 | A5 | todo | | liquidity providers; campaign a-lp |
 | A6 | todo | | K16 fix (informed_budget_v2), IMP-0.1, G11 to reported |
 | A7 | todo | | design sweep 160 (+40) runs |
@@ -52,6 +52,7 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
   CLAUDE.md and .claude/ stay untracked.
 
 ## Log (newest first, one line each)
+- 2026-10-16 A4: retail crowd (T-RT1..6); a-retail 40 runs: retail 3.5% of volume, −$820/day.
 - 2026-10-16 A3: living_v1 + auto news; a-env 40 runs (E-A1 not confirmed: σ1m 5.0 bps, ratio 0.80).
 - 2026-10-16 A2: measurement additions (scalar keys in run_metrics; run_diagnostics in the lab).
 - 2026-10-16 A1: bit-identical speed-up (heap, event copy, log guards, fmt_ts, dropout loop, order copy, sparse lab depth), −47%.
