@@ -8,6 +8,7 @@ Runs go to runs/_lab_v15/<config>/<seed>/, reports to docs/v1.5/lab/.
     python scripts/realism_lab.py --campaign a-lp --workers 3      # A5.5: our market makers alone
     python scripts/realism_lab.py --campaign a-sweep --workers 2   # A7: 16 designs x C/S2 x 5 seeds
     python scripts/realism_lab.py --campaign a-sweep-r --workers 2 # A7 refinement (only if needed)
+    python scripts/realism_lab.py --campaign a-confirm --workers 2 # A8: confirmation, 240 runs + RESULTS_A.md
 
 Component campaigns run on the first 10 lab seeds, each with the same-seed v1.4 P0
 reference (P0-C, P0-S2 rerun on this engine) and C + S2 configs: T5/T6 (and E-A3) need
@@ -376,6 +377,8 @@ def campaign_configs(name: str, a=None):
     if name == "a-sweep-r":
         lab.register_sweep_refinement(_sweep_winner(a))
         return list(lab.CAMPAIGNS["a-sweep-r"]), SWEEP_SEEDS
+    if name == "a-confirm":
+        return list(lab.CAMPAIGNS["a-confirm"]), lab.SEEDS
     raise ValueError(f"unknown v1.5 campaign {name!r}")
 
 

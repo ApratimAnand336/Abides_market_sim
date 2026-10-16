@@ -236,3 +236,30 @@ def test_a7_selection_mechanical():
     assert win2 == "R-420M5001"  # VR miss 0.111 < sigma miss 0.2; equal misses -> lower wall time
     win3, P3 = V.select_sweep([sums[0]], "t")
     assert win3 is None and "names no winner" in P3[-1]
+
+
+def test_a8_confirmation_matrix():
+    """Spec v1.5 A9.1: the confirmation campaign is 240 runs of the A7 selected design;
+    every config is sweep_extra(selected) with only the day type (and the trigger) changed."""
+    import json
+    from pathlib import Path
+
+    from api import lab
+
+    sel = json.loads((Path(__file__).resolve().parents[2] / "docs/v1.5/lab/selection_sweep.json")
+                     .read_text(encoding="utf-8"))
+    assert lab.SELECTED == sel["final_winner"]
+    cfgs = lab.CAMPAIGNS["a-confirm"]
+    n = sum(len(lab.CONFIG_SEEDS.get(c, lab.SEEDS)) for c in cfgs)
+    assert n == 240
+    base = lab.CONFIGS[lab.SELECTED + "-C"]["extra"]  # the A7 screening C config of the design
+    days = {"D-mix": "auto", "D-calm": "calm", "D-volatile": "volatile"}
+    for c in cfgs:
+        ex = lab.CONFIGS[c]["extra"]
+        assert ex["day_type"] == days.get(c, "normal")
+        trig = {k: v for k, v in ex.items() if k not in base or k == "day_type"}
+        assert set(trig) <= {"day_type", "oracle_events", "probe"}
+        assert all(ex[k] == v for k, v in base.items() if k != "day_type")
+        if c not in days and c != "N-C":
+            assert lab.CONFIGS[c]["baseline"] == "N-C"
+    assert lab.CONFIGS["N-S4"]["news"] == [lab.NEWS_POS]

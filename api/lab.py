@@ -356,7 +356,37 @@ def register_sweep_refinement(winner: str) -> List[str]:
     return ds
 
 
-V15_CAMPAIGNS = {"a-env", "a-retail", "a-lp", "a-sweep", "a-sweep-r"}
+# A8 (spec v1.5 A9.1): confirmation campaign of the selected design (A7 final_winner,
+# docs/v1.5/lab/selection_sweep.json), 240 runs. Base = sweep_extra(SELECTED) with the day
+# type overridden per config; scenario baselines = N-C of the same seed.
+SELECTED = "R-25M15003"
+CONFIRM_DAY_SEEDS: List[int] = SEEDS[:10]  # D-calm, D-volatile: 10 seeds each (A9.1)
+
+
+def _confirm(cid: str, label: str, day_type: str, more_extra=None, **more) -> None:
+    extra = {**sweep_extra(SELECTED), "day_type": day_type, **(more_extra or {})}
+    _p_config(cid, f"{SELECTED} {label}", 0, extra, campaign="a-confirm", sweep=SELECTED, **more)
+
+
+_confirm("D-mix", "default day mix (auto)", "auto")
+_confirm("D-calm", "calm day", "calm")
+_confirm("D-volatile", "volatile day", "volatile")
+CONFIG_SEEDS["D-calm"] = CONFIG_SEEDS["D-volatile"] = CONFIRM_DAY_SEEDS
+_confirm("N-C", "normal day (no trigger)", "normal")
+_confirm("N-S2", "normal day, value jump +2%", "normal", {"oracle_events": [JUMP_UP]},
+         baseline="N-C", kind="jump", jump_pct=2.0)
+_confirm("N-S2n", "normal day, value jump -2%", "normal", {"oracle_events": [JUMP_DOWN]},
+         baseline="N-C", kind="jump", jump_pct=-2.0)
+for _id, _side, _q in (("0", "BUY", 100), ("0.1", "BUY", 600), ("0.5", "BUY", 3000), ("1", "BUY", 6000),
+                       ("5", "BUY", 30000), ("1s", "SELL", 6000)):
+    _confirm(f"N-IMP-{_id}", f"normal day, probe {_side} {_q:,}", "normal", {"probe": _probe(_side, _q)},
+             baseline="N-C", kind="impact")
+_confirm("N-S4", "normal day, hype news +0.9", "normal", baseline="N-C", kind="news", sentiment=0.9,
+         news=[NEWS_POS])
+CAMPAIGNS["a-confirm"] = ["D-mix", "D-calm", "D-volatile", "N-C", "N-S2", "N-S2n",
+                          *[f"N-IMP-{k}" for k in ("0", "0.1", "0.5", "1", "5", "1s")], "N-S4"]
+
+V15_CAMPAIGNS = {"a-env", "a-retail", "a-lp", "a-sweep", "a-sweep-r", "a-confirm"}
 
 
 def run_params(config_id: str, seed: int) -> RunParams:
