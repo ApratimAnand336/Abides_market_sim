@@ -62,6 +62,7 @@ agents, three news items) once per session and checks the payload against it.
 | 2026-10-16 | `v1.5` A2 | api/tests realism + export + v1.5 metrics: 143 passed, 3 xfailed (strict) in 6 s; regression PASSED (41 checks) |
 | 2026-10-16 | `v1.5` A3 | 368 passed, 1 skipped, 4 xfailed (strict; new: T-O5 normal-day daily sd, spec number), 1 failed (`test_ou_process`, pre-existing) in 149 s; invariants 11 passed (I8 unchanged) |
 | 2026-10-16 | `v1.5` A4 | test_retail.py 15 passed (T-RT1..T-RT6); invariants 11 passed (I8 unchanged); full suite at A5 |
+| 2026-10-16 | `v1.5` A5 | 392 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 191 s; test_liquidity_provider.py 9 passed (T-LP1..T-LP6); invariants 11 passed (I8 unchanged); campaign a-lp 40/40 runs, zero_sum 0 |
 
 ### Pre-existing failures (not caused by our code)
 
