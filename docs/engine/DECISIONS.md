@@ -450,3 +450,12 @@ Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt), approved by the owne
 - **σ_ref EWMA** starts at the first 5-s sample (the spec gives no start value). The 10-min warm-up (V = 1) covers the start. With less than 30 (5) minutes of history, r_30 (r_5) is measured against the oldest mid kept.
 - **One stop per trader**, replaced by every new buy fill. The stop is cleared when a sell leaves the trader flat, so a stop never fires for a trader with nothing to sell (keeps E-A9's trigger counts meaningful).
 - **Ordering and RNG:** the crowd and traders are appended after every existing agent. Their RNGs come from one global draw made after the latency model (the last existing draw), per rule 2.3. `num_retail=0` builds and draws nothing (I8 unchanged).
+
+### 2026-10-16 (A5) Liquidity providers: implementation choices
+- **Prices to whole cents:** bids are floored and asks ceiled, so the quoted half-spread is never below h; prices are clamped to >= 1.
+- **"A side is missing"** = a side the rules say to quote (not blocked by the inventory limit) has no open order of this LP (its quotes were filled or cancelled).
+- **Overshoot:** cancel, send one marketable order to q_max, then requote at the next wake from the new inventory.
+- **Wake offset:** LP k first wakes at the open + k·5 s / n_lp (evenly spread), then every 5 s; always rescheduled while the market is open.
+- **Budget:** GrossLimit(L = 2), the same worst-case rule as the stock agents (open same-side orders counted).
+- **Inventory check (T-LP6):** with log_orders off, the LP's fills are replayed from the exchange's EXEC history. This is also how I4-for-LPs is checked in a market.
+- **E-A9 measurement added:** `retail_stop_trigger_pct` (share of stop users whose stop fired that day) and the stop counts in `metrics.json["diagnostics"]["retail_stops"]`.

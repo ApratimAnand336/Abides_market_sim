@@ -422,6 +422,15 @@ def series_from_end_state(
         {"id": int(a.id), "cls": class_of(a), **inventory_stats(ex_buyer, ex_seller, ex_q, int(a.id))}
         for a in agents if class_of(a) in MM_CLASSES
     ]
+    retail_stops = None
+    traders = [a for a in agents if class_of(a) == "RetailTraderAgent"]
+    if traders:
+        retail_stops = {
+            "n_traders": len(traders),
+            "n_stop_users": sum(1 for a in traders if getattr(a, "stop_user", False)),
+            "n_triggered": sum(1 for a in traders for _, typ, _ in a.log if typ == "STOP_TRIGGERED"),
+            "n_traders_triggered": sum(1 for a in traders if any(typ == "STOP_TRIGGERED" for _, typ, _ in a.log)),
+        }
     day_info = oracle.day_info(ticker) if hasattr(oracle, "day_info") else None
     info_news = []
     if day_info:
@@ -453,6 +462,7 @@ def series_from_end_state(
         "mm_inventory": mm_inventory,
         "info_news": info_news,
         "day_info": day_info,
+        "retail_stops": retail_stops,
     }
 
 
@@ -680,6 +690,10 @@ def run_metrics(s: Dict[str, Any]) -> Dict[str, Any]:
     inv = s.get("mm_inventory") or []
     out["mm_inv_max_abs"] = max((m["max_abs"] for m in inv), default=None)
     out["mm_inv_end_max_abs"] = max((abs(m["end"]) for m in inv), default=None)
+    rst = s.get("retail_stops")
+    if rst and rst["n_stop_users"]:
+        # E-A9: share of stop users whose stop fired at least once today (%)
+        out["retail_stop_trigger_pct"] = 100.0 * rst["n_traders_triggered"] / rst["n_stop_users"]
     if s.get("info_news"):
         nr = info_news_response(mid, s["exec_t"], s["exec_q"], s["info_news"])
         out["info_news_n"] = nr["n"]
@@ -701,6 +715,8 @@ def run_diagnostics(s: Dict[str, Any]) -> Dict[str, Any]:
     di = s.get("day_info")
     if di:
         out["day_info"] = di
+    if s.get("retail_stops"):
+        out["retail_stops"] = s["retail_stops"]
     return out
 
 

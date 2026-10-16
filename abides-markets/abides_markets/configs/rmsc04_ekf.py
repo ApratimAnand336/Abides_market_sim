@@ -32,12 +32,14 @@ from abides_markets.agents.fundamental import FundamentalistAgent
 from abides_markets.agents.impact_probe_agent import ImpactProbeAgent
 from abides_markets.agents.momentum_ekf import MomentumEKFAgent
 from abides_markets.agents.news_oracle_agent import NewsOracleAgent
+from abides_markets.agents.liquidity_provider import LiquidityProviderAgent
 from abides_markets.agents.retail import RetailCrowdAgent, RetailTraderAgent
 from abides_markets.configs.param_ranges import (
     FUNDAMENTAL_RANGES as FUND,
     INFORMED_DESIGN_KEYS,
     INFORMED_RANGES as INF,
     LIVING_V1,
+    LP,
     MOMENTUM_RANGES as MOM,
     RETAIL,
     PRICE_LEARNING_LEVELS,
@@ -159,6 +161,13 @@ def build_config(
     num_retail=0,
     retail_kappa_v=1.0,
     retail_p_stop=None,  # None -> RETAIL["p_stop"] (0.4)
+    # 13) spec v1.5 A5.5: market makers. "abides" (v1.4: num_mm AdaptiveMarketMakers) or
+    #     "lp" (num_lp LiquidityProviderAgents of lp_wealth cents each, no ABIDES MMs),
+    #     appended after the retail agents (same RNG rule as 12).
+    mm_kind="abides",
+    num_lp=2,
+    lp_wealth=500_000_000,
+    lp_l_max=None,  # None -> LP["l_max"] (0.5)
 ):
     np.random.seed(seed)
 
@@ -170,6 +179,10 @@ def build_config(
         (mm_window_size, mm_pov, mm_num_ticks, mm_wake_up_freq, mm_min_order_size),
     ]
     assert 0 <= num_mm <= len(MM_PARAMS), f"num_mm must be in 0..{len(MM_PARAMS)}"
+    if mm_kind == "lp":
+        num_mm = 0  # spec v1.5 A5: our LPs replace the ABIDES market makers
+    elif mm_kind != "abides":
+        raise ValueError(f"mm_kind must be 'abides' or 'lp', got {mm_kind!r}")
     MM_PARAMS = MM_PARAMS[:num_mm]
     NUM_MM = len(MM_PARAMS)
     SIGMA_N = r_bar / 100
@@ -571,11 +584,14 @@ def build_config(
     )
     # spec v1.5: agents added by v1.5 come after every existing agent (ids, latency
     # coordinates and RNG draws), so the existing agents are unchanged by them
-    n_v15 = (num_retail + 1) if num_retail else 0
+    n_lp = num_lp if mm_kind == "lp" else 0
+    n_v15 = ((num_retail + 1) if num_retail else 0) + n_lp
     latency_model = generate_latency_model(agent_count + n_v15)
-    retail_crowd_id, retail_ids = None, []
+    retail_crowd_id, retail_ids, lp_ids = None, [], []
+    rs_v15 = None
     if n_v15:
         rs_v15 = np.random.RandomState(seed=np.random.randint(low=0, high=2**31, dtype="uint32"))
+    if num_retail:
         retail_crowd_id = agent_count
         retail_ids = list(range(agent_count + 1, agent_count + 1 + num_retail))
         agents.append(
@@ -596,7 +612,22 @@ def build_config(
                 )
             )
         agent_types.extend(["RetailTraderAgent"] * num_retail)
-        agent_count += n_v15
+        agent_count += num_retail + 1
+    if n_lp:
+        l_max = LP["l_max"] if lp_l_max is None else lp_l_max
+        for k in range(n_lp):
+            lp_ids.append(agent_count)
+            agents.append(
+                LiquidityProviderAgent(
+                    id=agent_count, name=f"LP_{k}", type="LiquidityProviderAgent", symbol=ticker,
+                    wealth_c=int(lp_wealth), r_bar=r_bar, l_max=l_max,
+                    wake_offset_ns=int(round(k * LP["dt_s"] * 1e9 / n_lp)),
+                    random_state=np.random.RandomState(seed=rs_v15.randint(low=0, high=2**31, dtype="uint32")),
+                    log_orders=log_orders,
+                )
+            )
+            agent_types.append("LiquidityProviderAgent")
+            agent_count += 1
     default_computation_delay = 50
 
     kernelStartTime = DATE
@@ -624,6 +655,7 @@ def build_config(
         "_probe_id": probe_id,
         "_retail_crowd_id": retail_crowd_id,
         "_retail_ids": retail_ids,
+        "_lp_ids": lp_ids,
         "_mkt_open_ns": MKT_OPEN,
         "_mkt_close_ns": MKT_CLOSE,
     }

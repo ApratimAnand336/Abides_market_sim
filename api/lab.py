@@ -292,7 +292,10 @@ _v15_pair("A-ENV", "P0 + living_v1 (normal day, auto news)", LIVING_NORMAL, "a-e
 # A4.5: NoiseAgents replaced by the retail crowd (N_r 500, kappa_v 1), synthetic_ou value
 RETAIL_500 = {"num_noise_agents": 0, "num_retail": 500, "retail_kappa_v": 1.0}
 _v15_pair("A-RET", "P0 with the retail crowd instead of NoiseAgents (N_r 500, kappa_v 1)", RETAIL_500, "a-retail")
-V15_CAMPAIGNS = {"a-env", "a-retail"}
+# A5.5: ABIDES market makers replaced by 2 LPs of $5M, synthetic_ou value
+LP_2x5M = {"mm_kind": "lp", "num_lp": 2, "lp_wealth": 500_000_000}
+_v15_pair("A-LP", "P0 with 2 LPs of $5M instead of the ABIDES market makers", LP_2x5M, "a-lp")
+V15_CAMPAIGNS = {"a-env", "a-retail", "a-lp"}
 
 
 def run_params(config_id: str, seed: int) -> RunParams:

@@ -143,6 +143,25 @@ RETAIL: Dict = {
     "collar": 0.02,  # broker collar on marketable orders
 }
 
+# spec v1.5 A5: our market makers (LiquidityProviderAgent). Fixed constants; the sweep
+# dials (A7) are the count n_lp and the capital W per LP.
+LP: Dict = {
+    "dt_s": 5.0,  # wake interval, s (first wake offset by the LP's index)
+    "sigma_half_life_s": 300.0,  # EWMA of the per-second variance of log ref changes
+    "sigma_prior_bps_per_min": 5.5,
+    "c_h": 0.5,  # half-spread h = max(1 c, c_h * typical 10-s move)
+    "l_max": 0.5,  # inventory limit q_max = floor(l_max * W / ref) (0.25 when stressed, B2.3)
+    "psi": 1.0,  # inventory skew = psi * (q / q_max) * h
+    "levels": 3,  # ladder levels per side at r -/+ k h
+    "theta_lp": 0.02,  # quoted size per side = 2% of wealth (split over the levels)
+    "requote_max_s": 30.0, "requote_q_frac": 0.1, "requote_ref_frac_h": 0.5,  # lazy requote
+    "overshoot": 1.2,  # |q| > 1.2 q_max -> marketable order back to q_max
+    "collar": 0.02,
+    "budget_L": 2.0,  # gross position value <= 2 W
+    "n_lp_levels": (2, 4),  # sweep dial (A7); refinement 3
+    "wealth_levels_c": (500_000_000, 2_000_000_000),  # $5M | $20M; refinement $50M
+}
+
 # spec v1.4.1 §2.3: learning from prices. n_pl fixed per level; eps_thr and
 # a_pl drawn per agent AFTER all its other informed draws; "off" draws nothing.
 PRICE_LEARNING_LEVELS: Dict[str, Dict] = {
