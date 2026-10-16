@@ -1,0 +1,659 @@
+FINVERSE: SPEC v1.5 ("R4: a living market, realistic crashes, circuit breakers")
+==================================================================================
+Date: 2026-10-16.  Owner: Apratim Anand, IIT Bombay.
+Audience: Claude Code (implementation) and any new chat picking this up. Self-contained.
+Status: APPROVED by the owner on 2026-10-15/16 (Part 1).
+Build on branch v1.5, created from origin/v1.4 (head 20465e2, R3 complete).
+One commit per milestone (Part 12). Do not push. Do not delete tracked files.
+Use the repo's Claude Code setup: CLAUDE.md (rigour + token rules), docs/HANDOFF.md,
+/spec-milestone and /lab-campaign skills. Copy this file to docs/specs/spec_v1.5.txt (A0).
+
+STRUCTURE
+  Part A  "Living market" (R4a): faster engine, a livelier true value with day types and
+          automatic information news, our own retail-trader crowd (replaces the ABIDES
+          NoiseAgents), our own market makers (replace the ABIDES market makers), the K16
+          budget fix. Judged by pre-registered targets. Becomes the new default market.
+  Part B  "Crashes" (R4b): a forced-seller agent, margin calls, three crash scenarios
+          (flash/liquidity, information, rumour) at two severities, OFF by default, judged
+          against crash signatures from the 6 May 2010 flash crash studies.
+  Part C  Circuit breaker (optional, OFF by default), built only after A and B are done.
+Read Part 0 first; it is the background a new reader needs.
+
+
+==================================================================================
+PART 0. CONTEXT
+==================================================================================
+0.1 Project and repo
+  FinVerse (startup + IIT Bombay ITSP 2026 project): a realistic simulated stock market where
+  students trade against AI investors and learn the theory alongside. Engine: a fork of
+  ABIDES. Repo ApratimAnand336/Abides_market_sim. Prices are integer CENTS, variances
+  cents^2, engine time ns. Price about $1000 (r_bar = 100,000 c). 1 tick = 1 c = 0.1 bp.
+  Read first: docs/HANDOFF.md, docs/engine/README.md, ARCHITECTURE.md, ORACLE.md,
+  AGENT_FUNDAMENTALIST.md, AGENTS_ABIDES.md, REALISM_LAB.md, KNOWN_ISSUES.md,
+  docs/v1.4/lab/RESULTS.md (R3 results).
+
+0.2 The current default market "P0" (v1.4)
+  60 informed FundamentalistAgents (design D-60fl2M: research every log-U[60,300] s with
+  noise log-U[10,50] c, $2M each, belief-anchored prices, learning from prices off),
+  12 MomentumEKFAgents, 1000 ABIDES NoiseAgents, 2 ABIDES AdaptiveMarketMakerAgents,
+  gross budget L = 2 on the stock agents, no ValueAgents. True value: PregeneratedOracle,
+  path source "synthetic_ou" (calm OU, 1.58 c per sqrt(s), about 1.2 bps per minute).
+
+0.3 Where P0 stands (20 seeds, docs/v1.4/lab/RESULTS.md)
+  PASS: |ac1| 0.005; VR(5) 1.2488 (by 0.001); volume-volatility +0.53; volume x2.5 after a
+  +/-2% value jump; informed P&L +$1,023/run; spread 0.30/1.0 bps; 522k shares/day; 26 s/day.
+  OPEN:
+    K14 (T3) price too smooth at 1-5 min: price/value vol 0.49 at 1 min (0.90 at 60 min).
+    K15 (T6) after a +/-2% jump the spread p95 is 14.8x / 16.0x baseline while informed
+        traders disagree (the book never empties).
+    K16 informed leverage bound exceeded by <= 0.9 pp of wealth right after jumps.
+    G1/G2 volatility 0.62 bps/min, 0.20%/day (band 5-10 bps/min, 1-2%/day): the value
+        process itself is too calm (about 1.2 bps/min).
+    G5 clustering WARN; G6 kurtosis 1.47 (WARN); G11 regimes 2.5x; G12 impact beta 0.94.
+  Engine speed: after the v1.4 OrderBook fix, order deepcopies (~15%) and debug-log
+  formatting (~8%) lead the profile.
+
+0.4 Why the ABIDES NoiseAgents are replaced (owner asked for a simple agent that fixes
+    exactly their gaps)
+  What they do: each of 1000 agents wakes ONCE per day (U-quadratic time 09:00-16:00),
+  flips a coin for the side, sends one order at the opposite best price with a random size
+  (about 100 shares typical), then does nothing more. They are the uninformed flow that pays
+  the informed traders (7.5% of P0 volume, -$885/day).
+  Gaps -> fixes in the new RetailTraderAgent crowd (Part A4):
+    G-a never react to the market (no panic, no dip buying, no rush on news)
+        -> activity rises with recent volatility and news (self-exciting crowd intensity)
+    G-b one order per day, fixed rate                -> many small actions, intensity varies
+    G-c hold no position, cannot use stop-losses     -> each trader holds shares and cash;
+                                                        some use stop-losses (registry)
+    G-d no behaviour types                           -> three simple types: liquidity,
+                                                        trend-chaser, contrarian
+    G-e stock ABIDES agent (owner: don't depend on them) -> our own agent
+  Kept deliberately simple: no Kalman filters, no beliefs; a few rules and a shared crowd
+  scheduler for speed.
+
+0.5 Why our own market makers
+  The ABIDES AdaptiveMarketMaker quotes a 10-level ladder around the mid every ~60 s with
+  spacing tied to its own spread estimate (it needed a cap in v1.2 because of a runaway
+  feedback), has no inventory management (skew off) and unlimited inventory (exempt from the
+  budget). K15 needs liquidity that stays tight while informed traders disagree and that
+  widens/withdraws sensibly under stress (also a crash ingredient in Part B).
+
+0.6 Crash facts used in Part B (6 May 2010; Kirilenko, Kyle, Samadi, Tuzun, "The Flash
+    Crash: High-Frequency Trading in an Electronic Market", CFTC; SEC-CFTC joint report)
+  - Trigger: a fund's algorithm sold 75,000 E-mini contracts (about $4.1 bn) in about
+    20 minutes, without regard to price, into an already stressed market; a previous sale of
+    that size had taken more than 5 hours.
+  - E-mini fell 5.1% in 13 minutes, then rose 6.4% in the next 23 minutes; back near pre-drop
+    levels about 36 minutes after the start.
+  - Volume per minute about 8x the earlier level; resting buy-side depth fell below 1% of its
+    starting level at the bottom.
+  - A 5-second CME stop-logic pause marked the bottom; prices stabilised after it.
+  - Fundamental buyers bought heavily on the way up; market makers were "run over" in both
+    directions and ended with small net inventory changes; HFT volume was large but their net
+    position barely changed.
+  Indian circuit breakers (for Part C): market-wide halts at index moves of 10/15/20%
+  (45/105 min or rest of day depending on time); individual stocks in derivatives have no
+  daily price band; others have 2/5/10/20% bands. US post-2010 pilot: a stock moving 10%
+  in 5 minutes is paused for 5 minutes.
+
+
+==================================================================================
+PART 1. OWNER DECISIONS (2026-10-15/16)
+==================================================================================
+  D-R4-1  Default days are a random mix: 30% calm, 50% normal, 20% volatile. No crash days
+          in the default. Volatility target stays a liquid large cap, 1-2% a day.
+  D-R4-2  Information news arrives automatically by default (rate by day type, template
+          headlines with stored FinBERT scores); scripted news stays available.
+  D-R4-3  Replace the ABIDES NoiseAgents with our own simple RetailTraderAgent crowd (0.4).
+  D-R4-4  2-4 market makers of our own, with realistic capital (exact count/capital chosen
+          by the pre-registered sweep of A7).
+  D-R4-5  Fix K16.
+  D-R4-6  Crashes must exist and be realistic, but only on demand (scenario selector), never
+          in the default. Three kinds: flash (liquidity), information, rumour; two
+          severities. The crash path is NEVER scripted: only the trigger and the market's
+          fragility are set; the dynamics come from the agents.
+  D-R4-7  Circuit breaker: implement after A and B, optional, off by default.
+  D-R4-8  Engine run time must come down further, without changing results (bit-identical).
+  D-R4-9  Owner standing rule: never compromise accuracy or quality; shortcuts only if they
+          give as good or almost as good results.
+
+
+==================================================================================
+PART 2. GLOBAL RULES FOR THIS SPEC
+==================================================================================
+2.1 Pre-registration: every target, limit, selection rule and expectation below is fixed
+    before any run. Results are graded mechanically. Nothing is tuned outside the
+    pre-registered sweeps. A missed target is a finding, reported with evidence.
+2.2 Inert defaults until the switch: every new mechanism is behind an argument whose default
+    reproduces v1.4 P0 bit-for-bit (I8, the current P0 invariant hash) until milestone A9,
+    which switches the default. v1.4 P0 must stay reproducible forever afterwards
+    (I8-legacy-v14, new in A9) and the v1.3 market too (existing I8-legacy).
+2.3 Determinism: new randomness only from dedicated RandomStates seeded from the config's
+    seeded np.random, drawn AFTER all existing draws (or from the oracle's own RNG for
+    everything that is part of the "world": day type, stress periods, news times, jump sizes,
+    headline choices). Never change existing draw orders.
+2.4 Test every new rule on every agent type and situation it touches (lesson of v1.4.1,
+    where a rule tested only on uninformed agents hurt informed ones): each new behaviour
+    has unit tests for quiet day, news, and large move, from the point of view of each agent
+    class affected.
+2.5 Units: state units on every number (cents, bps, seconds, shares, $).
+2.6 Speed: L5 (median full day <= 90 s at 2 workers) remains a hard limit; the goal for the
+    default market is <= 30 s per day (report).
+
+
+==================================================================================
+PART A. LIVING MARKET (R4a)
+==================================================================================
+
+A1. ENGINE SPEED-UP (bit-identical)  [milestone A1]
+  A1.1 Profile one full P0 day (cProfile, 1 process). Report the top 15 functions by own
+       time and cumulative time in docs/v1.5/PROFILE.md.
+  A1.2 Candidate changes (do each only if it is bit-identical; measure each separately):
+       a. TradingAgent.place_limit_order / place_market_order: avoid deepcopy(order) where the
+          stored copy is never mutated independently (prove by tests; if the exchange or the
+          agent mutates the original, keep the copy).
+       b. Logging: guard every debug/info message whose arguments are formatted eagerly
+          (f-strings, .format) with logger.isEnabledFor(...) or lazy %-args; agent logEvent
+          calls that only feed disabled outputs may be skipped behind a flag that defaults to
+          "log everything the export/lab reads".
+       c. Book logging (book_log2): keep every L1 snapshot (lab metrics use L1); if L2-L10
+          depth snapshots are a hotspot, keep them only at >= 1 s spacing in lab runs
+          (depth chart only) behind book_log_depth_interval_s (default: every event, i.e.
+          unchanged). Lab metrics must be identical with and without it.
+       d. Any other hotspot found in A1.1, same rules.
+  A1.3 Guards: T-S4 the full-day seed-42 P0 EXEC hash and final holdings hash identical
+       before/after; I8, I8-legacy identical; regression set PASS; T-S5 lab metrics of P0
+       seed 42 identical (exact equality of every metric in metrics.json) with option c on.
+  A1.4 Report wall time before/after per change (same machine, 1 worker, 3 repeats, median).
+       Expected: -20% to -40% (deepcopy ~15%, log formatting ~8% in the v1.4 profile).
+
+A2. MEASUREMENT ADDITIONS  [milestone A2]
+  New metrics in api/realism.py (pure functions, synthetic-data tests T-R4-*):
+  - u_ratio already exists (volume first+last 30 min vs mean 30-min midday): keep.
+  - regime measures (see A6 note): day_rv = realised daily volatility of 1-min returns;
+    cross-day regime spread RS = p90/p10 of day_rv over the seeds of a config.
+    Per-day regime_contrast (G11) stays REPORTED ONLY.
+  - retail_share, mm_share: % of executed volume (both sides counted, as population).
+  - mm_inventory: per market maker, max |inventory| and end-of-day inventory (shares).
+  - news_response (information news, per event): price move from t to t+10 min in units of
+    the value jump J (f_10 = (mid(t+10m) - mid(t)) / J), volume uplift 10 min after vs 10 min
+    before; aggregated over all automatic news events of a run (median).
+  - vol_ratio_price_value at 1/5/15/30/60 min (exists; keep reporting).
+  T-R4-1 RS on synthetic days with known daily vols; T-R4-2 news_response on a hand-built
+  series. All v1.4 metrics unchanged.
+
+A3. THE LIVING VALUE PROCESS (oracle path source "living_v1")  [milestone A3]
+  A3.1 Model (cents, seconds; 1-s grid 09:30-16:00, N = 23,401 points, as v1.2 grid)
+       v_{k+1} = r_bar + (v_k - r_bar) a + sigma_k * sqrt(1 s) * eps_k + J_k     (a, OU pull as
+       synthetic_ou with kappa_oracle; negligible within a day)
+       sigma_k = sigma_base * m_day * U(t_k) * S_k
+         sigma_base = 7.1 c per sqrt(s)  (= 5.5 bps per minute at $1000; fund_vol 2.25e-4 c/sqrt(ns))
+         m_day: calm 0.6, normal 1.0, volatile 1.6
+         U(t) intraday shape, t in hours since 09:30:
+             U(t) = (1 + 0.6 exp(-t/0.5) + 0.4 exp(-(6.5 - t)/0.5)) / c_U,
+             c_U = mean of the numerator over the session grid (so mean U = 1)
+         S_k stress state, 2-state Markov chain on the 1-s grid: S = 1 (normal) or 2.5
+             (stressed). Entry probability per second p_in = e_day / (6.5 * 3600) with
+             e_day (expected stress episodes per day) calm 0.2, normal 0.7, volatile 1.5;
+             exit probability per second p_out = 1 / (45 * 60) (mean episode 45 min).
+             Start in state 1.
+       Information jumps J_k: number ~ Poisson(n_day), n_day calm 2, normal 3, volatile 4;
+         times ~ Uniform(09:35, 15:55) (sorted); size |J| = r_bar * min(m, 0.02) with
+         m ~ LogNormal(ln 0.0020, 0.6) (median 0.20% of price, cap 2%); sign 50/50.
+       Megashocks: keep parameters but default rate 0 in living_v1.
+  A3.2 Draw order from the symbol's dedicated RandomState (fixed, document it):
+       1 day type (if "auto": u ~ U(0,1); calm if u < 0.30, normal if u < 0.80, else volatile)
+       2 N uniforms for the stress chain
+       3 N-1 normals eps
+       4 news count, then times, then sizes, then signs, then headline template indices.
+       The path stays a pure function of (seed, params, grid, session) (I2 must hold).
+  A3.3 Expected statistics of the VALUE (verified by Claude with an independent numpy
+       simulation of exactly this model, 200 days per type, 2026-10-16; T-O5 must reproduce
+       them within +/-10% over 200 seeds):
+         calm:     1-min sd 3.8 bps, daily move sd 0.78%
+         normal:   1-min sd 6.3 bps, daily move sd 1.49%
+         volatile: 1-min sd 11.3 bps, daily move sd 2.42%
+         default mix 30/50/20: 1-min sd median 6.2 bps, daily sd 1.53%
+         per-day 30-min regime contrast of the value itself: median 2.4-2.9 (p90 3.8-4.4)
+  A3.4 Information news: for each jump, the NewsOracleAgent publishes a headline AT the jump
+       time (public news). Headline from docs/engine/news_templates.json (new): >= 60
+       templates, balanced: {positive, negative} x {small (< 0.3%), medium (0.3-1%), large
+       (> 1%)}, each with a stored FinBERT sentiment (computed once by
+       scripts/score_templates.py and committed; runs never call FinBERT). The template is
+       drawn uniformly within the bucket matching the jump sign and size. A template whose
+       stored sentiment sign disagrees with its bucket is a build error (test).
+       Agents react to headlines exactly as today (fundamentalist belief shift, momentum
+       priming) plus the retail crowd (A4). The informed agents learn the jump SIZE through
+       research (1-5 min), as before.
+  A3.5 Config: build_config(value_process="synthetic_ou" | "living_v1", day_type="auto" |
+       "calm" | "normal" | "volatile", auto_news=True|False). Defaults keep v1.4 until A9.
+       oracle.day_info() returns {day_type, stress_episodes [(start,end)], news [(t, J,
+       headline, sentiment)]} for the export, the lab and the dashboard.
+  A3.6 Tests: T-O5 statistics (A3.3); T-O6 day type override and auto distribution (2000
+       seeds: shares within +/-3 pp of 30/50/20); T-O7 path identical across agent mixes,
+       news on/off for agents, session length (I2 extended); T-O8 headline bucket/sign
+       consistency; T-O9 synthetic_ou unchanged (I8).
+  A3.7 Measured alone (campaign a-env, 10 seeds, day_type "normal"): P0 + living_v1 +
+       auto news, everything else v1.4. Report the v1.3 scorecard and T-measures vs P0.
+
+A4. RETAIL TRADER CROWD (replaces ABIDES NoiseAgents)  [milestone A4]
+  A4.1 Two classes (new files abides-markets/abides_markets/agents/retail.py):
+       RetailCrowdAgent (exactly one): every dt_c = 5 s it
+         (1) reads the L1 book (bid, ask; via its own spread query every 5 s) and keeps a
+             ring buffer of 5-s mids (last 60 min);
+         (2) computes the crowd intensity
+               lambda(t) = mu * U_act(t) * min(10, 1 + kappa_v * max(0, V(t) - 1)
+                                                   + kappa_n * Nn(t))   (actions per second)
+             U_act(t) = U(t) of A3.1 (same shape: busier at open and close).
+             V(t) = sigma_short / sigma_ref: sigma_short^2 = mean over the last 24 5-s
+               intervals of (ln mid_i - ln mid_{i-1})^2 / 5 s; sigma_ref^2 = EWMA of the same
+               per-second variance with half-life 60 min (V = 1 during the first 10 min).
+             Nn(t): +|sentiment| on each NewsSentimentMsg, decays with half-life 10 min.
+         (3) draws n ~ Poisson(lambda * dt_c) and for each action picks a RetailTraderAgent
+             uniformly at random and sends it an ActNow message (with the current snapshot:
+             bid, ask, mid, r_5 = ln(mid/mid_5min_ago), r_30 = ln(mid/mid_30min_ago),
+             s_30 = typical 30-min sd = sqrt(sigma_ref^2 * 1800)).
+         (4) STOP REGISTRY: keeps every retail trader's stop price; if mid <= a stop it sends
+             that trader a StopTriggered message (once) and removes the stop.
+       RetailTraderAgent (N_r agents): no wakeups of its own. Holds cash and shares
+         (endowment: wealth $50,000, 50% in stock at r_bar = 25 shares). Long-only and
+         cash-only (no shorting, no borrowing). Type drawn at construction:
+           liquidity 50%: side Bernoulli(0.5)
+           trend 25%:     P(buy) = 1 / (1 + exp(-beta * r_30 / s_30)), beta = 0.87
+                          (P(buy) = 0.85 after a +2 sd 30-min rise; 0.15 after a -2 sd fall)
+           contrarian 25%: P(buy) = 1 / (1 + exp(+beta * r_30 / s_30))
+         Stop users: 40% of agents (any type). After each buy fill they register
+           stop = fill price * (1 - d_i), d_i ~ U[0.02, 0.06] (per agent, fixed); on
+           StopTriggered they sell all shares.
+         Order on ActNow: size q ~ round(LogNormal(ln 30, 0.8)) shares, at least 1, clipped by
+           cash (buy) or shares held (sell); a sell with 0 shares or a buy with no cash is
+           skipped (logged). Marketable limit order with a 2% broker collar (retail brokers
+           protect market orders this way): buy limit = ask * 1.02, sell limit = bid * 0.98,
+           rounded to cents (buy up, sell down); it fills against the book up to the collar
+           and any remainder rests at the collar price. At every ActNow or StopTriggered the trader
+           first cancels all its own open orders, so a remainder lives only until its next action. On StopTriggered: sell all at bid * (1 - 0.02).
+  A4.2 Parameters (param_ranges.py RETAIL): mu = mu_per_agent * N_r with mu_per_agent =
+       4 actions per trader per day (spread over 23,400 s); kappa_n = 2.0 fixed;
+       kappa_v and N_r are sweep dials (A7).
+  A4.3 Expected crowd behaviour (verified by Claude with a numpy simulation of A4.1 (2),
+       mu = 2000 actions/day, 2026-10-16): quiet day about 1,800 actions, open-to-midday
+       activity ratio 1.6; +5 min after a 0.9 headline about 2.3x midday activity; during a
+       shock with V = 6, about 8x (kappa_v = 1) to 13x (kappa_v = 3), back to about 1x within
+       30 min of the shock ending.
+  A4.4 Tests (abides-markets/tests/test_retail.py), each agent type covered (rule 2.4):
+       T-RT1 crowd intensity formula, cap 10, V warm-up, news decay (1e-9 exact on a hand
+             series).
+       T-RT2 types: for r_30/s_30 in {-2, 0, +2}: trend P(buy) = 0.15/0.5/0.85, contrarian
+             0.85/0.5/0.15, liquidity 0.5 (+/-0.01 over 20,000 draws, fixed seed).
+       T-RT3 stops: a buy fill registers the stop; mid crossing it triggers exactly one
+             full sell; no stop for non-stop users; stops survive across actions.
+       T-RT4 budget: never negative cash or shares at any fill (I4 extended).
+       T-RT5 one-hour market with the crowd instead of NoiseAgents trades all hour; the crowd
+             places >= 200 orders; P&L zero_sum = 0.
+       T-RT6 determinism: two runs identical (I1).
+  A4.5 Config: build_config(num_noise=..., num_retail=0 (default until A9), retail_kappa_v).
+       Measured alone (campaign a-retail, 10 seeds, synthetic_ou value): P0 with NoiseAgents
+       replaced by the crowd (N_r 500, kappa_v 1). Report vs P0.
+
+A5. OUR MARKET MAKERS (replace the ABIDES market makers)  [milestone A5]
+  A5.1 New agent LiquidityProviderAgent (abides-markets/abides_markets/agents/
+       liquidity_provider.py). Wakes every 5 s (fixed, offset by agent index to avoid
+       collisions). State: inventory q (shares), cash, wealth W, sigma_hat.
+       On wake: query the spread (L1). Then:
+         ref = mid if both sides exist, else last trade price, else cold start r_bar.
+         sigma_hat^2 = EWMA (half-life 5 min) of (ln ref_t - ln ref_{t-5s})^2 / 5 s
+           (per-second variance; prior = (5.5 bps/min)^2 / 60 s).
+         sigma_10 = ref * sqrt(sigma_hat^2 * 10 s)          (typical 10-s move, cents)
+         h = max(1 c, c_h * sigma_10)                         half-spread, c_h = 0.5
+         q_max = floor(l_max * W / ref), l_max = 0.5           inventory limit (shares)
+         skew = psi * (q / q_max) * h, psi = 1.0                (long inventory -> lower quotes)
+         reservation r = ref - skew
+         Ladder: 3 levels per side at r -/+ h * (1, 2, 3); size per level
+           s_lvl = max(1, floor(theta_lp * W / ref / 3)), theta_lp = 0.02 (2% of wealth per
+           side in total).
+         Inventory limits: no bids if q >= q_max; no asks if q <= -q_max. If |q| > 1.2 q_max
+           (overshoot by fills), send a marketable order to bring |q| back to q_max (collar 2%).
+         Lazy requote (speed): keep the existing quotes unless |ref - ref_quoted| > h/2, or
+           |q - q_quoted| > 0.1 q_max, or 30 s have passed, or a side is missing; otherwise do
+           nothing this wake (no cancel, no new orders).
+         Budget: gross position value <= 2 W (as stock agents); MMs may short within q_max.
+  A5.2 Why these rules: quoting around the current price with a width tied to recent
+       volatility keeps liquidity between disagreeing informed traders (K15); inventory skew
+       and limits make the MM lean against flow and withdraw a side when full (realistic, and
+       the crash ingredient in Part B); lazy requotes keep the engine fast.
+  A5.3 Parameters: count n_lp and capital W_lp are sweep dials (A7); c_h, psi, l_max,
+       theta_lp fixed as above (param_ranges.py LP; documented).
+  A5.4 Tests (test_liquidity_provider.py; rule 2.4: quiet book, one-sided book, empty book,
+       inventory at limit, fast move):
+       T-LP1 quote prices/sizes exactly as A5.1 for given (ref, sigma_hat, q, W).
+       T-LP2 inventory limit: at q = q_max no bid is placed; at -q_max no ask.
+       T-LP3 lazy requote: no orders are sent when ref and q are unchanged within thresholds;
+             a move > h/2 triggers a requote.
+       T-LP4 cold start: empty book -> quotes around r_bar; one-sided book -> around last trade.
+       T-LP5 sigma_hat rises after a fast move -> h widens (monotone).
+       T-LP6 budget and zero_sum in a 1-hour market; invariants I1-I9.
+  A5.5 Config: build_config(mm_kind="abides" (default until A9) | "lp", num_lp, lp_wealth).
+       Measured alone (campaign a-lp, 10 seeds, synthetic_ou): P0 with ABIDES MMs replaced by
+       2 LPs of $5M. Report vs P0 (especially T6 and spread).
+
+A6. K16 FIX AND SMALL ITEMS  [milestone A6]
+  A6.1 K16 (informed budget exceeded by <= 0.9 pp after jumps). First diagnose with a
+       targeted test reproducing it (P0, S2, seed with the largest excess). Fix the root
+       cause so that the informed bound holds at EVERY fill with a tolerance of one share:
+       the budget check must use the worst-case price at which the order can fill (its
+       limit price) for both the position and the wealth, and must count every own order
+       that can still fill (resting, or cancelled but not yet confirmed). Tighten I4 for
+       informed agents to that tolerance. Behaviour changes are expected to be tiny; they
+       are behind the default switch (A9) like everything else (I8 until then: implement the
+       fix behind informed_budget_v2=True|False, default False until A9).
+  A6.2 Re-add IMP-0.1 to the impact set (beta on four sizes).
+  A6.3 T2 margin (VR(5) 1.2488 in v1.4): no action; report VR(5) prominently.
+  A6.4 Regime band (G11). The A3.3 simulation shows that even the true value itself has a
+       median per-day 30-min regime contrast of only 2.4-2.9 under realistic day types; one
+       day of 13 half-hours mostly measures the intraday U-shape and sampling noise. G11
+       (per day >= 5) is therefore unreachable by construction and is moved to REPORTED.
+       Regimes are graded ACROSS days instead (A8 target RS). This is a band correction made
+       before any R4 run, from the model's own maths; record it in DECISIONS.md.
+
+A7. DESIGN SWEEP (pre-registered)  [milestone A7]
+  Population: P0's informed (D-60fl2M, informed_budget_v2 on) and momentum agents;
+  living_v1 value with auto news; retail crowd instead of NoiseAgents; LPs instead of ABIDES
+  MMs; budget L = 2 on stock agents.
+  Four dials, two levels each, full factorial = 16 designs, id R-<n_lp><W><N_r><k>:
+    n_lp     number of market makers          2 | 4
+    W        capital per market maker         $5M | $20M
+    N_r      retail traders                   500 | 1500
+    k        kappa_v (crowd excitation)       1 | 3
+  Day type fixed "normal" for screening (comparability). Seeds 42, 7, 1, 2, 3.
+  Configs per design: C (no trigger), S2 (+2% value jump at 11:00 on top of the day; its
+  baseline is C of the same seed and design). 16 x 2 x 5 = 160 runs.
+  Selection (mechanical, printed in full):
+    1. reject designs failing any limit L1-L7 (A8.2);
+    2. maximise the number of targets passed among A-T1..A-T11 that are measurable in
+       screening (all except A-T3 and A-T11, which need the day mix);
+    3. tie-break: smallest sum of normalised misses over A-T1, A-T2, A-T4, A-T5 (scales: 5 bps,
+       0.10, 0.45, 0.90), then lower median wall time, then the lexically smallest id.
+  Refinement (only if the winner fails a target or a limit): 4 designs = winner with
+  n_lp -> 3, W -> $50M, N_r -> 3000, k -> 5 (one at a time); same seeds; same rule over the
+  winner + 4. No further rounds. If still failing, continue with the winner and report.
+
+A8. JUDGING R4a (pre-registered; 20-seed medians on the CONFIRMATION runs of A9.1 unless
+    stated)
+  A8.1 Targets (A-T)
+    A-T1  1-min volatility sigma_1m in [5, 10] bps (G1)                       v1.4: 0.62
+    A-T2  |ac1| <= 0.10 (T1)                                                  v1.4: 0.005
+    A-T3  daily volatility across seeds (default day mix) in [1%, 2%] (G2)    v1.4: 0.20%
+    A-T4  VR(5) in [0.80, 1.25] (T2)                                          v1.4: 1.2488
+    A-T5  price/value vol ratio at 1 min >= 0.90 (T3, K14)                    v1.4: 0.49
+    A-T6  volume-volatility Spearman >= 0.30 (G7)                             v1.4: +0.53
+    A-T7  clustering CS >= 0.10 and PS > 0.03 (G5)                            v1.4: 0.087/0.032
+    A-T8  excess kurtosis >= 3 (G6)                                           v1.4: 1.47
+    A-T9  after a +/-2% jump (normal day): volume uplift > 1 AND
+          spread_jump_ratio <= 3 AND one-sided share <= 1% (T5, T6, K15)      v1.4: 2.5 / 15 / 0
+    A-T10 informed P&L vs hold > 0 (total and median) AND market makers' group P&L vs hold
+          median >= 0 (market makers earn the spread on average)              v1.4: +$1,023 / -$107
+    A-T11 regimes across days: RS = p90/p10 of daily realised vol over the 20 default-mix
+          seeds >= 2.5 (value-only expectation about 3)                       new
+    A-T12 intraday U-shape: u_ratio >= 1.3 (K7)                               v1.4: 1.14
+  A8.2 Limits (L)
+    L1  spread median <= 2.5 bps and p95 <= 10 bps (normal and default mix)
+    L2  shares per day >= 295,500
+    L3  trades all day; the market starts from an empty book
+    L4  zero_sum = 0 exactly in every run; invariants I1-I9 (+ new) pass
+    L5  median full-day wall time <= 90 s at 2 workers (goal <= 30 s, reported)
+    L6  max |mid - value| over a day <= 1% of price ($10) on days without a scenario
+    L7  retail share of volume in [5%, 40%] (they must matter but not dominate)
+  A8.3 Reported (not judged): G9/G10 gap std and corrected half-life; per-day regime contrast;
+    impact beta and recovery (4 sizes), who absorbs; news_response; retail and MM P&L; MM
+    inventory; per-day-type scorecards; stop-loss trigger counts.
+  A8.4 Success: all A-T and L pass -> continue to Part B without stopping. Otherwise STOP
+    after A9.2 with a report (table, selection printout, evidence why), as R3 did.
+
+A9. CONFIRMATION, DEFAULT SWITCH, REPORTS  [milestones A8 (confirm) and A9 (switch)]
+  A9.1 Confirmation campaign with the selected design (20 seeds, api.lab.SEEDS):
+       D-mix: default day mix (auto)                       20 runs
+       D-calm, D-volatile: fixed day type, 10 seeds each    20 runs
+       N-C, N-S2, N-S2n: normal day, no trigger / +2% / -2% jump at 11:00   60 runs
+       N-IMP-0, -0.1, -0.5, -1, -5, N-IMP-1s (normal day)   120 runs
+       N-S4 hype news +0.9 at 11:00 (normal day)            20 runs
+       Total 240 runs.
+  A9.2 Reports: docs/v1.5/lab/RESULTS_A.md (scorecards, R4a targets, each component alone
+       (a-env, a-retail, a-lp), sweep + selection, per day type, scenarios, impact,
+       expectations E-A1..E-A10 verdicts), figures (scorecard, day-type panels with stress
+       shading and news markers, jump response vs v1.4, impact curve).
+  A9.3 Default switch (A9): new default market = the selected design with living_v1 (auto day
+       type, auto news), retail crowd, LPs, informed_budget_v2. RunParams gains day_type
+       ("auto"|"calm"|"normal"|"volatile"), auto_news (bool); num_noise default 0,
+       num_retail default per design; mm_kind "lp". ENGINE_VERSION 1.5, SCHEMA_VERSION 1.4.
+       I8 re-recorded on the new default (DECISIONS entry); I8-legacy-v14 added (v1.4 P0
+       hash); regression re-baselined (regression-v14 kept).
+       Dashboard: day type selector and "auto news" toggle; price chart shades stress
+       episodes and marks news (information vs hype, with headline tooltip); population
+       table rows "Retail (types)", "Market maker (ours)"; retail and LP parameter cards
+       (agentParams.ts). Payload <= 9 MB (report).
+
+A10. PRE-REGISTERED EXPECTATIONS (R4a; verdicts in RESULTS_A.md)
+  E-A1  living_v1 alone (a-env) raises sigma_1m to about 3 bps (price smoother than value,
+        ratio ~0.5), so A-T1 needs the crowd and LPs too.
+  E-A2  The crowd alone (a-retail) raises clustering (CS) and the U-shape; kappa_v = 3 more
+        than 1.
+  E-A3  LPs alone (a-lp) cut the post-jump spread ratio below 5.
+  E-A4  Combined: A-T5 rises toward 0.9 because short-horizon moves now also come from
+        retail flow and LP requoting, not only research arrivals.
+  E-A5  Kurtosis rises (news jumps + stress periods) to >= 3.
+  E-A6  Market makers earn a small positive P&L on average; informed still profit; retail
+        loses on average (as real retail does).
+  E-A7  Impact beta moves toward 0.5-0.7 with LP depth.
+  E-A8  Wall time stays <= 40 s per day after A1 despite more agents.
+  E-A9  Stop-losses rarely trigger on normal days (< 5% of stop users per day).
+  E-A10 A-T4 (VR(5)) is the most fragile target (v1.4 passed by 0.001).
+
+
+==================================================================================
+PART B. CRASHES (R4b)
+==================================================================================
+
+B1. PRINCIPLE
+  A crash is never drawn. A scenario sets (1) a TRIGGER and (2) the market's FRAGILITY; the
+  path comes from the agents. Scenarios are off by default and selected explicitly
+  (RunParams.scenario; dashboard selector "Stress scenario"). Each scenario on different
+  seeds gives a different but similar crash.
+
+B2. NEW MECHANISMS  [milestone B1]
+  B2.1 ForcedSellerAgent (forced_seller.py): a price-insensitive sell program modelled on the
+       6 May 2010 algorithm (target a fixed share of recent volume, regardless of price).
+       Parameters: start time t_s, total quantity Q (shares), participation rho = 0.09.
+       Every 10 s from t_s: sell min(remaining, max(1, round(rho * V_60))) shares, V_60 =
+       shares executed in the market over the previous 60 s (from its own trade-volume
+       query), as a marketable sell at bid * (1 - 0.05) (wide collar: price-insensitive).
+       Stops when Q is sold. Starts with Q shares and enough cash (exempt from the gross
+       budget, like the impact probe; included in zero_sum). Logs every child and a summary.
+       Feedback by design: more volume -> faster selling (as on 6 May).
+  B2.2 Margin calls (default ON from B4; behind margin_calls=True|False until then):
+       informed agents: maintenance bounds w_long_maint = 1.75, w_short_maint = -0.75 of
+       current wealth (at mid). On any wake or fill, if w > 1.75, send a marketable sell
+       (collar 2%) to bring w to 1.5; if w < -0.75, a marketable buy to -0.5. Logged
+       MARGIN_CALL. Retail: cash-only, no margin. LPs: A5.1 inventory overshoot rule already
+       unwinds. Momentum EKF: long-only, unchanged.
+  B2.3 Fragility profile ("stressed"): applied only by crash scenarios:
+       retail stop users 40% -> 60%; LP l_max 0.5 -> 0.25 (smaller inventory tolerance);
+       momentum capital x5 (mom_capital_mult = 5); everything else unchanged.
+  B2.4 Tests (rule 2.4: each agent class in a falling and a rising market):
+       T-FS1 child sizes follow rho * V_60 exactly; stops at Q; never buys.
+       T-FS2 zero_sum = 0 with the seller present.
+       T-MC1 margin call fires exactly when w crosses the maintenance bound and restores the
+             bound; no margin call in a market without large moves (normal day, 3 seeds).
+       T-MC2 a margin call never pushes w past the opposite bound.
+
+B3. SCENARIOS  [milestone B2]
+  All on a NORMAL day (day_type "normal"), event at 13:00 (offset 03:30:00), fragility
+  "stressed", default design otherwise. Severities:
+    CR-FLASH-M / -S   liquidity crash: ForcedSeller with Q = 5% / 15% of the design's median
+                      daily volume (from A9.1 N-C), no value change, no headline.
+    CR-INFO-M / -S    information crash: value jump of -4% / -8% at 13:00 with a negative
+                      headline from a "crash" template bucket (sentiment <= -0.8).
+    CR-RUMOR-M / -S   rumour: a negative headline (sentiment -0.8 / -0.95) with no value
+                      change, plus a ForcedSeller of Q = 2% / 5% (panic selling by one fund
+                      that believed it).
+  Each: 10 seeds; baseline = the same seed's normal day with fragility "stressed" and no
+  trigger (configs CR-BASE). 6 x 10 + 10 = 70 runs.
+
+B4. CRASH SIGNATURES (pre-registered; median over 10 seeds; window W = [t_s, t_s + 90 min])
+  Define drop D = (pre-crash price - minimum mid in W) / pre-crash price, where pre-crash price
+  = mean mid over [t_s - 5 min, t_s]; trough time t_min; t_down = t_min - t_s.
+  Common to every SEVERE scenario:
+    C1 a real crash: D >= 3% (FLASH-S, RUMOR-S) and D >= 8% (INFO-S, at least the value move)
+    C2 liquidity evaporates: top-10-level buy-side depth at the trough <= 25% of its median
+       over the pre-crash hour (real: < 1%)
+    C3 spread blows out: p95 spread in [t_s, t_min + 5 min] >= 5x the pre-crash-hour p95
+    C4 volume spikes: peak 1-min volume in W >= 4x the pre-crash-hour median (real: ~8x)
+    C5 volatility persists: sigma_1m over [t_min + 30, t_min + 90 min] >= 1.5x pre-crash hour
+    C6 accounting and liveness: zero_sum = 0, invariants pass, no price <= 0, every LP wakes
+  Shape by kind:
+    C7 FLASH-S: recovery R60 = (mid(t_min + 60 min) - min) / (pre - min) >= 0.6 (real: about
+       1 within 36 min). Report t_down and the time from t_min to 50% recovery (6 May: down
+       13 min, back up 23 min); their order is not graded.
+    C8 INFO-S: overshoot: min mid <= new value - 0.5% of price; settle: |mid(t_s + 90 min) -
+       new value| <= 1% of price; no full recovery (mid(t_s + 90) <= pre - 5%).
+    C9 RUMOR-S: recovery R60 >= 0.5 and |mid(t_s + 90 min) - value| <= 1% of price.
+    C10 who traded (qualitative, reported with numbers; pass if all hold): on the down leg
+       [t_s, t_min] the ForcedSeller (if any), stop-loss sells and momentum agents are net
+       sellers; on the up leg [t_min, t_min + 60 min] informed fundamentalists are net
+       buyers; LPs' |net inventory change over W| <= 20% of their gross volume in W (they
+       intermediate, like 6 May market makers).
+  MILD scenarios: report all measures; C1 thresholds halved (D >= 1.5% / 4%); C2-C5 reported
+  only (mild stress need not empty the book).
+  Default-day guarantee (D-R4-6): over the 20 D-mix confirmation runs of A9.1 no day has
+  D >= 3% within any 30-min window without a scenario (report the max).
+
+B5. MILESTONES B3-B4: judging, reports
+  RESULTS_B.md: per scenario the price paths (median and band), depth and spread around the
+  trough, volume, who-traded table (by class, down leg / up leg), C1-C10 table, and the 6 May
+  2010 comparison (fall speed, recovery time, volume and depth multiples).
+  If a signature fails: report it with evidence (which agent did not behave as in 6 May and
+  why). One pre-registered adjustment round is allowed ONLY for the fragility profile
+  (stop users 60% -> 80%, LP l_max 0.25 -> 0.15, momentum x5 -> x10), applied to all
+  scenarios at once; no other tuning. Then switch margin calls ON by default (I8 re-record
+  only if the default market changes; it should not, since calls do not fire on normal days:
+  verify with the A9.1 D-mix seeds and report).
+  Dashboard: "Stress scenario" selector (none / flash / information / rumour x mild / severe),
+  crash window annotation, who-traded panel for the crash window.
+
+B6. PRE-REGISTERED EXPECTATIONS (R4b)
+  E-B1 FLASH-S: a V-shape; the bottom comes when LPs hit inventory limits and stops cascade;
+       informed buyers lead the recovery; R60 0.6-1.
+  E-B2 INFO-S: overshoot below the new value driven by momentum and stops, then informed
+       buying lifts the price to the new value; no recovery to the old price.
+  E-B3 RUMOR-S: a fall smaller than FLASH-S of the same seller size plus a slower recovery
+       than FLASH (research must contradict the headline).
+  E-B4 Margin calls fire in INFO-S (leveraged informed longs) and amplify the fall.
+  E-B5 MILD scenarios look like a bad hour, not a crash.
+
+
+==================================================================================
+PART C. CIRCUIT BREAKER (optional, OFF by default; after Parts A and B)  [milestones C1-C2]
+==================================================================================
+C1. PURPOSE (owner asked): real exchanges pause trading when prices move too fast, to give
+    traders time to think and liquidity time to return (the 5-second CME pause on 6 May;
+    the US 10%-in-5-minutes pause; Indian market-wide halts). In FinVerse it lets a student
+    compare the same crash with and without a pause.
+C2. MECHANISM (ExchangeAgent extension, behind circuit_breaker=None | dict):
+    rule: if |mid(t) - mid(t - 5 min)| / mid(t - 5 min) >= theta (default 0.10; scenario
+    parameter), halt for H = 300 s. During a halt the exchange matches nothing: new limit
+    orders are queued, cancels are honoured, market orders are rejected (logged). At the end
+    of the halt a single-price reopening auction uncrosses the queued book: the price that
+    maximises executed volume (ties: minimum imbalance, then closest to the last trade
+    price); orders crossing that price execute at it (price-time priority within a side);
+    the rest rest in the book. Log HALT_START, HALT_END, AUCTION {price, volume}.
+    At most one halt per 30 min. Agents receive a MarketHaltMsg / MarketResumeMsg; agents that
+    poll during a halt see the queued book (no trades).
+C3. TESTS: T-CB1 auction price on hand-built books (known answers); T-CB2 no matching during a
+    halt; T-CB3 zero_sum and invariants with halts; T-CB4 off by default (I8 unchanged).
+C4. CAMPAIGN: CR-FLASH-S and CR-INFO-S with the breaker (theta 0.05 and 0.10), 10 seeds each
+    (40 runs); compare with Part B's runs: D, depth at the trough, recovery R60, volume.
+    Reported only (no targets): this is a teaching feature.
+
+
+==================================================================================
+PART 10. DOCUMENTATION (a milestone is not done until its docs are)
+==================================================================================
+  docs/specs/spec_v1.5.txt (this file); docs/engine: ORACLE.md (living_v1: model, draw order,
+  verified statistics, day info), NEWS.md (new: automatic information news, templates,
+  stored sentiments), AGENTS_RETAIL.md (new: crowd + trader rules, gaps they fix),
+  AGENTS_LP.md (new: market makers), AGENT_FUNDAMENTALIST.md (K16 fix, margin calls),
+  CRASHES.md (new: principle, mechanisms, scenarios, signatures, 6 May comparison),
+  EXCHANGE.md or ARCHITECTURE.md (circuit breaker, auction), REALISM_LAB.md (new metrics,
+  A-T/L/C definitions, G11 moved to reported with the reason), KNOWN_ISSUES (K14/K15/K16 and
+  K1/K3/K5/K7/K8 updated with R4 numbers), DECISIONS (D-R4-1..9 and every implementation
+  decision), CHANGELOG, TESTING, README glossary (day type, stress episode, information vs
+  hype news, crowd intensity, stop registry, liquidity provider, inventory skew, forced
+  seller, margin call, crash signature, circuit breaker, reopening auction).
+  docs/v1.5/REPORT.md (implementation), docs/v1.5/lab/RESULTS_A.md, RESULTS_B.md,
+  RESULTS_C.md (findings), docs/v1.5/PROFILE.md (A1). HANDOFF.md every milestone.
+
+
+==================================================================================
+PART 11. TESTS AND INVARIANTS (summary)
+==================================================================================
+  New unit tests: T-S4, T-S5 (A1); T-R4-1, T-R4-2 (A2); T-O5..T-O9 (A3); T-RT1..T-RT6 (A4);
+  T-LP1..T-LP6 (A5); K16 reproduction + fix test (A6); T-FS1, T-FS2, T-MC1, T-MC2 (B2);
+  T-CB1..T-CB4 (C3).
+  Invariants: I1-I9 unchanged in meaning; I4 extended (retail: cash and shares >= 0; LPs:
+  |q| <= 1.2 q_max at every fill; informed: bound within one share after A6); I8 = current
+  default (re-recorded at A9); I8-legacy (v1.3), I8-legacy-v14 (new at A9).
+  Every milestone: affected tests, then the full suite in the background (CLAUDE.md), then
+  invariants. Known upstream failure: test_ou_process only.
+
+
+==================================================================================
+PART 12. MILESTONES (branch v1.5; one commit each, docs in the same commit)
+==================================================================================
+  A0  spec copy, DECISIONS D-R4-1..9, doc skeletons, HANDOFF rows.
+  A1  engine speed-up (bit-identical) + PROFILE.md.
+  A2  measurement additions.
+  A3  living_v1 value process, automatic information news, templates + stored sentiments;
+      campaign a-env (10 runs).
+  A4  retail crowd; campaign a-retail (10 runs).
+  A5  liquidity providers; campaign a-lp (10 runs).
+  A6  K16 fix (behind informed_budget_v2), IMP-0.1, G11 band move.
+  A7  design sweep (160 runs) + refinement if needed (up to 40 runs); selection printout.
+  A8  confirmation campaign (240 runs) + RESULTS_A.md. STOP here only if A8.4 fails.
+  A9  default switch, dashboard, I8 re-record, legacy invariants, regression re-baseline.
+  B1  forced seller, margin calls (behind a flag), fragility profile + tests.
+  B2  crash scenarios config; campaign crash (70 runs).
+  B3  signatures + RESULTS_B.md; adjustment round only as B5 allows (up to 70 runs).
+  B4  margin calls default ON (verify the default market is unchanged on the D-mix seeds),
+      dashboard stress selector. STOP and report to the owner (end of R4 proper).
+  C1  circuit breaker + reopening auction + tests.
+  C2  campaign cb (40 runs) + RESULTS_C.md; dashboard toggle; final HANDOFF.
+  Run budget: about 10 + 10 + 10 + 160 (+40) + 240 + 70 (+70) + 40 = 540-650 runs. Use the
+  /lab-campaign skill (background, resumable, 2 workers when timing matters). With A1's
+  speed-up and ~30-40 s per day, about 3-4 hours of campaigns in total.
+
+
+==================================================================================
+APPENDIX A. FORMULA SHEET
+==================================================================================
+  Value (living_v1):  dv = sigma_base * m_day * U(t) * S(t) dW + jumps
+     sigma_base 7.1 c/sqrt(s); m_day 0.6/1.0/1.6; S in {1, 2.5}, p_in = e_day/(6.5 h),
+     mean stress 45 min; e_day 0.2/0.7/1.5; jumps Poisson 2/3/4 per day, |J| = r_bar *
+     min(LogNormal(ln 0.002, 0.6), 0.02)
+  Crowd:  lambda = mu * U(t) * min(10, 1 + kappa_v * max(0, V - 1) + 2 * Nn)
+     V = sigma_short / sigma_ref (2-min vs 60-min half-life), Nn += |s| per headline, half-life 10 min
+     trend P(buy) = sigma(0.87 * r30/s30); contrarian P(buy) = sigma(-0.87 * r30/s30)
+     size LogNormal(ln 30, 0.8); collar 2%; stops at fill * (1 - U[2%, 6%]) for 40% of traders
+  LP:  ref; sigma_10 = ref * sqrt(sigma_hat^2 * 10); h = max(1 c, 0.5 * sigma_10)
+     q_max = 0.5 W/ref; r = ref - (q/q_max) h; 3 levels at r -/+ k h; 2% of W per side
+     lazy requote: |ref - ref_q| > h/2 or |q - q_q| > 0.1 q_max or 30 s
+  Forced seller: every 10 s sell max(1, round(0.09 * V_60)) until Q; collar 5%
+  Margin call: informed w > 1.75 -> sell to 1.5; w < -0.75 -> buy to -0.5
+  Circuit breaker: |mid_t / mid_{t-5min} - 1| >= theta -> 300 s halt + max-volume auction
+
+APPENDIX B. CHECKS CLAUDE RAN BEFORE WRITING THIS SPEC (2026-10-16, numpy, not ABIDES)
+  - living_v1 value statistics per day type and mix (A3.3), 200 days each; the first
+    calibration (sigma_base 7.6 bps/min, stress x3) gave 2.3%/day on normal days and was
+    retuned to the numbers above before writing.
+  - The per-day regime contrast of the value itself (2.4-2.9 median) motivating A6.4.
+  - Crowd intensity response on quiet / news / shock days (A4.3).
+  These check the formulas, not the market; the market results are what the campaigns
+  measure.

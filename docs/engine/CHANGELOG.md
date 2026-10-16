@@ -3,6 +3,14 @@
 Sources: the git log of this repository and the specs in [`docs/specs/`](../specs/).
 Upstream ABIDES history (2021–2023, J.P. Morgan) is not repeated here.
 
+## v1.5 — R4: a living market, realistic crashes, circuit breakers (in progress, branch `v1.5`)
+
+Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt).
+
+| Milestone | Files | Change |
+|---|---|---|
+| A0 | `docs/specs/spec_v1.5.txt`, `docs/engine/DECISIONS.md`, `docs/engine/{NEWS,AGENTS_RETAIL,AGENTS_LP,CRASHES}.md`, `docs/v1.5/REPORT.md`, `docs/HANDOFF.md` | Spec v1.5 stored; D-R4-1..9; pre-run check of the A3.3 value statistics; doc skeletons |
+
 ## v1.4 — R3: informed fundamentalists replace the value agents (complete 2026-10-14, branch `v1.4`)
 
 Spec: [`docs/specs/spec_v1.4.txt`](../specs/spec_v1.4.txt).

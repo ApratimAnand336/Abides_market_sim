@@ -387,3 +387,36 @@ Spec: [`docs/specs/spec_v1.4.2.txt`](../specs/spec_v1.4.2.txt), approved by the 
 - **Regression (spec §10.5).** P0-C / P0-S2 / P0-IMP-1 on seeds 42, 7, 1 against `docs/v1.4/lab/summary.json`; the old set is kept as `regression-legacy`.
   - G11 regime contrast is not compared for P0-S2: in a jump run it is dominated by the jump window (median 45 vs 2.5 quiet), and seeds 42 and 1 are the 20-seed maximum and runner-up, so the fixed 3-seed median (64.5) always fell outside [34.4, 57.5]. The regression values equal the lab's per-seed values exactly.
 - **CLI.** `python -m api.cli export` defaults follow RunParams (60/12, informed); `--num-value` and `--fund-mode` reach the legacy market.
+
+## v1.5 (R4): a living market, realistic crashes, circuit breakers
+
+Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt), approved by the owner on 2026-10-15/16. Branch `v1.5` from 20465e2.
+
+### 2026-10-16 D-R4-1: default days are a random mix of day types
+- 30% calm, 50% normal, 20% volatile; no crash days in the default. Target stays a liquid large cap, 1–2% a day.
+
+### 2026-10-16 D-R4-2: automatic information news by default
+- Rate by day type; template headlines with stored FinBERT scores (runs never call FinBERT). Scripted news stays available.
+
+### 2026-10-16 D-R4-3: our own RetailTraderAgent crowd replaces the ABIDES NoiseAgents
+- Fixes gaps G-a … G-e of spec §0.4 (no reaction, one order a day, no positions/stops, no types, stock agent).
+
+### 2026-10-16 D-R4-4: 2–4 market makers of our own with realistic capital
+- Count and capital chosen by the pre-registered sweep (spec A7).
+
+### 2026-10-16 D-R4-5: fix K16 (informed budget exceeded after jumps)
+
+### 2026-10-16 D-R4-6: crashes exist only on demand, never scripted
+- Three kinds (flash/liquidity, information, rumour) × two severities, selected explicitly. A scenario sets only the trigger and the fragility; the path comes from the agents.
+
+### 2026-10-16 D-R4-7: circuit breaker after Parts A and B, optional, off by default
+
+### 2026-10-16 D-R4-8: engine run time down further, bit-identical results
+
+### 2026-10-16 D-R4-9: owner standing rule
+- Never compromise accuracy or quality; shortcuts only if they give as good or almost as good results.
+
+### 2026-10-16 (A0) Pre-run check of the A3.3 value statistics (record only, no change)
+- An independent numpy simulation of A3.1 (written from the spec text, not from the spec's own check) gives, over 1,500 days per type: 1-min sd median 3.76 / 6.37 / 11.02 bps and daily move sd 0.80% / 1.32% / 2.39% (calm / normal / volatile).
+- Over 200-day samples (seeds 1–4) the daily sd varies by about ±8% (normal: 1.23–1.43%).
+- The 1-min values agree with A3.3 within 4%. The normal-day daily sd (spec 1.49%) is about 11% above the long-run value, so T-O5's ±10% band on that one statistic may be met or missed on sampling noise alone. T-O5 is implemented as written in A3; its result is reported as measured.
