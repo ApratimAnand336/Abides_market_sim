@@ -40,6 +40,9 @@ CLASSES = [
 PROBE_CLASS = "ImpactProbeAgent"
 FLOW_CLASSES = CLASSES + [PROBE_CLASS]
 EXCLUDED_CLASSES = {"ExchangeAgent", "NewsOracleAgent"}
+# spec v1.5 A2: population shares of executed volume
+RETAIL_CLASSES = ("RetailTraderAgent",)
+MM_CLASSES = ("AdaptiveMarketMakerAgent", "LiquidityProviderAgent")
 MOM_STATES = ["NEUTRAL", "BULL", "BEAR", "WATCH"]
 MOM_REASONS = ["BREAKOUT", "REENTRY", "STOP", "FADE", "TIMEOUT", "OTHER"]
 
@@ -413,6 +416,19 @@ def series_from_end_state(
             and sum(r["sh1"] for r in records) == sum(r["sh0"] for r in records)
         )
 
+    # ── spec v1.5 A2: volume by class, market-maker inventory, information news ──
+    class_volume = class_volumes(ex_buyer[in_sess], ex_seller[in_sess], ex_q[in_sess], cls_of)
+    mm_inventory = [
+        {"id": int(a.id), "cls": class_of(a), **inventory_stats(ex_buyer, ex_seller, ex_q, int(a.id))}
+        for a in agents if class_of(a) in MM_CLASSES
+    ]
+    day_info = oracle.day_info(ticker) if hasattr(oracle, "day_info") else None
+    info_news = []
+    if day_info:
+        for item in day_info.get("news", []):
+            t_ns, jump_c = item[0], item[1]
+            info_news.append(((int(t_ns) - open_ns) / 1e9, float(jump_c) / 100.0))
+
     return {
         "duration": duration,
         "grid": grid,
@@ -433,6 +449,10 @@ def series_from_end_state(
         "probe": probe,
         "flags": flags,
         "oracle_events": list((getattr(oracle, "events", None) or {}).get(ticker, [])),
+        "class_volume": class_volume,
+        "mm_inventory": mm_inventory,
+        "info_news": info_news,
+        "day_info": day_info,
     }
 
 
@@ -649,7 +669,122 @@ def run_metrics(s: Dict[str, Any]) -> Dict[str, Any]:
     v = np.asarray(s["vol_1m"], dtype=float)
     win = [v[i:i + 30].sum() for i in range(0, len(v), 30)]
     out["active_halfhours_share"] = float(np.mean([w > 0 for w in win])) if win else None
+
+    # spec v1.5 A2 (new scalar keys only; every v1.4 metric above is unchanged;
+    # per-agent / per-event detail is in run_diagnostics)
+    out["day_rv_pct"] = day_rv_pct(r1)
+    cv = s.get("class_volume")
+    if cv is not None:
+        out["retail_share"] = volume_share(cv, RETAIL_CLASSES, out["shares_executed"])
+        out["mm_share"] = volume_share(cv, MM_CLASSES, out["shares_executed"])
+    inv = s.get("mm_inventory") or []
+    out["mm_inv_max_abs"] = max((m["max_abs"] for m in inv), default=None)
+    out["mm_inv_end_max_abs"] = max((abs(m["end"]) for m in inv), default=None)
+    if s.get("info_news"):
+        nr = info_news_response(mid, s["exec_t"], s["exec_q"], s["info_news"])
+        out["info_news_n"] = nr["n"]
+        out["info_news_f10"] = nr["f10_median"]
+        out["info_news_uplift"] = nr["uplift_median"]
     return out
+
+
+def run_diagnostics(s: Dict[str, Any]) -> Dict[str, Any]:
+    """spec v1.5 A2 detail that is not a scalar metric (stored by the lab in
+    metrics.json["diagnostics"]): per market maker inventory, per information-news
+    event response, the volume by class (both sides) and the oracle's day info."""
+    out: Dict[str, Any] = {
+        "mm_inventory": s.get("mm_inventory") or [],
+        "class_volume": s.get("class_volume") or {},
+    }
+    if s.get("info_news"):
+        out["info_news"] = info_news_response(s["mid_1s"], s["exec_t"], s["exec_q"], s["info_news"])
+    di = s.get("day_info")
+    if di:
+        out["day_info"] = di
+    return out
+
+
+# ── spec v1.5 A2: measurement additions ────────────────────────────────────
+
+
+def day_rv_pct(r1: np.ndarray) -> Optional[float]:
+    """Realised daily volatility of the 1-min log returns, in %: 100 sqrt(sum r^2)."""
+    r1 = np.asarray(r1, dtype=float)
+    r1 = r1[np.isfinite(r1)]
+    if len(r1) == 0:
+        return None
+    return float(100.0 * math.sqrt(float(np.sum(r1 * r1))))
+
+
+def regime_spread(day_rvs: Sequence[Optional[float]]) -> Optional[float]:
+    """Cross-day regime spread RS = p90 / p10 of the daily realised vols of the seeds
+    of one config (A-T11; numpy linear percentiles). None with < 2 finite values or
+    p10 = 0."""
+    x = np.array([v for v in day_rvs if v is not None and np.isfinite(v)], dtype=float)
+    if len(x) < 2:
+        return None
+    p10 = float(np.percentile(x, 10))
+    if p10 <= 0:
+        return None
+    return float(np.percentile(x, 90)) / p10
+
+
+def class_volumes(buyer: np.ndarray, seller: np.ndarray, qty: np.ndarray,
+                  cls_of: Dict[int, str]) -> Dict[str, float]:
+    """Shares executed per agent class, both sides counted (a class on both sides of
+    a trade counts it twice), so the values sum to 2 x the shares executed."""
+    out: Dict[str, float] = defaultdict(float)
+    for b, s_, q in zip(buyer, seller, qty):
+        out[cls_of.get(int(b), "?")] += float(q)
+        out[cls_of.get(int(s_), "?")] += float(q)
+    return dict(out)
+
+
+def volume_share(class_volume: Dict[str, float], classes: Sequence[str],
+                 shares_executed: float) -> Optional[float]:
+    """% of executed volume taken by a population (both sides counted): the
+    population's two-sided volume over 2 x the shares executed."""
+    if not shares_executed:
+        return None
+    return float(100.0 * sum(class_volume.get(c, 0.0) for c in classes) / (2.0 * shares_executed))
+
+
+def inventory_stats(buyer: np.ndarray, seller: np.ndarray, qty: np.ndarray, agent_id: int) -> Dict[str, int]:
+    """Inventory (shares bought minus sold since the open) of one agent over its fills:
+    the max |inventory| and the end-of-day inventory."""
+    signed = np.where(np.asarray(buyer) == agent_id, qty, 0.0) - np.where(np.asarray(seller) == agent_id, qty, 0.0)
+    path = np.cumsum(signed)
+    if len(path) == 0:
+        return {"max_abs": 0, "end": 0}
+    return {"max_abs": int(np.max(np.abs(path))), "end": int(path[-1])}
+
+
+def info_news_response(mid_1s: np.ndarray, exec_t: np.ndarray, exec_q: np.ndarray,
+                       events: Sequence[Tuple[float, float]], window_s: int = 600) -> Dict[str, Any]:
+    """Response to information news (spec v1.5 A2), per event (t in session seconds,
+    J = value jump in dollars, signed):
+      f_10   = (mid(t + 10 min) - mid(t)) / J        (fraction of the jump priced in)
+      uplift = volume in (t, t + 10 min] / volume in (t - 10 min, t]
+    mid(t) is mid_1s at the grid second floor(t). Events without a full window on
+    both sides (or J = 0) are skipped; the medians are over the events kept."""
+    mid = np.asarray(mid_1s, dtype=float)
+    et, eq = np.asarray(exec_t, dtype=float), np.asarray(exec_q, dtype=float)
+    per = []
+    for t, J in events:
+        i0 = int(math.floor(t))
+        if J == 0 or i0 - window_s < 0 or i0 + window_s >= len(mid):
+            continue
+        f10 = (mid[i0 + window_s] - mid[i0]) / J
+        after = float(eq[(et > t) & (et <= t + window_s)].sum())
+        before = float(eq[(et > t - window_s) & (et <= t)].sum())
+        per.append({"t": float(t), "J": float(J), "f10": float(f10),
+                    "uplift": None if before == 0 else after / before})
+    f = [e["f10"] for e in per]
+    u = [e["uplift"] for e in per if e["uplift"] is not None]
+    return {"n": len(per), "n_events": len(events),
+            "f10_median": float(np.median(f)) if f else None,
+            "uplift_median": float(np.median(u)) if u else None,
+            "per_event": per}
 
 
 # ── corrected gap half-life (spec v1.4 §3.1, D-R3-4) ──────────────────────

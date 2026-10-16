@@ -190,6 +190,7 @@ def simulate(config_id: str, seed: int, out_root: str, engine: str) -> None:
             "mom_entries_per_agent": entries / n_mom if n_mom else None,
             "budget": _budget_counts(agents, config["_mkt_open_ns"]),
             "fund_info": _fund_info(agents, config),
+            "diagnostics": R.run_diagnostics(s),  # spec v1.5 A2
         }
         f32 = lambda x: np.asarray(x, dtype=np.float32)  # noqa: E731
         np.savez_compressed(

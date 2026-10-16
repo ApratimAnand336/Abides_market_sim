@@ -399,3 +399,22 @@ design.
 `scripts/diag_learning_jump.py <design> <seed>` classifies the learning-driven belief moves of
 informed agents after the +2% jump as toward the new value or toward the stale price.
 
+
+## v1.5 (R4) additions
+
+### Measurement additions (spec v1.5 A2, `api/realism.py`, tests `api/tests/test_realism_v15.py`)
+
+New scalar keys in `run_metrics` (every v1.4 metric is unchanged; regression PASSED after A2):
+
+| key | definition | unit |
+|---|---|---|
+| `day_rv_pct` | realised daily volatility of the 1-min log returns, 100·sqrt(Σ r²) | % |
+| `retail_share` | two-sided volume of `RetailTraderAgent` / (2 × shares executed) | % of volume |
+| `mm_share` | the same for market makers (`AdaptiveMarketMakerAgent`, `LiquidityProviderAgent`) | % of volume |
+| `mm_inv_max_abs`, `mm_inv_end_max_abs` | over the market makers: the largest max \|inventory\| and the largest \|end-of-day inventory\| (inventory = shares bought − sold since the open) | shares |
+| `info_news_n`, `info_news_f10`, `info_news_uplift` | over the automatic information-news events of the run (oracle `day_info`): count with a full ±10-min window, median f_10 = (mid(t+10 min) − mid(t)) / J, median volume uplift (10 min after / 10 min before) | –, fraction of J, ratio |
+
+- **Cross-day regime spread** `regime_spread(day_rvs)` = p90 / p10 of `day_rv_pct` over the seeds of one config (numpy linear percentiles; A-T11). It is computed by the campaign summary, not per run. The per-day `regime_contrast` (G11) stays reported only (A6.4).
+- `run_diagnostics(s)` holds the detail that is not a scalar (per market maker inventory, per news event response, volume by class, the oracle's `day_info`). The lab stores it in `metrics.json["diagnostics"]`; the payload's `realism.metrics` accepts scalars only, which is why the detail is kept out of `run_metrics`.
+- The hype-news metric `news_response` (v1.3, S4) is unchanged; the information-news response has its own name (`info_news_response`) to avoid a clash.
+- T-R4-1: RS on 20 synthetic days whose realised vols are exactly 0.5…2.4% (RS = 2.21/0.69). T-R4-2: f_10 = 0.5 and uplift 2.5 on a hand-built series; jumps without a full window or with J = 0 are skipped.

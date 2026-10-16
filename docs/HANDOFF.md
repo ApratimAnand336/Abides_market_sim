@@ -11,8 +11,8 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 | ID | Status | Commit | Notes |
 |---|---|---|---|
 | A0 | done | 528ae6e | spec copy, D-R4-1..9, skeletons |
-| A1 | done | (see log) | bit-identical speed-up 22.7 → 12.1 s per P0 day (1 worker) |
-| A2 | todo | | measurement additions |
+| A1 | done | d6ad914 | bit-identical speed-up 22.7 → 12.1 s per P0 day (1 worker) |
+| A2 | done | (see log) | day_rv, RS, shares, MM inventory, info_news; detail in metrics.json diagnostics |
 | A3 | todo | | living_v1 value, auto news, templates; campaign a-env |
 | A4 | todo | | retail crowd; campaign a-retail |
 | A5 | todo | | liquidity providers; campaign a-lp |
@@ -49,6 +49,7 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
   CLAUDE.md and .claude/ stay untracked.
 
 ## Log (newest first, one line each)
+- 2026-10-16 A2: measurement additions (scalar keys in run_metrics; run_diagnostics in the lab).
 - 2026-10-16 A1: bit-identical speed-up (heap, event copy, log guards, fmt_ts, dropout loop, order copy, sparse lab depth), −47%.
 - 2026-10-16 A0: spec v1.5 stored, D-R4-1..9, doc skeletons, branch v1.5.
 - 2026-10-14 N7: R3 complete (RESULTS.md, REPORT.md, KNOWN_ISSUES K14–K16).
