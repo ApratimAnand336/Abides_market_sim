@@ -7,6 +7,35 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 - **Now: spec v1.5 (R4)**, `docs/specs/spec_v1.5.txt`. Part A living market (A0–A9), Part B
   crashes (B1–B4, STOP to owner after B4), Part C circuit breaker (C1–C2).
 
+## Resume here (paused 2026-10-16, milestone A5 = WIP)
+- **Done (b27d161):** `agents/liquidity_provider.py` (LiquidityProviderAgent; pure `lp_quotes`,
+  `lp_sigma_update`, `lp_needs_requote`), `LP` constants in `param_ranges.py`,
+  `build_config(mm_kind="abides"|"lp", num_lp, lp_wealth, lp_l_max)` (LPs appended after retail,
+  RNG from the post-latency v1.5 draw), `tests/test_liquidity_provider.py` (9 passed),
+  invariants 11 passed (I8 unchanged), A-LP-C/S2 configs + "a-lp" in `api/lab.py`,
+  `retail_stop_trigger_pct` + diagnostics `retail_stops` in `api/realism.py`, AGENTS_LP.md,
+  DECISIONS (A5), CHANGELOG row.
+- **Running at pause:** full suite `python -m pytest abides-markets/tests api/tests -q
+  --ignore=abides-markets/tests/test_gym_runner.py -p no:warnings > runs/_logs/suite_A5.log`.
+  Check: `tail -n 3 runs/_logs/suite_A5.log` (expect only `test_ou_process` failing). If it did
+  not finish, rerun it.
+- **NEXT STEP:** check suite_A5.log, then run `python scripts/realism_lab.py --campaign a-lp
+  --workers 4 > runs/_logs/a-lp.log 2>&1` (40 runs, ~4 min, clean label b27d161 or later).
+  Then add Notes to `docs/v1.5/lab/RESULTS_a-lp.md` (E-A3: post-jump spread ratio < 5?),
+  a TESTING.md A5 row, REPORT/HANDOFF rows, and commit "A5: campaign a-lp results".
+- **Remaining checklist:** A5 results → A6 (K16 fix behind `informed_budget_v2`, IMP-0.1, G11
+  to reported) → A7 sweep (160 runs) → A8 confirmation (240) + RESULTS_A.md → A9 switch → B1–B4
+  → C1–C2. lab_v15.py still needs the sweep/confirm/crash campaign code.
+- **Numbers found:** LP 1-hour smoke (2×$5M, calm value): requotes on ~37% of wakes, 33% of
+  shares, spread median 3¢ / p95 10¢. a-env: σ1m 5.04 bps, vol ratio 0.80 (E-A1 not confirmed,
+  better), ABIDES MMs −$28.8k/day. a-retail: retail 3.5% of volume, E-A2 not confirmed.
+- **K16 diagnosis note (for A6):** the current §4.5 check already prices position AND wealth at
+  the limit price; uncounted in-flight cancels are a real gap. A third cause: after a down-jump,
+  mark-to-market alone lifts a leveraged long's w (1.5 → ~1.515 for −2%), which no order rule can
+  stop. Diagnose with the targeted test first (spec A6.1); the spec's fix may not reach
+  "every fill within one share". If so, that is a spec question for the owner.
+- **Open questions:** none blocking A5.
+
 ## Milestone status (spec v1.5)
 | ID | Status | Commit | Notes |
 |---|---|---|---|
@@ -14,8 +43,8 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
 | A1 | done | d6ad914 | bit-identical speed-up 22.7 → 12.1 s per P0 day (1 worker) |
 | A2 | done | f7245d2 | day_rv, RS, shares, MM inventory, info_news; detail in metrics.json diagnostics |
 | A3 | done | e1c9714, c57015f | living_v1, auto news; a-env: σ1m 5.0 bps, vol ratio 0.80, ABIDES MMs −$29k |
-| A4 | done | dcfb205 + (see log) | crowd N_r 500: 3.5% of volume; E-A2 not confirmed on the calm value |
-| A5 | todo | | liquidity providers; campaign a-lp |
+| A4 | done | dcfb205, 8f77538 | crowd N_r 500: 3.5% of volume; E-A2 not confirmed on the calm value |
+| A5 | WIP | b27d161 | code + tests done; full suite, campaign a-lp, results pending |
 | A6 | todo | | K16 fix (informed_budget_v2), IMP-0.1, G11 to reported |
 | A7 | todo | | design sweep 160 (+40) runs |
 | A8 | todo | | confirmation 240 runs, RESULTS_A.md (STOP if A8.4 fails) |
@@ -52,6 +81,7 @@ Last updated: 2026-10-16, spec v1.5 (R4) started on branch `v1.5` (from 20465e2)
   CLAUDE.md and .claude/ stay untracked.
 
 ## Log (newest first, one line each)
+- 2026-10-16 A5 (WIP): LPs + tests done; paused before full suite check and campaign a-lp.
 - 2026-10-16 A4: retail crowd (T-RT1..6); a-retail 40 runs: retail 3.5% of volume, −$820/day.
 - 2026-10-16 A3: living_v1 + auto news; a-env 40 runs (E-A1 not confirmed: σ1m 5.0 bps, ratio 0.80).
 - 2026-10-16 A2: measurement additions (scalar keys in run_metrics; run_diagnostics in the lab).
