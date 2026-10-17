@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from abides_markets.configs.param_ranges import ranges_for_export
+from abides_markets.agents.retail import SESSION_S
+from abides_markets.configs.param_ranges import LP, RETAIL, ranges_for_export
 
 from . import SCHEMA_VERSION
 from . import realism
@@ -471,8 +472,12 @@ def _momentum(agent, clock, ticker, candles, close) -> Dict:
 # ── news ──────────────────────────────────────────────────────────────────
 
 
-def _news(news_agent, clock: _Clock, q_t: np.ndarray, q_mid: np.ndarray, fund: List, mom: List, agents_by_id) -> List[Dict]:
+def _news(news_agent, clock: _Clock, q_t: np.ndarray, q_mid: np.ndarray, fund: List, mom: List, agents_by_id,
+          info_news: Optional[List] = None) -> List[Dict]:
+    """info_news: [(t_s, headline)] published with a true-value jump (living_v1 auto news);
+    a broadcast matching one (same headline, within 1 s) is "information", else "hype"."""
     broadcasts = [(clock.s(t_ns), ev) for t_ns, _, ev in _events(news_agent, "NEWS_BROADCAST")] if news_agent else []
+    info_news = info_news or []
     records = []
     for k, (t, ev) in enumerate(broadcasts):
         t_next = broadcasts[k + 1][0] if k + 1 < len(broadcasts) else float("inf")
@@ -517,6 +522,8 @@ def _news(news_agent, clock: _Clock, q_t: np.ndarray, q_mid: np.ndarray, fund: L
             "t": _t(t),
             "headline": ev["headline"],
             "sentiment": float(ev["sentiment"]),
+            "kind": ("information" if any(h == ev["headline"] and abs(ti - t) <= 1.0 for ti, h in info_news)
+                     else "hype"),
             "price_before": None if p0 is None else round(p0, 4),
             "price_after": {"1m": after(60), "5m": after(300), "30m": after(1800)},
             "reactions": reactions,
@@ -532,13 +539,17 @@ POPULATION_LABELS = {
     "NoiseAgent": "Noise",
     "ValueAgent": "Value",
     "AdaptiveMarketMakerAgent": "Market maker",
+    # spec v1.5 A9.3: the living market's crowd and our market makers
+    "RetailTraderAgent": "Retail (types)",
+    "LiquidityProviderAgent": "Market maker (ours)",
     "MomentumAgent": "Momentum (ABIDES MA)",
     "FundamentalistAgent": "Fundamentalist (ours)",
     "MomentumEKFAgent": "Momentum EKF (ours)",
     # spec v1.3 §6.2: a test instrument of the realism lab, listed separately
     "ImpactProbeAgent": "Impact probe (test)",
 }
-POPULATION_EXCLUDE = {"ExchangeAgent", "NewsOracleAgent"}
+# RetailCrowdAgent only schedules the traders (no cash, no orders of its own)
+POPULATION_EXCLUDE = {"ExchangeAgent", "NewsOracleAgent", "RetailCrowdAgent"}
 
 
 def _wake_desc(cls: str, members: List) -> str:
@@ -566,7 +577,7 @@ def _start_position(agent):
     if hasattr(agent, "initial_exposure") and hasattr(agent, "reference_price"):
         n0 = int(math.floor(agent.initial_exposure * w0 / agent.reference_price))
         return w0 - n0 * agent.reference_price, n0
-    if hasattr(agent, "starting_shares"):  # the impact probe (spec v1.3 §6.2)
+    if hasattr(agent, "starting_shares"):  # the impact probe (spec v1.3 §6.2), retail traders (v1.5)
         return w0, int(agent.starting_shares)
     return w0, 0
 
@@ -618,7 +629,8 @@ def population(agents, history, close: float, ticker: str = "ABM") -> List[Dict]
             continue
         starts = [_start_position(a) for a in members]
         final_value = sum(a.holdings.get("CASH", 0) + a.holdings.get(ticker, 0) * close_c for a in members)
-        start_wealth = sum(a.starting_cash for a in members)
+        # retail traders start with shares beside their cash (start_value = cash + shares at r_bar)
+        start_wealth = sum(getattr(a, "start_value", a.starting_cash) for a in members)
         hold_value = sum(c + n * close_c for c, n in starts)
         cash_each = [c / 100.0 for c, _ in starts]
         rows.append({
@@ -636,6 +648,44 @@ def population(agents, history, close: float, ticker: str = "ABM") -> List[Dict]
             "pnl_vs_hold_total": round((final_value - hold_value) / 100.0, 2),
         })
     return rows
+
+
+# ── living market (spec v1.5 A9.3) ────────────────────────────────────────
+
+
+def day_info_block(day_info: Optional[Dict], clock: _Clock) -> Optional[Dict]:
+    """Day type and stress episodes in seconds since the open, clipped to the session;
+    None for the v1.4 value process. Episodes wholly outside the session are dropped."""
+    if not day_info:
+        return None
+    eps = []
+    for a_ns, b_ns in day_info.get("stress_episodes", []):
+        a, b = max(0.0, clock.s(a_ns)), min(clock.duration, clock.s(b_ns))
+        if b > a:
+            eps.append((_t(a), _t(b)))
+    return {"day_type": day_info["day_type"], "stress_episodes": eps}
+
+
+def market_params(agents) -> Dict:
+    """The fixed parameters of the retail crowd and of our market makers (keys as in
+    web/src/config/agentParams.ts RETAIL_PARAMS / LP_PARAMS); None when absent."""
+    crowd = next((a for a in agents if type(a).__name__ == "RetailCrowdAgent"), None)
+    traders = [a for a in agents if type(a).__name__ == "RetailTraderAgent"]
+    lps = [a for a in agents if type(a).__name__ == "LiquidityProviderAgent"]
+    retail = None
+    if crowd is not None and traders:
+        p_liq, p_trend, p_con = RETAIL["p_kinds"]
+        retail = {"n": len(traders), "mu_per_agent": crowd.mu_per_s * SESSION_S / len(crowd.trader_ids),
+                  "kappa_v": crowd.kappa_v, "kappa_n": crowd.kappa_n, "cap": crowd.cap,
+                  "p_liquidity": p_liq, "p_trend": p_trend, "p_contrarian": p_con,
+                  "p_stop": traders[0].p_stop, "size_median": traders[0].size_median,
+                  "wealth": RETAIL["wealth_c"] / 100.0}
+    lp = None
+    if lps:
+        lp = {"n": len(lps), "wealth": lps[0].starting_cash / 100.0, "dt_s": lps[0].dt_s, "c_h": LP["c_h"],
+              "levels": LP["levels"], "theta_lp": LP["theta_lp"], "l_max": lps[0].l_max, "psi": LP["psi"]}
+    return {"retail": None if retail is None else {k: round(float(v), 6) for k, v in retail.items()},
+            "lp": None if lp is None else {k: round(float(v), 6) for k, v in lp.items()}}
 
 
 # ── entry point ───────────────────────────────────────────────────────────
@@ -712,15 +762,17 @@ def build_payload(
                    f"Detailed series are stored for {len(detail_ids)} of {len(fund_ids)} fundamentalists "
                    f"(evenly spaced ids); every agent is in the leaderboard and the population table.")
     mom = [_momentum(agents[i], clock, ticker, candles, close) for i in config.get("_mom_ekf_agent_ids", [])]
+    # ── realism (spec v1.3 §9.1): the lab's metrics on this single run ────
+    r_series = realism.series_from_end_state(end_state, config, ticker)
+    day_info = r_series.get("day_info")
+    info_news = [(clock.s(item[0]), item[2]) for item in (day_info or {}).get("news", [])]
+
     news_agent = agents[config["_news_oracle_id"]] if "_news_oracle_id" in config else None
-    news = _news(news_agent, clock, q_t, q_mid, fund, mom, None)
+    news = _news(news_agent, clock, q_t, q_mid, fund, mom, None, info_news)
     for a in mom:
         del a["_kf_full"]
 
     stats_rounded = _round_tree(stats)
-
-    # ── realism (spec v1.3 §9.1): the lab's metrics on this single run ────
-    r_series = realism.series_from_end_state(end_state, config, ticker)
     r_metrics = realism.run_metrics(r_series)
     realism_block = {
         "bands": realism.BANDS,
@@ -748,6 +800,8 @@ def build_payload(
         "agents_detail_note": detail_note,
         "realism": realism_block,
         "oracle_events": _round_tree(r_series["oracle_events"]),
+        "day_info": day_info_block(day_info, clock),
+        "market_params": market_params(agents),
     }
     SimPayload.model_validate(payload)
     return payload

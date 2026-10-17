@@ -11,7 +11,7 @@
 export type Seconds = number;
 
 /** Payload schema this dashboard renders (api/__init__.py SCHEMA_VERSION). */
-export const SCHEMA_VERSION = '1.3';
+export const SCHEMA_VERSION = '1.4';
 
 export type EndTime = '10:00:00' | '11:00:00' | '12:00:00' | '14:00:00' | '16:00:00';
 
@@ -34,11 +34,33 @@ export interface RunParams {
   // no value agents; "price_only" + num_value 97 + num_fund 20 is the v1.3 market
   fund_mode?: 'informed' | 'price_only';
   budget?: boolean | null; // gross budget on stock agents; null = auto (on for informed)
+  // spec v1.5 A9.3 (schema 1.4): the living market. Defaults = the R4a design R-25M15003:
+  // living_v1 value (auto day type, auto news), 1,500 retail traders, 2 LPs of $5M.
+  day_type?: DayTypeChoice;
+  auto_news?: boolean; // publish a headline at each information jump of the value
+  num_retail?: number; // retail traders (0–5000); default 1500
+  mm_kind?: 'lp' | 'abides'; // "lp" = our market makers (2 of $5M); "abides" = v1.4 ABIDES MMs (num_mm)
+  value_process?: 'living_v1' | 'synthetic_ou'; // synthetic_ou = the v1.4 value process
+  informed_budget_v2?: boolean; // spec v1.5 A6.1 (K16 fix); false = the v1.4 check
   news: NewsInput[];
 }
 
+export type DayTypeChoice = 'auto' | 'calm' | 'normal' | 'volatile';
+
+/** spec v1.5 A3: the day drawn by the living_v1 value process (null for synthetic_ou). */
+export interface DayInfo {
+  day_type: 'calm' | 'normal' | 'volatile';
+  stress_episodes: [Seconds, Seconds][]; // start, end (clipped to the session)
+}
+
+/** spec v1.5 A9.3: fixed parameters of the retail crowd and of our market makers in this run. */
+export interface MarketParams {
+  retail: Record<string, number> | null;
+  lp: Record<string, number> | null;
+}
+
 export interface SimPayload {
-  schema_version: '1.3';
+  schema_version: '1.4';
   meta: {
     run_id: string;
     params: RunParams;
@@ -65,6 +87,9 @@ export interface SimPayload {
   realism: Realism;
   /** spec v1.3 §6.1: scripted true-value events as applied (empty in dashboard runs). */
   oracle_events: OracleEvent[];
+  /** spec v1.5 A9.3 (schema 1.4): day type and stress episodes; null for the v1.4 value process. */
+  day_info: DayInfo | null;
+  market_params: MarketParams;
 }
 
 // ── realism (schema 1.2, spec v1.3 Part 9) ─────────────────────────────────
@@ -145,6 +170,8 @@ export interface LabSummary {
   baseline_label?: string;
   /** spec v1.4 Part 2: the R3 scorecard of the final market (20 seeds). */
   r3?: { targets: Record<string, R3Item>; limits: Record<string, R3Item>; config: string; seeds: number; engine: string[]; date: string[] };
+  /** spec v1.5 A8 (docs/v1.5/lab/summary.json): the R4a scorecard of the default market (same shape as r3). */
+  r4a?: { targets: Record<string, R3Item>; limits: Record<string, R3Item>; config: string; seeds: number; engine: string[]; date: string[] };
   configs: Record<string, { label: string; n_runs: number; engine_versions: string[]; dates: string[]; scorecard: Record<string, LabGrade> }>;
   impact: null | {
     G12: { value: number | null; ci: [number, number] | null; grade: Grade | 'N/A' | null };
@@ -232,6 +259,8 @@ export interface NewsRecord {
   t: Seconds;
   headline: string;
   sentiment: number;
+  /** schema 1.4: "information" = published with a jump of the true value (auto news); "hype" = injected, no value change. */
+  kind: 'information' | 'hype';
   price_before: number | null;
   price_after: { '1m': number | null; '5m': number | null; '30m': number | null };
   reactions: NewsReaction[];

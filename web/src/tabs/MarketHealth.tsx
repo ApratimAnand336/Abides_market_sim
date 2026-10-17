@@ -10,6 +10,7 @@ import { Card, LegendItem, SectionHeader } from '../components/ui/Card';
 import { KpiCard } from '../components/ui/KpiCard';
 import { Toggle } from '../components/ui/controls';
 import { PopulationCard } from '../components/health/PopulationCard';
+import { MarketParamsCard } from '../components/health/MarketParamsCard';
 import { PriceVsValue } from '../components/health/PriceVsValue';
 import { cn } from '../lib/cn';
 
@@ -205,6 +206,7 @@ export function MarketHealth({ payload }: { payload: SimPayload }) {
   return (
     <div className="flex flex-col gap-6">
       <PopulationCard rows={payload.population} />
+      <MarketParamsCard params={payload.market_params} />
       <PriceVsValue payload={payload} />
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

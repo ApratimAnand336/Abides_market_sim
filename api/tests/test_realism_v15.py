@@ -263,3 +263,45 @@ def test_a8_confirmation_matrix():
         if c not in days and c != "N-C":
             assert lab.CONFIGS[c]["baseline"] == "N-C"
     assert lab.CONFIGS["N-S4"]["news"] == [lab.NEWS_POS]
+
+
+def _kwargs_of(fn, *a):
+    """The build_config kwargs a builder would pass (build_config replaced by a recorder)."""
+    import abides_markets.configs.rmsc04_ekf as M
+
+    real = M.build_config
+    M.build_config = lambda **kw: kw
+    try:
+        return fn(*a)
+    finally:
+        M.build_config = real
+
+
+def test_a9_default_market_is_d_mix():
+    """Spec v1.5 A9.3: RunParams defaults (dashboard, CLI) build exactly the a-confirm D-mix
+    market of the selected design; only the lab's sparse depth logging differs."""
+    from api import jobs, lab
+    from api.schema import RunParams
+
+    for seed in (42, 7):
+        want = _kwargs_of(lab.lab_config, "D-mix", seed)
+        assert want.pop("book_log_depth_interval_s") == lab.LAB_BOOK_LOG_DEPTH_INTERVAL_S
+        got = jobs.run_config_kwargs(RunParams(seed=seed, end_time="16:00:00"))
+        assert got == want
+
+
+def test_a9_lab_configs_unchanged_by_the_switch():
+    """Spec v1.5 A9.3: the lab pins the v1.4 market in its base, so no registered config's
+    build_config kwargs gain a living-market switch it did not set in "extra"."""
+    import inspect
+
+    import abides_markets.configs.rmsc04_ekf as M
+    from api import lab
+
+    dflt = {k: v.default for k, v in inspect.signature(M.build_config).parameters.items()}
+    switches = ("informed_budget_v2", "value_process", "num_retail", "retail_kappa_v", "mm_kind", "num_lp",
+                "lp_wealth")
+    for cid, d in lab.CONFIGS.items():
+        kw = {**dflt, **_kwargs_of(lab.lab_config, cid, 42)}
+        for k in switches:
+            assert kw[k] == d.get("extra", {}).get(k, dflt[k]), (cid, k)

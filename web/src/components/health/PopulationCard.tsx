@@ -14,6 +14,8 @@ const CLASS_COLORS: Record<string, string> = {
   MomentumAgent: C.level,
   FundamentalistAgent: C.pink,
   MomentumEKFAgent: C.mid,
+  RetailTraderAgent: C.warn,
+  LiquidityProviderAgent: C.spread,
 };
 const colorOf = (r: PopulationRow) => CLASS_COLORS[r.class_name] ?? C.muted;
 

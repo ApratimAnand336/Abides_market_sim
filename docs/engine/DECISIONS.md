@@ -500,3 +500,38 @@ Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt), approved by the owne
 - **A note in HANDOFF said 3/12; it is superseded.** The campaign process loaded `lab_v15.py` (22:58) before the a-confirm report hook existed (added at 23:01), so no report was written when the campaign ended. The 3/12 came from an earlier manual run of the report script on partial data. The final numbers come from `--report-only` on all 240 runs. VR(5) on N-C was recomputed independently from metrics.json (median 1.218).
 - **Deviation from A8.4 (owner's instruction):** A8.4 says STOP after A9.2 with a report. The owner said on 2026-10-16 to "do A9 also". A9 (the default switch) is therefore carried out after this commit. Part B does not start until the owner has read RESULTS_A.md.
 - **Report header** now names the runs' engine label (read from metrics.json) separately from the label of the process that wrote the report. Report-only runs on a dirty tree no longer appear as a "+dirty" campaign.
+
+### 2026-10-17 (A9) Default switch to R-25M15003 (A9.3), carried out on the owner's instruction although A8.4 failed
+- **Why now:** A8.4 says STOP after A9.2. The owner asked on 2026-10-16 for A9 as well (DECISIONS A8). Part B waits for the owner.
+- **RunParams (schema 1.4, engine 1.5):** num_noise 0, day_type "auto", auto_news True, num_retail 1500, mm_kind "lp", as A9.3 lists.
+  - **Deviation:** two further fields, `value_process` ("living_v1") and `informed_budget_v2` (True). A9.3 does not list them. Without them RunParams cannot express the v1.4 market, which I8-legacy-v14 and the v1.4 regression need. Both default to the new market.
+  - The design's fixed dials κ_v 3, n_lp 2, W $5M are constants in `api.jobs` (DEFAULT_RETAIL_KAPPA_V, DEFAULT_NUM_LP, DEFAULT_LP_WEALTH), not RunParams fields. A9.3 does not ask for them in the dashboard.
+  - build_config keyword defaults stay the v1.4 market (inert).
+- **Lab unchanged:** `lab.run_params` pins the v1.4 values in its base. `lab.lab_config` drops the three design-dial kwargs (`DESIGN_DIAL_KWARGS`) before applying a config's "extra". Checked for all 496 registered configs: no living-market switch differs from the config's own "extra" or the build_config default (test `test_a9_lab_configs_unchanged_by_the_switch`). Config hashes change because RunParams gained fields; old runs are redone anyway when the engine label changes.
+- **Default = D-mix:** `run_config_kwargs(RunParams(seed, 16:00))` equals `lab_config("D-mix", seed)` except the lab's 1-s depth logging (test `test_a9_default_market_is_d_mix`, seeds 42 and 7).
+- **I8 re-recorded** (A9.3 says so) on INVARIANT_PARAMS = the v1.5 default with 30 informed, seed 42, 09:30–10:30, PYTHONHASHSEED 0. Result: 5,053 executions, execs 2d71911b…, holdings b6cf93c5…, identical with PYTHONHASHSEED 1.
+  - **I8-legacy-v14** = the N6 I8 constants on V14_PARAMS (the v1.4 switches pinned through RunParams); passes unchanged.
+  - LEGACY_PARAMS (v1.3) carries the same pins; I8-legacy passes unchanged.
+- **Regression re-baselined** (A9.3): `--campaign regression` = D-mix, N-C, N-S2, N-IMP-1 × seeds 42, 7, 1 vs `docs/v1.5/lab` (hash D-mix/42 from the a-confirm run). The P0 set is kept as `--campaign regression-v14`. Regime contrast is not compared on N-S2, for the reason recorded in N6 for P0-S2. First run with the A9 code: PASSED, 53 checks, hash equal.
+- **Payload:**
+  - `day_info` = the oracle's day type and stress episodes, in s since the open, clipped to the session.
+  - `NewsRecord.kind` = "information" when a broadcast matches a living_v1 information jump (same headline, within 1 s), otherwise "hype".
+  - `market_params` = retail and LP constants as built (keys of `agentParams.ts`).
+  - Population rows "Retail (types)" and "Market maker (ours)"; RetailCrowdAgent is excluded (a scheduler with no cash or orders).
+  - **Fix found on the way:** retail traders start with shares and `starting_cash` = cash only, so the population table showed 0 starting shares and a P&L too high by the stock value. RetailTraderAgent now records `starting_shares` and `start_value` (attributes only, no draw; I8 unaffected). The table uses them.
+  - Full default day, seed 42: payload 5.14 MB (≤ 9 MB).
+- **Dashboard (web/):** day type selector, auto-news toggle, retail slider, MM kind; stress shading and information (solid) / hype (dashed) news markers on the price chart; news Kind column; retail and LP parameter cards; Realism tab shows the r4a scorecard. The server reads `docs/v1.5/lab/summary.json`.
+- **Engine defect found by the re-recorded I8 tests: the impact probe was not neutral on the R4 market (T-L6, T-L7 failed).**
+  - Cause: in `build_config` the probe took the id before the v1.5 retail and LP agents (added in A4/A5 after the probe block). With a probe, every retail trader and LP moved up one id and took its neighbour's latency coordinate, and the crowd's trader list shifted. So an N-IMP run was a different market from its N-C baseline, not N-C plus a probe.
+  - The v1.4 markets (no v1.5 agents) were not affected. T-L6/T-L7 passed until A9 because they ran on P0.
+  - Fix: the probe is built after the v1.5 agents, with the last id and the last latency coordinate. Runs without a probe are bit-identical (no draw moves; I8, I8-legacy-v14, I8-legacy pass). v1.4 probe runs keep the same probe id.
+  - **Consequence for A8:** the 120 N-IMP-* runs of a-confirm (impact table, β, recovery, absorption, E-A7, G12/G13 in RESULTS_A.md) were confounded. They are re-run on the fixed engine together with their N-C baseline. The old N-C fingerprints are saved to verify that N-C is bit-identical, and RESULTS_A.md is regenerated. The pre-fix numbers are kept in the report for the record.
+  - A8's targets and limits do not use the impact runs; the A8.4 verdict does not depend on them.
+- **Tests moved to the v1.4 market** (they test agents that only it contains; all run there unchanged):
+  - T-M6/T-M7 = I6/I7 (ABIDES MMs);
+  - T-N13 = I9 (budgeted Noise agents);
+  - the K16 "default off" check;
+  - T-L8 (ABIDES MM pause).
+- **Tests that also run on the new default:** T-L4 is parametrised over both markets; on living_v1 the jump keeps the path to 10:00, adds exactly 2% and leaves every agent unchanged.
+- **Guard added:** `_check_liveness` now requires 2 MMs; on the new default T-M7 would otherwise pass with no MMs at all.
+- **New tests:** `test_liveness_default_lps` (I7 for our LPs on the new default: wake every 5 s, quotes in every 10-min window), `test_a9_living_market_fields`, `test_a9_day_info_block_clips_to_session`, `test_a9_default_market_is_d_mix`, `test_a9_lab_configs_unchanged_by_the_switch`, `test_i8_legacy_v14_market_unchanged`.

@@ -34,6 +34,12 @@ RUNS_DIR = REPO_ROOT / "runs"
 MAX_QUEUED = 3
 TIMEOUT_S = 15 * 60
 TICKER = "ABM"
+# spec v1.5 A9.3: fixed dials of the selected R4a design R-25M15003 (A7; api.lab.SELECTED)
+DEFAULT_RETAIL_KAPPA_V = 3.0
+DEFAULT_NUM_LP = 2
+DEFAULT_LP_WEALTH = 500_000_000  # cents ($5M)
+# the build_config kwargs set from these constants (not from RunParams); the lab drops them
+DESIGN_DIAL_KWARGS = ("retail_kappa_v", "num_lp", "lp_wealth")
 
 
 # ── identity and cache ────────────────────────────────────────────────────
@@ -130,6 +136,16 @@ def run_config_kwargs(params: RunParams) -> Dict:
         informed_design=dict(DEFAULT_INFORMED_DESIGN) if params.fund_mode == "informed" else None,
         abides_budget=({"L": 2.0} if (params.budget if params.budget is not None else params.fund_mode == "informed")
                        else None),
+        # spec v1.5 A9.3: the living market (build_config defaults stay the v1.4 market)
+        informed_budget_v2=params.informed_budget_v2,
+        value_process=params.value_process,
+        day_type=params.day_type,
+        auto_news=params.auto_news,
+        num_retail=params.num_retail,
+        retail_kappa_v=DEFAULT_RETAIL_KAPPA_V,
+        mm_kind=params.mm_kind,
+        num_lp=DEFAULT_NUM_LP,
+        lp_wealth=DEFAULT_LP_WEALTH,
     )
 
 

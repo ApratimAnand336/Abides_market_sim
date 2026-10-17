@@ -1,8 +1,8 @@
 """FinVerse dashboard backend: simulation runner, payload export and HTTP API."""
 
-SCHEMA_VERSION = "1.3"  # v1.4: fundamental mode/detail/research, agents_detail_note, informed ranges
+SCHEMA_VERSION = "1.4"  # v1.5 A9.3: living-market RunParams, NewsRecord.kind, day_info, market_params
 
 # Engine (agent model) version, part of the run cache key via
 # jobs.engine_version(). Bump it whenever agent behaviour changes so cached
 # runs from older engines are never reused.
-ENGINE_VERSION = "1.4"
+ENGINE_VERSION = "1.5"

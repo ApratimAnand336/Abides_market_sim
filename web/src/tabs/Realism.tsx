@@ -81,7 +81,23 @@ export function Realism({ payload }: { payload: SimPayload }) {
   return (
     <div className="space-y-6">
       <ThisRun bands={runBands} metrics={metrics} grades={grades} duration={payload.meta.session.duration_s} />
-      {lab.data?.r3 && <R3Targets summary={lab.data} metrics={metrics} />}
+      {lab.data?.r4a ? (
+        <R3Targets
+          block={lab.data.r4a}
+          metrics={metrics}
+          title="R4a targets (default market, lab)"
+          note="Spec v1.5 A8. The lab value is the 20-seed median of normal days (N-C); A-T9 uses the ±2% value-jump runs, A-T3, A-T11 and L1 also the default day mix (D-mix). Reported as measured: a FAIL is a finding of the lab, not of this run."
+        />
+      ) : (
+        lab.data?.r3 && (
+          <R3Targets
+            block={lab.data.r3}
+            metrics={metrics}
+            title="R3 targets (final market, lab)"
+            note="Spec v1.4 Part 2 with the corrected units of v1.4.1. The lab value is the 20-seed median; T5 and T6 use the ±2% value-jump runs. T3 and T6 are open issues carried into R4 (K14, K15)."
+          />
+        )
+      )}
       {lab.data && <LabBaseline bands={bands} summary={lab.data} />}
       <Diagnostics metrics={metrics} />
     </div>
@@ -172,12 +188,18 @@ const R3_RUN_KEYS: Record<string, string> = {
   spread_p95_bps: 'spread_p95_bps',
   shares_executed: 'shares_executed',
   max_abs_gap: 'max_abs_gap',
+  // spec v1.5 A8 (R4a)
+  sigma_1m_bps: 'sigma_1m_bps',
+  cs: 'cs',
+  ps: 'ps',
+  kurt: 'kurt',
+  u_ratio: 'u_ratio',
+  retail_share: 'retail_share',
 };
 
 /** spec v1.4 §6.4: the R3 targets and limits of the final market (lab, 20 seeds),
  *  with this run's value where a single run defines it. Words, not colour alone. */
-function R3Targets({ summary, metrics }: { summary: LabSummary; metrics: Metrics }) {
-  const r3 = summary.r3!;
+function R3Targets({ block: r3, metrics, title, note }: { block: NonNullable<LabSummary['r3']>; metrics: Metrics; title: string; note: string }) {
   const items: R3Item[] = [...Object.values(r3.targets), ...Object.values(r3.limits)];
   const thisRun = (it: R3Item): string => {
     const cs = it.checks.filter((c) => c.scope === 'C' && R3_RUN_KEYS[c.key]);
@@ -193,13 +215,10 @@ function R3Targets({ summary, metrics }: { summary: LabSummary; metrics: Metrics
     <Card>
       <SectionHeader
         icon={Target}
-        title="R3 targets (final market, lab)"
+        title={title}
         caption={`${r3.config} · ${r3.seeds} seeds · ${r3.date.join(', ')} · ${r3.engine.join(', ')}`}
       />
-      <p className="mb-4 text-[13px] text-muted">
-        Spec v1.4 Part 2 with the corrected units of v1.4.1. The lab value is the 20-seed median; T5 and T6 use the ±2% value-jump runs. T3 and
-        T6 are open issues carried into R4 (K14, K15).
-      </p>
+      <p className="mb-4 text-[13px] text-muted">{note}</p>
       <div className="overflow-x-auto">
         <table className="w-full text-[13px]">
           <thead>

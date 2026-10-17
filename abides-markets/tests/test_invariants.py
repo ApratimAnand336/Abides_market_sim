@@ -12,7 +12,7 @@ I4 long-only safety       our price-only / momentum agents never hold < 0 shares
 I5 book sanity            bid < ask in every two-sided L1 snapshot; every fill price > 0
 I6 no value agents        = T-M6 (test_market_maker.py)
 I7 market-maker liveness  = T-M7 (test_market_maker.py)
-I8 no drift               (spec v1.3 Part 2; re-recorded in v1.4 N6) the invariant market (new default P0, 30 informed) is unchanged; I8-legacy: the v1.3 test market reproduces v1.2 (aa5f606)
+I8 no drift               (spec v1.3 Part 2; re-recorded in v1.4 N6 and v1.5 A9) the invariant market (v1.5 default, 30 informed) is unchanged; I8-legacy-v14: the v1.4 market (P0, 30 informed); I8-legacy: the v1.3 test market reproduces v1.2 (aa5f606)
                           bit for bit
 I9 budget respected       (spec v1.4 §10.4) = T-N13 (test_budget.py): with
                           abides_budget {"L": 2}, every Noise/Value/ABIDES
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from .sim_helpers import INVARIANT_PARAMS, LEGACY_PARAMS, history, params
+from .sim_helpers import INVARIANT_PARAMS, LEGACY_PARAMS, V14_PARAMS, history, params
 from .test_market_maker import (  # noqa: F401  (collected here as I6 / I7)
     default_market,
     empty_book_market,
@@ -97,14 +97,21 @@ I8_LEGACY_EXPECTED = {
     "holdings": "34ec92b2a3763b3b1f32d455a042f2865e0b2f20a98fcdad7b2ceae9605032db",
     "n_execs": 2448,
 }
-# I8: re-recorded in N6 (spec v1.4 §10.4, DECISIONS.md 2026-10-14) on the new
-# invariant market (INVARIANT_PARAMS: the v1.4 default market P0 with 30
-# informed fundamentalists, seed 42, 09:30-10:30) with PYTHONHASHSEED=0.
-# Re-record only when an approved spec changes behaviour and says so.
-I8_EXPECTED = {
+# I8-legacy-v14: the I8 hash recorded in N6 (spec v1.4 §10.4, DECISIONS.md 2026-10-14) on
+# the v1.4 invariant market (V14_PARAMS: P0 with 30 informed fundamentalists, seed 42,
+# 09:30-10:30, PYTHONHASHSEED=0). Kept in v1.5 A9.3: the v1.4 market stays reproducible.
+I8_LEGACY_V14_EXPECTED = {
     "execs": "bf455dc70f7c4746e52456d8df86972546f20f805e5dcf035d318fffe1751579",
     "holdings": "39be7b70119451afa9b80642c89cc6480682d9504ca2650f675ca1e2ef360b90",
     "n_execs": 1925,
+}
+# I8: re-recorded in A9 (spec v1.5 A9.3, DECISIONS.md A9) on the new invariant market
+# (INVARIANT_PARAMS: the v1.5 default market with 30 informed fundamentalists, seed 42,
+# 09:30-10:30) with PYTHONHASHSEED=0. Re-record only when an approved spec says so.
+I8_EXPECTED = {
+    "execs": "2d71911b7b3524c4b37d5e66cc44a1516401ab2e68291dc6bfaa9182d11a6bf3",
+    "holdings": "b6cf93c5b05180311eac084979da965a401d1bd7e23bc9cd64f1e5e91edf2bba",
+    "n_execs": 5053,
 }
 
 
@@ -112,6 +119,11 @@ def test_i8_no_drift(tmp_path):
     """With every new parameter at its default the market is bit-identical to
     v1.2: same sha256 of every EXEC and of every agent's final holdings."""
     assert _fingerprint(tmp_path, "0") == I8_EXPECTED
+
+
+def test_i8_legacy_v14_market_unchanged(tmp_path):
+    """spec v1.5 A9.3: the v1.4 parameters (V14_PARAMS) reproduce the v1.4 I8 hash exactly."""
+    assert _fingerprint(tmp_path, "0", V14_PARAMS) == I8_LEGACY_V14_EXPECTED
 
 
 def test_i8_legacy_v13_market_unchanged(tmp_path):

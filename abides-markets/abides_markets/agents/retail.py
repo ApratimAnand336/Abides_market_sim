@@ -269,6 +269,9 @@ class RetailTraderAgent(TradingAgent):
         super().__init__(id, name, type, random_state, starting_cash=wealth - shares * int(r_bar), log_orders=False)
         self.symbol = symbol
         self.crowd_id = int(crowd_id)
+        self.p_stop = float(p_stop)  # kept for the payload's parameter card (no draw)
+        self.starting_shares = shares  # endowment, for the payload's population table
+        self.start_value = wealth  # cents: cash + shares at r_bar
         self.holdings[symbol] = shares
         # construction draws, fixed order: type, stop user, stop distance
         u_kind = self.random_state.random_sample()

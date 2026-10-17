@@ -548,35 +548,6 @@ def build_config(
     agent_count += 1
     agent_types.extend(["NewsOracleAgent"])
 
-    # ── 8. Impact probe (spec v1.3 §6.2; realism lab only) ────────────────
-    #    The LAST agent, appended before the kernel RNG and the latency model
-    #    are drawn. Its RandomState is a constant, NOT drawn from the global
-    #    stream, and the latency model places one more coordinate after all
-    #    existing agents' ones, so every other agent is unchanged.
-    probe_id = None
-    if probe is not None:
-        probe_id = agent_count
-        side = str(probe["side"]).upper()
-        qty = int(probe["quantity"])
-        agents.append(
-            ImpactProbeAgent(
-                id=probe_id,
-                name="IMPACT_PROBE",
-                type="ImpactProbeAgent",
-                symbol=ticker,
-                side=side,
-                quantity=qty,
-                start_time=MKT_OPEN + str_to_ns(probe["start"]),
-                duration_s=int(probe.get("duration_s", 300)),
-                child_interval_s=int(probe.get("child_interval_s", 10)),
-                starting_cash=10**12 if side == "BUY" else 0,
-                starting_shares=qty if side == "SELL" else 0,
-                random_state=np.random.RandomState(0),
-            )
-        )
-        agent_count += 1
-        agent_types.extend(["ImpactProbeAgent"])
-
     # ── spec v1.4 Part 5: budget limits (set after construction, no RNG) ──
     if abides_budget is not None:
         for a in agents:
@@ -591,7 +562,8 @@ def build_config(
     # coordinates and RNG draws), so the existing agents are unchanged by them
     n_lp = num_lp if mm_kind == "lp" else 0
     n_v15 = ((num_retail + 1) if num_retail else 0) + n_lp
-    latency_model = generate_latency_model(agent_count + n_v15)
+    # the impact probe (if any) is the last agent, after the v1.5 agents (fixed in v1.5 A9)
+    latency_model = generate_latency_model(agent_count + n_v15 + (1 if probe is not None else 0))
     retail_crowd_id, retail_ids, lp_ids = None, [], []
     rs_v15 = None
     if n_v15:
@@ -633,6 +605,36 @@ def build_config(
             )
             agent_types.append("LiquidityProviderAgent")
             agent_count += 1
+    # ── 8. Impact probe (spec v1.3 §6.2; realism lab only) ────────────────
+    #    The LAST agent (after the v1.5 retail and LP agents; v1.5 A9 fix: until A9 it
+    #    came before them and shifted their ids and latency coordinates). Its
+    #    RandomState is a constant, NOT drawn from the global stream, and the latency
+    #    model places one more coordinate after all other agents' ones, so every other
+    #    agent is unchanged. Without v1.5 agents its id is the same as before.
+    probe_id = None
+    if probe is not None:
+        probe_id = agent_count
+        side = str(probe["side"]).upper()
+        qty = int(probe["quantity"])
+        agents.append(
+            ImpactProbeAgent(
+                id=probe_id,
+                name="IMPACT_PROBE",
+                type="ImpactProbeAgent",
+                symbol=ticker,
+                side=side,
+                quantity=qty,
+                start_time=MKT_OPEN + str_to_ns(probe["start"]),
+                duration_s=int(probe.get("duration_s", 300)),
+                child_interval_s=int(probe.get("child_interval_s", 10)),
+                starting_cash=10**12 if side == "BUY" else 0,
+                starting_shares=qty if side == "SELL" else 0,
+                random_state=np.random.RandomState(0),
+            )
+        )
+        agent_count += 1
+        agent_types.extend(["ImpactProbeAgent"])
+
     default_computation_delay = 50
 
     kernelStartTime = DATE

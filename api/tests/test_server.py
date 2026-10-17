@@ -72,13 +72,16 @@ def test_runs_listing_shape(client):
 
 def test_population_defaults_and_bounds():
     """T-A4: defaults reproduce the standard market; bounds are inclusive.
-    spec v1.4 §6.2 (N6): the standard market is P0 (60 informed, 0 value agents)."""
+    spec v1.4 §6.2 (N6): 60 informed, 0 value agents; spec v1.5 A9.3: the living market
+    (no noise agents, 1,500 retail, our LPs, living_v1, auto day type and news, budget v2)."""
     from api.schema import RunParams
 
     d = RunParams(seed=1, end_time="10:00:00")
     assert (d.num_fund, d.num_mom, d.fund_mode, d.budget) == (60, 12, "informed", None)
     p = RunParams(seed=1, end_time="10:00:00", num_fund=5, num_mom=5)
-    assert (p.num_value, p.num_noise, p.num_mm) == (0, 1000, 2)
+    assert (p.num_value, p.num_noise, p.num_mm) == (0, 0, 2)
+    assert (d.num_retail, d.mm_kind, d.day_type, d.auto_news, d.value_process, d.informed_budget_v2) == (
+        1500, "lp", "auto", True, "living_v1", True)
     for kw in ({"num_value": 0}, {"num_value": 150}, {"num_noise": 0}, {"num_noise": 2000}, {"num_mm": 0},
                {"num_fund": 0}, {"num_fund": 200}, {"fund_mode": "price_only"}, {"budget": False}):
         RunParams(**{"seed": 1, "end_time": "10:00:00", "num_fund": 5, "num_mom": 5, **kw})

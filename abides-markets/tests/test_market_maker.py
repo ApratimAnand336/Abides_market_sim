@@ -1,11 +1,13 @@
 """Market-maker cold start and liveness (FinVerse spec v1.2, Part 4): T-M6, T-M7.
 
-Both tests are also invariants I6 and I7 (test_invariants.py imports them)."""
+Both tests are also invariants I6 and I7 (test_invariants.py imports them).
+Spec v1.5 A9.3: the ABIDES market makers are in the v1.4 market only, so T-M6/T-M7
+run on it (v14_params); the new default market's LPs have their own liveness check."""
 
 import numpy as np
 import pytest
 
-from .sim_helpers import history, market_makers, params, run
+from .sim_helpers import history, market_makers, params, run, v14_params
 
 HOUR_NS = 3600 * 10**9
 WINDOW_NS = 600 * 10**9
@@ -13,7 +15,7 @@ WINDOW_NS = 600 * 10**9
 
 @pytest.fixture(scope="module")
 def no_value_market(tmp_path_factory):
-    return run(params(num_value=0), tmp_path_factory.mktemp("logs"), count_mm_wakes=True)
+    return run(v14_params(num_value=0), tmp_path_factory.mktemp("logs"), count_mm_wakes=True)
 
 
 @pytest.fixture(scope="module")
@@ -22,12 +24,18 @@ def empty_book_market(tmp_path_factory):
     # informed fundamentalists quote into an empty book at their first wake.
     # T-M6 tests the MARKET MAKERS' cold start, so nobody else may start the
     # book: no value agents and no fundamentalists (DECISIONS.md, N6).
-    return run(params(num_value=0, num_fund=0), tmp_path_factory.mktemp("logs"), count_mm_wakes=True)
+    return run(v14_params(num_value=0, num_fund=0), tmp_path_factory.mktemp("logs"), count_mm_wakes=True)
 
 
 @pytest.fixture(scope="module")
 def default_market(tmp_path_factory):
-    return run(params(), tmp_path_factory.mktemp("logs"), count_mm_wakes=True)
+    return run(v14_params(), tmp_path_factory.mktemp("logs"), count_mm_wakes=True)
+
+
+@pytest.fixture(scope="module")
+def living_market(tmp_path_factory):
+    """The v1.5 default market (30 informed, 1 hour)."""
+    return run(params(), tmp_path_factory.mktemp("logs"))
 
 
 def test_empty_book_cold_start(empty_book_market):
@@ -59,6 +67,7 @@ def test_empty_book_cold_start(empty_book_market):
 def _check_liveness(market):
     config, end_state, wakes = market
     open_ns, close_ns = config["_mkt_open_ns"], config["_mkt_close_ns"]
+    assert len(market_makers(end_state)) == 2  # never vacuous
     for mm in market_makers(end_state):
         t = np.array([x for x in wakes[mm.id] if open_ns <= x <= close_ns])
         mean_wake = float(mm.wake_up_freq)
@@ -86,3 +95,21 @@ def test_spread_cap_does_not_bind_in_default_market(default_market):
     _, end_state, _ = default_market
     for mm in market_makers(end_state):
         assert mm.spread_cap_hits == 0
+
+
+def test_liveness_default_lps(living_market):
+    """Spec v1.5 A9.3 (I7 on the new default market): each of our 2 market makers wakes
+    every dt_s = 5 s (>= 90% of duration / dt_s) and has quotes in every 10-minute window;
+    the market starts from an empty book and trades."""
+    config, end_state, _ = living_market
+    h = history(end_state)
+    assert sum(1 for x in h if x["type"] == "EXEC") > 0
+    open_ns, close_ns = config["_mkt_open_ns"], config["_mkt_close_ns"]
+    lps = [a for a in end_state["agents"] if type(a).__name__ == "LiquidityProviderAgent"]
+    assert len(lps) == 2
+    for lp in lps:
+        assert lp.n_wakes >= 0.9 * (close_ns - open_ns) / 1e9 / lp.dt_s, (lp.name, lp.n_wakes)
+        t = np.array([x["time"] for x in h if x["type"] == "LIMIT" and x["agent_id"] == lp.id])
+        for w in range(int((close_ns - open_ns) // WINDOW_NS)):
+            lo = open_ns + w * WINDOW_NS
+            assert np.any((t >= lo) & (t < lo + WINDOW_NS)), f"{lp.name} silent in window {w}"

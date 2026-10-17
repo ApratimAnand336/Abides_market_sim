@@ -110,9 +110,10 @@ def budget_market(tmp_path_factory):
     from api.jobs import run_config_kwargs
     from abides_markets.configs.rmsc04_ekf import build_config
 
-    from .sim_helpers import params
+    from .sim_helpers import v14_params
 
-    kw = run_config_kwargs(params())
+    # spec v1.5 A9.3: the budgeted ABIDES agents (noise) exist in the v1.4 market only
+    kw = run_config_kwargs(v14_params())
     kw["abides_budget"] = {"L": 2.0}
     config = build_config(**kw)
     seen, bad = _watch(config, 2.0)

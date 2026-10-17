@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, BookOpen, ChevronDown, ChevronRight, Dices, Loader2, Newspaper, Play, Plus, Sliders, Sparkles, Trash2, Users, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { clockHM, fmtElapsed, parseHMS, sessionSeconds } from '../lib/format';
-import type { EndTime, NewsInput, RunListItem } from '../types/payload';
+import type { DayTypeChoice, EndTime, NewsInput, RunListItem } from '../types/payload';
 import type { RunProgress } from '../hooks/useSimulation';
 import { SentimentChip } from './ui/Badge';
-import { Button, NumberInput, SegmentedControl, Select, Slider, TextInput } from './ui/controls';
+import { Button, NumberInput, SegmentedControl, Select, Slider, TextInput, Toggle } from './ui/controls';
 import { cn } from '../lib/cn';
 
 export interface SimForm {
@@ -18,11 +18,25 @@ export interface SimForm {
   num_value: number;
   num_noise: number;
   num_mm: number;
+  // spec v1.5 A9.3: the living market (day type, information news, retail crowd, our market makers)
+  day_type: DayTypeChoice;
+  auto_news: boolean;
+  num_retail: number;
+  mm_kind: 'lp' | 'abides';
   news: NewsInput[];
 }
 
-// spec v1.4 §6.1: the default market has no value agents (informed fundamentalists replace them)
-export const POPULATION_DEFAULTS = { num_value: 0, num_noise: 1000, num_mm: 2 } as const;
+// spec v1.4 §6.1: the default market has no value agents (informed fundamentalists replace them);
+// spec v1.5 A9.3: the retail crowd replaces the noise agents and our LPs the ABIDES market makers
+export const POPULATION_DEFAULTS = { num_value: 0, num_noise: 0, num_mm: 2, num_retail: 1500, mm_kind: 'lp' as 'lp' | 'abides' };
+export const MARKET_DEFAULTS = { day_type: 'auto' as DayTypeChoice, auto_news: true };
+
+const DAY_TYPES: { value: DayTypeChoice; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'calm', label: 'Calm' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'volatile', label: 'Volatile' },
+];
 
 const END_TIMES: { value: EndTime; label: string }[] = [
   { value: '10:00:00', label: '10:00:00 (30 min)' },
@@ -77,7 +91,11 @@ export function Sidebar({
   const [scoreNote, setScoreNote] = useState<string | null>(null);
   const [popOpen, setPopOpen] = useState(false);
   const popChanged =
-    form.num_value !== POPULATION_DEFAULTS.num_value || form.num_noise !== POPULATION_DEFAULTS.num_noise || form.num_mm !== POPULATION_DEFAULTS.num_mm;
+    form.num_value !== POPULATION_DEFAULTS.num_value ||
+    form.num_noise !== POPULATION_DEFAULTS.num_noise ||
+    form.num_mm !== POPULATION_DEFAULTS.num_mm ||
+    form.num_retail !== POPULATION_DEFAULTS.num_retail ||
+    form.mm_kind !== POPULATION_DEFAULTS.mm_kind;
 
   const running = !!progress && (progress.status === 'queued' || progress.status === 'running');
   const sessionS = sessionSeconds(form.end_time);
@@ -178,6 +196,14 @@ export function Sidebar({
             />
             {!seedValid && <p className="-mt-2 text-[11px] text-rose-300">Seed must be an integer 0 – 2,147,483,647</p>}
             <Select label="Market Close Time" value={form.end_time} options={END_TIMES} onChange={(v) => setForm({ ...form, end_time: v })} />
+            <div>
+              <div className="mb-1.5 text-[12px] font-medium text-muted">Day type</div>
+              <SegmentedControl label="Day type" size="sm" value={form.day_type} options={DAY_TYPES} onChange={(v) => setForm({ ...form, day_type: v })} />
+              <p className="mt-1 text-[11px] leading-snug text-dim">
+                {form.day_type === 'auto' ? 'Drawn from the seed: 30% calm, 50% normal, 20% volatile' : `Every run is a ${form.day_type} day`}
+              </p>
+            </div>
+            <Toggle checked={form.auto_news} onChange={(v) => setForm({ ...form, auto_news: v })} label="Auto news (a headline at each jump of the true value)" />
             <SegmentedControl
               label="Fundamentalist mode"
               value={form.fund_mode}
@@ -233,15 +259,39 @@ export function Sidebar({
                     help="ABIDES value agents (v1.3 market: 97); default 0"
                   />
                   <Slider
+                    label="Retail traders"
+                    value={form.num_retail}
+                    min={0}
+                    max={5000}
+                    step={100}
+                    onChange={(v) => setForm({ ...form, num_retail: v })}
+                    help="Liquidity, trend and contrarian traders, busier when the market moves; default 1500"
+                  />
+                  <Slider
                     label="Noise agents"
                     value={form.num_noise}
                     min={0}
                     max={2000}
                     step={10}
                     onChange={(v) => setForm({ ...form, num_noise: v })}
-                    help="Trade about once a day at random; default 1000"
+                    help="v1.4 background: trade about once a day at random; default 0"
                   />
-                  <Slider label="Market makers" value={form.num_mm} min={0} max={2} onChange={(v) => setForm({ ...form, num_mm: v })} help="Quote both sides; default 2" />
+                  <div>
+                    <div className="mb-1.5 text-[12px] font-medium text-muted">Market makers</div>
+                    <SegmentedControl
+                      label="Market makers"
+                      size="sm"
+                      value={form.mm_kind}
+                      options={[
+                        { value: 'lp', label: 'Ours (2 × $5M)' },
+                        { value: 'abides', label: 'ABIDES (v1.4)' },
+                      ]}
+                      onChange={(v) => setForm({ ...form, mm_kind: v })}
+                    />
+                  </div>
+                  {form.mm_kind === 'abides' && (
+                    <Slider label="ABIDES market makers" value={form.num_mm} min={0} max={2} onChange={(v) => setForm({ ...form, num_mm: v })} help="Quote both sides; v1.4 default 2" />
+                  )}
                   {popChanged && (
                     <Button variant="ghost" className="self-start text-[11px]" onClick={() => setForm({ ...form, ...POPULATION_DEFAULTS })}>
                       Reset to defaults

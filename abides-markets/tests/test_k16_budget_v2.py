@@ -131,10 +131,12 @@ def test_k16_default_off_and_plumbed():
     from api.jobs import run_config_kwargs
     from abides_markets.configs.rmsc04_ekf import build_config
 
-    from .sim_helpers import params
+    from .sim_helpers import v14_params
     from .test_fundamental_informed import DESIGN
 
-    kw = run_config_kwargs(params(num_value=0, num_mm=0, num_noise=10, num_mom=0))
+    # spec v1.5 A9.3: RunParams now switches v2 on; the build_config default stays off,
+    # checked on the v1.4 market (informed_budget_v2=False through RunParams)
+    kw = run_config_kwargs(v14_params(num_value=0, num_mm=0, num_noise=10, num_mom=0))
     kw.update(num_ekf_agents=2, fund_mode="informed", informed_design=DESIGN)
     for flag in (None, True):
         if flag:

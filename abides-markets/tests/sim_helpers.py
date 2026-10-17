@@ -14,8 +14,17 @@ MM_CLASS = "AdaptiveMarketMakerAgent"
 # agents to keep it fast. The v1.3 invariant market (5 price-only
 # fundamentalists, 4 momentum, 97 value agents, no budget) is LEGACY_PARAMS:
 # I8-legacy keeps it bit-identical to v1.2/v1.3.
+#
+# spec v1.5 A9.3: the invariant market is now the v1.5 default market (living_v1, retail
+# crowd, our LPs, informed_budget_v2) with 30 informed agents. V14_SWITCHES pins the v1.4
+# market through RunParams; V14_PARAMS is the v1.4 invariant market (I8-legacy-v14) and
+# LEGACY_PARAMS carries the same pins so the v1.3 market stays bit-identical.
+V14_SWITCHES = dict(num_noise=1000, num_retail=0, mm_kind="abides", value_process="synthetic_ou",
+                    informed_budget_v2=False)
 INVARIANT_PARAMS = dict(seed=42, end_time="10:00:00", num_fund=30)
-LEGACY_PARAMS = dict(seed=42, end_time="10:00:00", num_fund=5, num_mom=4, num_value=97, fund_mode="price_only")
+V14_PARAMS = dict(INVARIANT_PARAMS, **V14_SWITCHES)
+LEGACY_PARAMS = dict(seed=42, end_time="10:00:00", num_fund=5, num_mom=4, num_value=97, fund_mode="price_only",
+                     **V14_SWITCHES)
 
 
 def params(**kw):
@@ -24,6 +33,11 @@ def params(**kw):
     unless overridden. end_time 10:30 is not a dashboard choice, so
     validation is skipped for it with model_copy."""
     return _params(INVARIANT_PARAMS, kw)
+
+
+def v14_params(**kw):
+    """The v1.4 invariant market (V14_PARAMS: P0 with 30 informed), 1 hour unless overridden."""
+    return _params(V14_PARAMS, kw)
 
 
 def legacy_params(**kw):

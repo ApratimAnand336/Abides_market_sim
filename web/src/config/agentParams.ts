@@ -94,3 +94,30 @@ export const PRICE_LEARNING_PARAMS: ParamDef[] = [
   { key: 'a_pl', symbol: 'a_pl', label: 'Surprise memory', description: 'Weight of the newest gated surprise in its running average', format: { kind: 'float', digits: 2 }, color: '#22D3EE' },
 ];
 
+
+// spec v1.5 A9.3: the retail crowd and our market makers (LiquidityProviderAgent). Values come
+// from the payload's market_params (Python param_ranges.py RETAIL / LP and this run's design).
+export const RETAIL_PARAMS: ParamDef[] = [
+  { key: 'n', symbol: 'N_r', label: 'Retail traders', description: 'Traders in the crowd', format: { kind: 'int' }, color: '#38BDF8' },
+  { key: 'mu_per_agent', symbol: 'μ', label: 'Actions per trader', description: 'Average orders per trader per calm day', format: { kind: 'float', digits: 1 }, color: '#34D399' },
+  { key: 'kappa_v', symbol: 'κ_v', label: 'Excitement by volatility', description: 'How much busier the crowd gets when prices move fast', format: { kind: 'float', digits: 1 }, color: '#F472B6' },
+  { key: 'kappa_n', symbol: 'κ_n', label: 'Excitement by news', description: 'How much busier the crowd gets after a headline', format: { kind: 'float', digits: 1 }, color: '#FBBF24' },
+  { key: 'cap', symbol: 'cap', label: 'Activity cap', description: 'Largest multiple of the calm activity', format: { kind: 'float', digits: 0 }, color: '#94A3B8' },
+  { key: 'p_liquidity', symbol: 'p_liq', label: 'Liquidity traders', description: 'Share who buy or sell for their own reasons (50/50)', format: { kind: 'percent', digits: 0 }, color: '#60A5FA' },
+  { key: 'p_trend', symbol: 'p_trend', label: 'Trend followers', description: 'Share who buy after rises and sell after falls', format: { kind: 'percent', digits: 0 }, color: '#4ADE80' },
+  { key: 'p_contrarian', symbol: 'p_con', label: 'Contrarians', description: 'Share who buy after falls and sell after rises', format: { kind: 'percent', digits: 0 }, color: '#FB7185' },
+  { key: 'p_stop', symbol: 'p_stop', label: 'Stop-loss users', description: 'Share who place a stop below each purchase', format: { kind: 'percent', digits: 0 }, color: '#C084FC' },
+  { key: 'size_median', symbol: 'q̃', label: 'Typical order', description: 'Median order size (log-normal)', format: { kind: 'int', unit: 'sh' }, color: '#2DD4BF' },
+  { key: 'wealth', symbol: 'W_r', label: 'Wealth per trader', description: 'Dollars per trader, half in shares at the open', format: { kind: 'int', unit: '$' }, color: '#FDE047' },
+];
+
+export const LP_PARAMS: ParamDef[] = [
+  { key: 'n', symbol: 'n_lp', label: 'Market makers', description: 'Our liquidity providers quoting both sides', format: { kind: 'int' }, color: '#38BDF8' },
+  { key: 'wealth', symbol: 'W', label: 'Capital each', description: 'Dollars per market maker', format: { kind: 'int', unit: '$' }, color: '#FDE047' },
+  { key: 'dt_s', symbol: 'Δt', label: 'Requote check', description: 'How often it looks at its quotes', format: { kind: 'seconds' }, color: '#34D399' },
+  { key: 'c_h', symbol: 'c_h', label: 'Half-spread factor', description: 'Half-spread as a share of the typical 10-second move', format: { kind: 'float', digits: 2 }, color: '#F472B6' },
+  { key: 'levels', symbol: 'L', label: 'Ladder levels', description: 'Price levels quoted on each side', format: { kind: 'int' }, color: '#60A5FA' },
+  { key: 'theta_lp', symbol: 'θ', label: 'Quoted size', description: 'Shares quoted per side as a share of wealth', format: { kind: 'percent', digits: 1 }, color: '#2DD4BF' },
+  { key: 'l_max', symbol: 'l_max', label: 'Inventory limit', description: 'Largest position as a share of wealth', format: { kind: 'percent', digits: 0 }, color: '#FB923C' },
+  { key: 'psi', symbol: 'ψ', label: 'Inventory skew', description: 'How far quotes lean away from a growing position', format: { kind: 'float', digits: 2 }, color: '#A78BFA' },
+];

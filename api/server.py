@@ -17,7 +17,7 @@ from .jobs import REPO_ROOT, JobManager, QueueFull, engine_version, list_runs, p
 from .schema import RunParams
 
 # spec v1.3 §9.3: the realism lab's committed 20-seed summary
-LAB_SUMMARY_PATH = REPO_ROOT / "docs" / "v1.4" / "lab" / "summary.json"  # spec v1.4 §6.4 (P0, 20 seeds)
+LAB_SUMMARY_PATH = REPO_ROOT / "docs" / "v1.5" / "lab" / "summary.json"  # spec v1.5 A9.3 (default market, 20 seeds)
 LAB_SUMMARY_V13 = REPO_ROOT / "docs" / "v1.3" / "lab" / "summary.json"
 
 manager: Optional[JobManager] = None

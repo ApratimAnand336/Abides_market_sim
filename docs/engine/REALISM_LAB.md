@@ -207,9 +207,19 @@ over seeds of a *treated − baseline* difference on the same seed.
 
 (to be completed with the runner, L2)
 
-## The regression set (spec §7.6; v1.4 §10.5)
+## The regression set (spec §7.6; v1.4 §10.5; v1.5 A9.3)
 
-**Since v1.4 (N6)** `--campaign regression` checks the default market P0:
+**Since v1.5 (A9)** `--campaign regression` checks the new default market:
+- it runs D-mix, N-C, N-S2 and N-IMP-1 (the a-confirm configs) on seeds 42, 7, 1 into
+  `runs/_lab_regression_v15/` (12 runs, about 2.5 min with 4 workers);
+- (a) the seed-42 D-mix full-day hash must equal `docs/v1.5/lab/reference_hashes.json` "D-mix/42"
+  (written by the A8 report from the a-confirm run);
+- (b) every 3-seed median must lie inside the stored 20-seed [p10, p90] of `docs/v1.5/lab/summary.json`;
+  scenario keys t50/t90/settle (N-S2) and I_end/I_peak/I_perm (N-IMP-1); regime contrast is not
+  compared on N-S2 (same reason as P0-S2).
+Passed 2026-10-17 (53 checks, hash equal). The v1.4 set below is kept as `--campaign regression-v14`.
+
+**v1.4 set (`--campaign regression-v14`; the default set from v1.4 N6 to v1.5 A9)** checks P0:
 - it runs P0-C, P0-S2 and P0-IMP-1 on seeds 42, 7, 1 into `runs/_lab_regression_v14/`;
 - (a) the seed-42 P0-C full-day hash must equal `docs/v1.4/lab/reference_hashes.json` "P0-C/42";
 - (b) every 3-seed median must lie inside the stored 20-seed [p10, p90] of

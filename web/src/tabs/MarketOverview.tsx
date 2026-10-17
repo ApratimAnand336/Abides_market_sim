@@ -13,6 +13,7 @@ import {
   intervalBarSeries,
   markersNear,
   newsMarkLine,
+  stressMarkArea,
   newsNear,
   offScaleMarkerSeries,
   type Candle,
@@ -108,6 +109,8 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
       }
     }
     if (showNews && news.length && series.length) series[series.length - 1].markLine = newsMarkLine(news);
+    const stress = stressMarkArea(payload.day_info);
+    if (stress && series.length) series[0].markArea = stress;
     if (offScale.length) series.push(offScaleMarkerSeries(offScale, yDomain));
 
     return {
@@ -154,11 +157,11 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
       }
       let html = tipHtml(clockHMS(t), rows);
       for (const n of newsNear(news, t, Math.max(30, duration / 300))) {
-        html += `<div style="margin-top:6px;max-width:260px;white-space:normal;color:${n.sentiment >= 0 ? C.up : C.down}">📰 ${escapeHtml(n.headline)} (${n.sentiment >= 0 ? '+' : '−'}${Math.abs(n.sentiment).toFixed(2)})</div>`;
+        html += `<div style="margin-top:6px;max-width:260px;white-space:normal;color:${n.sentiment >= 0 ? C.up : C.down}">📰 ${n.kind === 'information' ? 'Information' : 'Hype'}: ${escapeHtml(n.headline)} (${n.sentiment >= 0 ? '+' : '−'}${Math.abs(n.sentiment).toFixed(2)})</div>`;
       }
       return html;
     }
-  }, [isCandles, candles, candleT, ivS, market, showBand, showOracle, showXhat, showLevel, showNews, news, overlayFund, overlayMom, colors, duration, yDomain]);
+  }, [isCandles, candles, candleT, ivS, market, showBand, showOracle, showXhat, showLevel, showNews, news, overlayFund, overlayMom, colors, duration, yDomain, payload.day_info]);
 
   const volOption = useMemo<EChartsOption>(() => {
     const t = candles.map((c) => c.t);
@@ -334,6 +337,13 @@ export function MarketOverview({ payload }: { payload: SimPayload }) {
               <LegendItem color={C.mid} label="Mid" />
             )}
             {showOracle && <LegendItem color={C.oracle} label="Oracle" dashed />}
+            {payload.day_info && (
+              <span className="font-mono text-[11px] text-dim">
+                {payload.day_info.day_type} day
+                {payload.day_info.stress_episodes.length > 0 && ` · ${payload.day_info.stress_episodes.length} stress episode${payload.day_info.stress_episodes.length > 1 ? 's' : ''} (shaded)`}
+                {news.length > 0 && ' · news: solid = information, dashed = hype'}
+              </span>
+            )}
           </div>
         </div>
         <EChart option={mainOption} height={460} group={GROUP} onEvents={onEvents} ariaLabel={`${isCandles ? `${iv}-minute candlestick` : 'tick mid-price'} chart of ${payload.meta.ticker} over the session`} />

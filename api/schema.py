@@ -43,10 +43,13 @@ class NewsItem(Strict):
 
 
 class RunParams(Strict):
-    """Defaults = the v1.4 default market P0 (spec v1.4 §6.1, v1.4.2 D-R3-7):
-    60 informed fundamentalists (design D-60fl2M, learning off), 0 value
-    agents, budget on. The v1.3 market is num_value=97, num_fund=20,
-    fund_mode="price_only" (budget then off by default)."""
+    """Defaults = the v1.5 default market, R4a design R-25M15003 (spec v1.5 A9.3):
+    living_v1 value (auto day type, auto news), 60 informed fundamentalists
+    (D-60fl2M, informed_budget_v2), 12 momentum EKF, 1,500 retail traders,
+    2 of our market makers (LPs of $5M), no noise agents, budget on.
+    The v1.4 market P0 is num_noise=1000, num_retail=0, mm_kind="abides",
+    value_process="synthetic_ou", informed_budget_v2=False. The v1.3 market is
+    additionally num_value=97, num_fund=20, fund_mode="price_only"."""
 
     seed: int = Field(ge=0, le=2**31 - 1)
     end_time: Literal["10:00:00", "11:00:00", "12:00:00", "14:00:00", "16:00:00"]
@@ -60,8 +63,17 @@ class RunParams(Strict):
     # market population (spec v1.1 D4); part of the canonical params, so the
     # cache key changes with them
     num_value: int = Field(default=0, ge=0, le=150)
-    num_noise: int = Field(default=1000, ge=0, le=2000)
+    num_noise: int = Field(default=0, ge=0, le=2000)
+    # ABIDES market makers, used only with mm_kind "abides"
     num_mm: int = Field(default=2, ge=0, le=2)
+    # spec v1.5 A9.3 (schema 1.4): the living market
+    day_type: Literal["auto", "calm", "normal", "volatile"] = "auto"
+    auto_news: bool = True
+    num_retail: int = Field(default=1500, ge=0, le=5000)
+    mm_kind: Literal["lp", "abides"] = "lp"
+    # deviation (DECISIONS A9): these two are not in A9.3; they let RunParams express the v1.4 market
+    value_process: Literal["living_v1", "synthetic_ou"] = "living_v1"
+    informed_budget_v2: bool = True
     news: List[NewsItem] = []
 
     def session_seconds(self) -> int:
@@ -249,6 +261,8 @@ class NewsRecord(Strict):
     t: float
     headline: str
     sentiment: float
+    # schema 1.4: "information" = published with a true-value jump (auto news); "hype" = injected
+    kind: Literal["information", "hype"]
     price_before: Optional[float]
     price_after: PriceAfter
     reactions: List[Reaction]
@@ -488,8 +502,20 @@ class Realism(Strict):
     grades: Dict[str, Optional[Literal["PASS", "WARN", "FAIL"]]]
 
 
+class DayInfo(Strict):
+    """Spec v1.5 A3: the day drawn by living_v1 (seconds since the open, clipped)."""
+    day_type: Literal["calm", "normal", "volatile"]
+    stress_episodes: List[Tuple[float, float]]
+
+
+class MarketParams(Strict):
+    """Spec v1.5 A9.3: fixed parameters of the retail crowd and of our market makers."""
+    retail: Optional[Dict[str, float]]
+    lp: Optional[Dict[str, float]]
+
+
 class SimPayload(Strict):
-    schema_version: Literal["1.3"]
+    schema_version: Literal["1.4"]
     meta: Meta
     market: Market
     stats: MarketStats
@@ -502,3 +528,6 @@ class SimPayload(Strict):
     realism: Realism
     # spec v1.3 §6.1: scripted true-value events as applied (empty normally)
     oracle_events: List[Dict[str, Any]]
+    # spec v1.5 A9.3: null for the v1.4 value process
+    day_info: Optional[DayInfo]
+    market_params: MarketParams

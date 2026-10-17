@@ -18,7 +18,7 @@ import pytest
 from abides_core.utils import str_to_ns
 from abides_markets.oracles.pregenerated_oracle import PregeneratedOracle, generate_path
 
-from .sim_helpers import INVARIANT_PARAMS
+from .sim_helpers import INVARIANT_PARAMS, V14_PARAMS
 from .test_invariants import I8_EXPECTED
 
 REPO = Path(__file__).resolve().parents[2]
@@ -94,11 +94,11 @@ def test_l3_volatility_event():
 
 
 # ── T-L4 ───────────────────────────────────────────────────────────────────
-def _lab_kwargs(**extra):
+def _lab_kwargs(_base=None, **extra):
     from api.jobs import run_config_kwargs
     from api.schema import RunParams
 
-    p = RunParams(**INVARIANT_PARAMS).model_copy(update={"end_time": "10:30:00"})
+    p = RunParams(**(_base or INVARIANT_PARAMS)).model_copy(update={"end_time": "10:30:00"})
     kw = run_config_kwargs(p)
     kw.update(extra)
     return kw
@@ -115,14 +115,19 @@ def _agent_fingerprint(config):
     return out
 
 
-def test_l4_jump_config_keeps_path_and_agents():
+@pytest.mark.parametrize("market, src_base, src_jump", [
+    ("v14", "synthetic_ou", "scenario"),
+    ("default", "living_v1", "living_v1"),  # spec v1.5 A9.3: living_v1 applies the events itself
+])
+def test_l4_jump_config_keeps_path_and_agents(market, src_base, src_jump):
     from abides_markets.configs.rmsc04_ekf import build_config
 
-    base = build_config(**_lab_kwargs())
-    assert base["custom_properties"]["oracle"].symbols["ABM"]["path_source"] == "synthetic_ou"
-    jump = build_config(**_lab_kwargs(oracle_events=[{"type": "jump", "at": "00:30:00", "pct": 2.0}]))
+    b = V14_PARAMS if market == "v14" else None
+    base = build_config(**_lab_kwargs(b))
+    assert base["custom_properties"]["oracle"].symbols["ABM"]["path_source"] == src_base
+    jump = build_config(**_lab_kwargs(b, oracle_events=[{"type": "jump", "at": "00:30:00", "pct": 2.0}]))
     ob, oj = base["custom_properties"]["oracle"], jump["custom_properties"]["oracle"]
-    assert oj.symbols["ABM"]["path_source"] == "scenario"
+    assert oj.symbols["ABM"]["path_source"] == src_jump
     _, vb = ob.path("ABM")
     _, vj = oj.path("ABM")
     k0 = 1800  # 10:00:00 on the 1 s grid
@@ -171,13 +176,14 @@ def test_l4_explicit_oracle_default_holds_i8(tmp_path):
 
 # ── shared helpers for the 1-hour markets of T-L5 … T-L8 ──────────────────
 
-def _run(tmp, **extra):
+def _run(tmp, _base=None, **extra):
     """Build (with extra build_config kwargs) and run the 1-hour invariant
-    market. Returns (config, end_state, start holdings)."""
+    market (or _base). Returns (config, end_state, start holdings)."""
     from abides_core import abides
     from abides_markets.configs.rmsc04_ekf import build_config
 
-    config = build_config(**_lab_kwargs(**extra))
+    os.makedirs(tmp, exist_ok=True)
+    config = build_config(**_lab_kwargs(_base, **extra))
     start = {a.id: (int(a.holdings.get("CASH", 0)), int(a.holdings.get("ABM", 0)))
              for a in config["agents"] if hasattr(a, "holdings")}
     cwd = os.getcwd()
@@ -266,8 +272,10 @@ PAUSE = [("10:00:00", "10:15:00")]
 P0, P1 = DATE + str_to_ns("10:00:00"), DATE + str_to_ns("10:15:00")
 
 
-def test_l8_market_maker_pause(tmp_path, plain_market):
-    config, es, _ = _run(tmp_path, mm_pause_windows=PAUSE)
+def test_l8_market_maker_pause(tmp_path):
+    """T-L8 on the v1.4 market (spec v1.5 A9.3: the ABIDES MMs are not in the default market)."""
+    _, plain, _ = _run(tmp_path / "plain", _base=V14_PARAMS)
+    config, es, _ = _run(tmp_path / "pause", _base=V14_PARAMS, mm_pause_windows=PAUSE)
     mms = [a for a in es["agents"] if type(a).__name__ == "AdaptiveMarketMakerAgent"]
     assert len(mms) == 2
     for mm in mms:
@@ -293,7 +301,7 @@ def test_l8_market_maker_pause(tmp_path, plain_market):
         if P0 + 1_000_000_000 <= t < P1:
             assert not alive, (t, alive)
     # identical market until the pause
-    assert [e for e in _execs(es) if e[0] < P0] == [e for e in _execs(plain_market[1]) if e[0] < P0]
+    assert [e for e in _execs(es) if e[0] < P0] == [e for e in _execs(plain) if e[0] < P0]
 
 
 # ── T-L9 ───────────────────────────────────────────────────────────────────

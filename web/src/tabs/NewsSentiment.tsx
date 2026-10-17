@@ -102,6 +102,7 @@ export function NewsSentiment({ payload, finbertAvailable }: { payload: SimPaylo
   const columns: Column<NewsRecord>[] = [
     { key: 't', header: 'Time', sortValue: (n) => n.t, render: (n) => <span className="font-mono">{clockHMS(n.t)}</span> },
     { key: 'headline', header: 'Headline', render: (n) => <span className="block max-w-[320px] text-text">{n.headline}</span> },
+    { key: 'kind', header: 'Kind', render: (n) => <span className="text-muted">{n.kind === 'information' ? 'Information' : 'Hype'}</span> },
     { key: 's', header: 'Sentiment', sortValue: (n) => n.sentiment, render: (n) => <SentimentChip value={n.sentiment} /> },
     { key: 'p', header: 'Price at t', align: 'right', render: (n) => <span className="font-mono">{fmtPrice(n.price_before)}</span> },
     ...(['1m', '5m', '30m'] as const).map<Column<NewsRecord>>((h) => ({

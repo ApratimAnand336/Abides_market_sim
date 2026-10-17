@@ -52,7 +52,21 @@ headlines with a sentiment score; it knows nothing about value. The *oracle*
 
 ## The agent population
 
-**Since v1.4 (N6) the default market is P0**, the RunParams / dashboard / CLI defaults
+**Since v1.5 (A9) the default market is the living market R-25M15003** (spec v1.5 A9.3), the
+RunParams / dashboard / CLI defaults:
+- living_v1 true value: day type drawn per seed (`day_type="auto"`, calm/normal/volatile
+  30/50/20), stress episodes, information jumps with an automatic headline (`auto_news=True`);
+- the same 60 informed fundamentalists D-60fl2M as P0, now with `informed_budget_v2=True` (K16 fix),
+  and 12 momentum EKF;
+- 1,500 retail traders and their crowd scheduler (`num_retail=1500`, κ_v = 3);
+- 2 of our market makers (`mm_kind="lp"`, LiquidityProviderAgent, $5M each); no ABIDES MMs, no
+  noise agents (`num_noise=0`); budget L = 2.
+The fixed design dials (κ_v, n_lp, W) are `api.jobs.DEFAULT_RETAIL_KAPPA_V / DEFAULT_NUM_LP /
+DEFAULT_LP_WEALTH`. The v1.4 market P0 is RunParams with `num_noise=1000, num_retail=0,
+mm_kind="abides", value_process="synthetic_ou", informed_budget_v2=False` (bit-identical,
+I8-legacy-v14). The realism lab pins those v1.4 values in its base (`api.lab.run_params`).
+
+**From v1.4 (N6) to v1.5 A9 the default market was P0**, the RunParams / dashboard / CLI defaults
 (spec v1.4 §6.1, v1.4.2 D-R3-7):
 - 0 ValueAgents;
 - 60 informed fundamentalists of design D-60fl2M: research every log-U[60, 300] s, noise

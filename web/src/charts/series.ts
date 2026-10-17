@@ -1,6 +1,6 @@
 // Reusable series builders for the clock-time (value) x axis.
 
-import type { NewsRecord } from '../types/payload';
+import type { DayInfo, NewsRecord } from '../types/payload';
 import { C } from './theme';
 
 export interface Candle {
@@ -123,13 +123,14 @@ export function newsMarkLine(news: NewsRecord[]): any {
     silent: true,
     symbol: ['none', 'none'],
     animation: false,
+    // schema 1.4: information news (a jump of the true value) solid, hype (injected) dashed
     data: news.map((n) => ({
       xAxis: n.t,
-      lineStyle: { color: n.sentiment >= 0 ? C.up : C.down, type: 'dashed' as const, width: 1.5 },
+      lineStyle: { color: n.sentiment >= 0 ? C.up : C.down, type: (n.kind === 'information' ? 'solid' : 'dashed') as 'solid' | 'dashed', width: 1.5 },
       label: {
         show: true,
         position: 'insideEndTop' as const,
-        formatter: `${n.sentiment >= 0 ? '▲ +' : '▼ −'}${Math.abs(n.sentiment).toFixed(2)}`,
+        formatter: `${n.kind === 'information' ? 'i ' : 'hype '}${n.sentiment >= 0 ? '▲ +' : '▼ −'}${Math.abs(n.sentiment).toFixed(2)}`,
         color: n.sentiment >= 0 ? C.up : C.down,
         fontFamily: "'JetBrains Mono', monospace",
         fontSize: 11,
@@ -139,6 +140,18 @@ export function newsMarkLine(news: NewsRecord[]): any {
         borderRadius: 4,
       },
     })),
+  };
+}
+
+/** spec v1.5 A9.3: shade the stress episodes of a living_v1 day (value volatility × 2.5). */
+export function stressMarkArea(day: DayInfo | null): any {
+  if (!day || !day.stress_episodes.length) return undefined;
+  return {
+    silent: true,
+    animation: false,
+    itemStyle: { color: 'rgba(245,158,11,0.10)' },
+    label: { show: true, position: 'insideTop' as const, formatter: 'stress', color: 'rgba(245,158,11,0.8)', fontSize: 10 },
+    data: day.stress_episodes.map(([a, b]) => [{ xAxis: a }, { xAxis: b }]),
   };
 }
 

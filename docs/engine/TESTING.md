@@ -107,7 +107,8 @@ python -m pytest abides-markets/tests/test_invariants.py -q
 | I6 | Runs without value agents | The market starts and trades with no value agents (needs ≥ 1 MM) | T-M6 | 3 s |
 | I7 | Market-maker liveness | No market maker dies silently | T-M7: wakes ≥ 90% of duration / mean wake and no 10-minute silence | 3 s |
 | I9 | Budget respected (v1.4) | With `abides_budget {"L": 2}`, no budgeted ABIDES agent's gross position exceeds 2× its wealth at the fill price (one-order tolerance) | T-N13 on the 1-hour invariant market with the budget on | 9 s |
-| I8 | No drift (re-recorded in v1.4 N6) | The invariant market (the v1.4 default market P0 with 30 informed fundamentalists, seed 42, 09:30–10:30) does not change | the I1 fingerprint in a fresh process with `PYTHONHASHSEED=0` must equal the constants recorded 2026-10-14 (DECISIONS N6) | 13 s |
+| I8 | No drift (re-recorded in v1.4 N6 and v1.5 A9) | The invariant market (the v1.5 default market with 30 informed fundamentalists, seed 42, 09:30–10:30) does not change | the I1 fingerprint in a fresh process with `PYTHONHASHSEED=0` must equal the constants recorded 2026-10-17 (DECISIONS A9; 5,053 executions) | 13 s |
+| I8-legacy-v14 | v1.4 market (v1.5 A9) | The v1.4 invariant market (V14_PARAMS: P0 with 30 informed, the v1.4 switches pinned through RunParams) stays bit-identical | the same fingerprint must equal the v1.4 N6 I8 constants | 9 s |
 | I8-legacy | Legacy market (v1.4 N6) | The v1.3 test market (LEGACY_PARAMS: 5 price-only fundamentalists, 4 momentum, 97 value agents, no budget) stays bit-identical to v1.2 (aa5f606) | the same fingerprint must equal the original I8 constants | 13 s |
 
 \*Measured 2026-10-09 on the development laptop; the whole file takes about 32 s.

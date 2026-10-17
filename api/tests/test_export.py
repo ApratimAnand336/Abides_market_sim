@@ -205,7 +205,7 @@ def test_pnl_vs_hold_arithmetic():
 
 def test_payload_v1_1_fields(sim):
     _, _, payload = sim
-    assert payload["schema_version"] == "1.3"  # spec v1.4 §6.4 (N6)
+    assert payload["schema_version"] == "1.4"  # spec v1.5 A9.3
     close = payload["stats"]["close"]
     for a in payload["agents"]["fundamental"] + payload["agents"]["momentum"]:
         s, f = a["start"], a["final"]
@@ -242,9 +242,18 @@ def test_population_volume_shares(sim):
     assert sum(r["volume_share_pct"] for r in pop) == pytest.approx(100.0, abs=0.01)
     by = {r["class_name"]: r for r in pop}
     assert {"ExchangeAgent", "NewsOracleAgent"}.isdisjoint(by)
-    # spec v1.4 N6: the default market has no value agents
-    assert by["NoiseAgent"]["count"] == 1000 and "ValueAgent" not in by and PARAMS.num_value == 0
-    assert by["AdaptiveMarketMakerAgent"]["count"] == 2
+    # spec v1.5 A9.3: the default market has no value or noise agents and no ABIDES MMs;
+    # 1,500 retail traders (the crowd scheduler is not listed) and 2 of our market makers
+    assert {"NoiseAgent", "ValueAgent", "AdaptiveMarketMakerAgent", "RetailCrowdAgent"}.isdisjoint(by)
+    assert by["RetailTraderAgent"]["count"] == PARAMS.num_retail == 1500
+    assert by["RetailTraderAgent"]["label"] == "Retail (types)"
+    # $50,000 each, half in shares at r_bar $1000: 25 shares; P&L counts the shares (start_value)
+    assert by["RetailTraderAgent"]["starting_shares_total"] == 25 * 1500
+    assert by["RetailTraderAgent"]["starting_cash_each"] == {"min": 25000.0, "max": 25000.0}
+    assert by["RetailTraderAgent"]["pnl_total"] == pytest.approx(by["RetailTraderAgent"]["final_value_total"]
+                                                                 - 1500 * 50000.0, abs=0.05)
+    assert by["LiquidityProviderAgent"]["count"] == 2
+    assert by["LiquidityProviderAgent"]["label"] == "Market maker (ours)"
     assert by["FundamentalistAgent"]["count"] == PARAMS.num_fund
     assert by["MomentumEKFAgent"]["count"] == PARAMS.num_mom
     # informed: $2M each, endowment floor(0.5 * wealth / r_bar) = 1,000 shares (spec v1.4 §4.6, D-R3-7)
@@ -324,3 +333,32 @@ def test_payload_realism_block(sim):
     assert payload["oracle_events"] == []
     size = len(json.dumps({"realism": r, "oracle_events": payload["oracle_events"]}, separators=(",", ":")))
     assert size < 50_000, size
+
+
+def test_a9_living_market_fields(sim):
+    """Spec v1.5 A9.3 (schema 1.4): day_info, NewsRecord.kind and market_params."""
+    end_state, config, payload = sim
+    di = payload["day_info"]
+    assert di["day_type"] in ("calm", "normal", "volatile")
+    dur = payload["meta"]["session"]["duration_s"]
+    assert all(0 <= a < b <= dur for a, b in di["stress_episodes"])
+    # the injected headline is hype; every auto headline the oracle published in the session is information
+    kinds = {(n["headline"], n["kind"]) for n in payload["news"]}
+    assert ("Company announces record quarterly earnings", "hype") in kinds
+    oracle = end_state["agents"][0].kernel.oracle
+    open_ns = config["_mkt_open_ns"]
+    auto = [h for t, _, h, _, _ in oracle.day_info("ABM")["news"] if 0 < (t - open_ns) / 1e9 < dur]
+    assert sorted(h for h, k in kinds if k == "information") == sorted(set(auto))
+    mp = payload["market_params"]
+    assert mp["retail"]["n"] == 1500 and mp["retail"]["kappa_v"] == 3.0 and mp["retail"]["wealth"] == 50000.0
+    assert mp["lp"]["n"] == 2 and mp["lp"]["wealth"] == 5_000_000.0
+
+
+def test_a9_day_info_block_clips_to_session():
+    from api.export import _Clock, day_info_block
+
+    clock = _Clock(0, 3600 * 10**9)
+    di = {"day_type": "volatile", "stress_episodes": [(-60 * 10**9, 600 * 10**9), (3000 * 10**9, 4000 * 10**9),
+                                                     (5000 * 10**9, 6000 * 10**9)], "news": []}
+    assert day_info_block(di, clock) == {"day_type": "volatile", "stress_episodes": [(0.0, 600.0), (3000.0, 3600.0)]}
+    assert day_info_block(None, clock) is None

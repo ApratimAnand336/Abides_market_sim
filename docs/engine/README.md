@@ -61,7 +61,7 @@ twice loads it instantly.
 
 ```bash
 python scripts/realism_lab.py --campaign all --workers 4   # 360 full days, ~45 min
-python scripts/realism_lab.py --campaign regression        # 9 runs vs the stored baseline
+python scripts/realism_lab.py --campaign regression        # 12 runs vs the stored v1.5 baseline (regression-v14: P0)
 ```
 
 **Tests** (see [TESTING.md](TESTING.md)):
@@ -107,4 +107,5 @@ python scripts/acceptance_v1_2.py --report # the acceptance table
 | **quote layer** | The small two-sided quote every informed agent keeps around its belief (x̂ ± h), so the market has liquidity at an informed price even when the book is empty. |
 | **gross limit** | The budget rule for the stock ABIDES agents (v1.4): the value of a position, counting open orders on the same side, may not exceed L = 2 times current wealth. Informed agents have their own bounds: −0.5 to 1.5 times wealth. |
 | **learning from prices** | (v1.4.1, default off) An informed agent trusts the price more when it keeps disagreeing with its belief for several looks in a row. Measured to slow the pricing of news, because it also pulls agents who have just researched toward a stale price: a documented negative result. |
-| **P0 / legacy market** | P0 is the default market since v1.4 (no value agents, 60 informed fundamentalists, budget on). The legacy market (v1.3: 97 value agents, 20 price-only fundamentalists, no budget) is still available through explicit parameters. |
+| **living market (R4a)** | The default market since v1.5 A9: the value has calm/normal/volatile days, stress episodes and news-carrying jumps; 1,500 retail traders; 2 of our market makers; the informed fundamentalists of P0. |
+| **P0 / legacy market** | P0 was the default market from v1.4 to v1.5 A9 (no value agents, 60 informed fundamentalists, budget on). The legacy market (v1.3: 97 value agents, 20 price-only fundamentalists, no budget) is still available through explicit parameters. |

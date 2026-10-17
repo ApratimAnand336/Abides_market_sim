@@ -3,7 +3,7 @@ import { Activity, BarChart2, Cpu, Gauge, Newspaper, Play } from 'lucide-react';
 import { useHealth, usePayload, usePresets, useRunController, useRunList } from './hooks/useSimulation';
 import { useQueryParam, useTab, type TabId } from './lib/urlState';
 import { SCHEMA_VERSION, type SimPayload } from './types/payload';
-import { POPULATION_DEFAULTS, Sidebar, type SimForm } from './components/Sidebar';
+import { MARKET_DEFAULTS, POPULATION_DEFAULTS, Sidebar, type SimForm } from './components/Sidebar';
 import { Header, KpiRow } from './components/Header';
 import { RunBanner } from './components/RunBanner';
 import { GuideModal } from './components/GuideModal';
@@ -17,7 +17,7 @@ import { Realism } from './tabs/Realism';
 import { cn } from './lib/cn';
 
 // spec v1.4 §6.1: the default market is P0 (60 informed fundamentalists, no value agents)
-const DEFAULT_FORM: SimForm = { seed: 42, end_time: '16:00:00', num_fund: 60, fund_mode: 'informed', num_mom: 12, ...POPULATION_DEFAULTS, news: [] };
+const DEFAULT_FORM: SimForm = { seed: 42, end_time: '16:00:00', num_fund: 60, fund_mode: 'informed', num_mom: 12, ...POPULATION_DEFAULTS, ...MARKET_DEFAULTS, news: [] };
 
 const TAB_DEFS: { id: TabId; label: string; icon: typeof BarChart2; iconClass: string }[] = [
   { id: 'overview', label: 'Market Overview', icon: BarChart2, iconClass: 'text-up' },
@@ -65,6 +65,10 @@ export function App() {
         num_value: p.num_value ?? POPULATION_DEFAULTS.num_value,
         num_noise: p.num_noise ?? POPULATION_DEFAULTS.num_noise,
         num_mm: p.num_mm ?? POPULATION_DEFAULTS.num_mm,
+        num_retail: p.num_retail ?? POPULATION_DEFAULTS.num_retail,
+        mm_kind: p.mm_kind ?? POPULATION_DEFAULTS.mm_kind,
+        day_type: p.day_type ?? MARKET_DEFAULTS.day_type,
+        auto_news: p.auto_news ?? MARKET_DEFAULTS.auto_news,
         news: p.news,
       });
       setFormFromRun(true);

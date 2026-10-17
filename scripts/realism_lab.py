@@ -1,6 +1,6 @@
 """The FinVerse realism lab runner (spec v1.3, Part 7).
 
-    python scripts/realism_lab.py --campaign c1|c2|c3|c4|all|regression
+    python scripts/realism_lab.py --campaign c1|c2|c3|c4|all|regression|regression-v14|regression-legacy
                                   [--seeds 42,7,...] [--workers N] [--force]
                                   [--configs C-DEF,S2,...] [--report-only]
                                   [--rebaseline]
@@ -823,16 +823,19 @@ def figures(summary, fig_dir: Path):
 # jump window itself (P0-S2 median 45 vs 2.5 quiet), so it measures the
 # trigger; its 3-seed median is a fixed sample of a heavy tail (seeds 42 and 1
 # are the 20-seed maximum and runner-up). Not compared (DECISIONS.md, N6).
-REG_SKIP = {"P0-S2": {"regime_contrast"}}
+# v1.5 A9.3: the same holds for N-S2 on the new default market.
+REG_SKIP = {"P0-S2": {"regime_contrast"}, "N-S2": {"regime_contrast"}}
 REG_SCENARIO_KEYS = {"S2": ["t50", "t90", "settle"], "IMP-1": ["I_end", "I_peak", "I_perm"],
-                    "P0-S2": ["t50", "t90", "settle"], "P0-IMP-1": ["I_end", "I_peak", "I_perm"]}
+                    "P0-S2": ["t50", "t90", "settle"], "P0-IMP-1": ["I_end", "I_peak", "I_perm"],
+                    "N-S2": ["t50", "t90", "settle"], "N-IMP-1": ["I_end", "I_peak", "I_perm"]}
 
 
-def regression(workers, engine, rebaseline=False, force=True, legacy=False) -> int:
-    """spec v1.3 §7.6 / v1.4 §10.5: 3 seeds of 3 configs, the seed-42 full-day
-    hash and every metric inside the stored 20-seed [p10, p90]. legacy=True:
-    the v1.3 set (C-DEF/S2/IMP-1 vs docs/v1.3); default: the v1.4 set on P0."""
-    R_ = lab.REGRESSION_LEGACY if legacy else lab.REGRESSION
+def regression(workers, engine, rebaseline=False, force=True, legacy=False, v14=False) -> int:
+    """spec v1.3 §7.6 / v1.4 §10.5 / v1.5 A9.3: 3 seeds of the set's configs, the seed-42
+    full-day hash and every metric inside the stored 20-seed [p10, p90]. legacy=True: the
+    v1.3 set (C-DEF/S2/IMP-1 vs docs/v1.3); v14=True: the v1.4 set on P0 (docs/v1.4);
+    default: the v1.5 set on the default market (D-mix, N-C, N-S2, N-IMP-1 vs docs/v1.5)."""
+    R_ = lab.REGRESSION_LEGACY if legacy else (lab.REGRESSION_V14 if v14 else lab.REGRESSION)
     seeds, configs = R_["seeds"], R_["configs"]
     reg_dir = REPO / "runs" / R_["dir"]
     doc_dir = REPO / "docs" / R_["doc"] / "lab"
@@ -897,7 +900,7 @@ def regression(workers, engine, rebaseline=False, force=True, legacy=False) -> i
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--campaign", default="c1",
-                        choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression", "regression-legacy",
+                        choices=["c1", "c2", "c3", "c3-null", "c4", "all", "regression", "regression-v14", "regression-legacy",
                                  "b", "s1", "s1r2", "s2", "s2r", "step", "final",
                                  "a-env", "a-retail", "a-lp", "a-sweep", "a-sweep-r", "a-confirm"])
     ap.add_argument("--winner", default=None, help="s1r2: the round-1 winner (default: from docs/v1.4/lab/selection_s1.json); a-sweep-r: the A7 sweep winner (default: from docs/v1.5/lab/selection_sweep.json)")
@@ -915,6 +918,8 @@ def main(argv=None) -> int:
     engine = engine_version()
     if a.campaign == "regression-legacy":  # spec v1.4 §10.5: the v1.3 set, kept
         return regression(a.workers, engine, legacy=True)
+    if a.campaign == "regression-v14":  # spec v1.5 A9.3: the v1.4 set on P0, kept
+        return regression(a.workers, engine, v14=True)
     if a.campaign == "regression":
         if a.rebaseline:  # v1.4: the stored baseline is written by the N5 report (lab_v14.write_lab_summary)
             s = build_summary(LAB_DIR, lab.SEEDS)

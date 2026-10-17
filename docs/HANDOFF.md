@@ -7,28 +7,25 @@ Last updated: 2026-10-17 (A8), spec v1.5 (R4) started on branch `v1.5` (from 204
 - **Now: spec v1.5 (R4)**, `docs/specs/spec_v1.5.txt`. Part A living market (A0–A9), Part B
   crashes (B1–B4, STOP to owner after B4), Part C circuit breaker (C1–C2).
 
-## Resume here (2026-10-17: A8 committed; NOW A9 — owner asked for A9 although A8.4 FAILS)
-- A8 result: 5/12 targets, 7/7 limits (fail A-T1 4.86 bps, A-T3 0.99%, A-T5 0.81, A-T7, A-T10 MM −$3.6k,
-  A-T11 RS 2.40, A-T12 u 1.19). Report `docs/v1.5/lab/RESULTS_A.md`. Spec: STOP after A9.2; owner: do A9 (DECISIONS A8).
-  After A9: STOP and report to the owner. Do NOT start Part B.
-- **A9 web/ part done (uncommitted, tsc clean; still run `npm run build`)**: payload.ts schema 1.4 (RunParams
-  day_type/auto_news/num_retail/mm_kind/value_process/informed_budget_v2; NewsRecord.kind; day_info; market_params;
-  LabSummary.r4a), Sidebar day-type selector + auto-news toggle + retail slider + MM kind, App defaults, price chart
-  stress markArea + info(solid)/hype(dashed) news, news tab Kind column, MarketParamsCard (RETAIL_PARAMS/LP_PARAMS
-  in agentParams.ts), PopulationCard colours, Realism tab shows r4a.
-- **A9 Python TODO (after campaign)**: api/__init__ SCHEMA 1.4, ENGINE 1.5; schema.py RunParams (num_noise 0,
-  num_retail 1500, mm_kind "lp", day_type "auto", auto_news True, value_process "living_v1", informed_budget_v2
-  True — last two are a deviation needed to express v1.4 P0 via RunParams; DECISIONS), NewsRecord.kind, DayInfo,
-  MarketParams; jobs.run_config_kwargs passes them + kappa_v 3, num_lp 2, lp_wealth 500_000_000 (build_config
-  defaults stay inert); export.py: day_info from r_series["day_info"] (ns -> s since open, clipped), news kind =
-  information if (t, headline) in day_info news else hype, market_params from agents, POPULATION_LABELS
-  RetailTraderAgent "Retail (types)", LiquidityProviderAgent "Market maker (ours)", exclude RetailCrowdAgent;
-  lab.run_params base pins v1.4 (num_noise 1000, num_retail 0, mm_kind abides, synthetic_ou, budget_v2 False);
-  REGRESSION -> v1.5 (D-mix,N-C,N-S2,N-IMP-1; hash D-mix/42; docs/v1.5; dir _lab_regression_v15; add REG_SCENARIO_KEYS
-  for N-*), old one kept as "regression-v14"; server.py LAB_SUMMARY_PATH -> docs/v1.5; tests: I8 re-record,
-  I8_LEGACY_V14 = old I8_EXPECTED with V14 params in sim_helpers, test that RunParams default == lab D-mix kwargs;
-  fix tests that assumed ABIDES MMs/noise; payload size <= 9 MB full day (report).
-- **Open questions for the owner:** (1) A6.1 "every fill" -> "every fill that increases exposure"?
+## Resume here (2026-10-17: A8 committed 2bcd1f5; A9 nearly done — owner asked for A9 although A8.4 FAILS)
+- A8: 5/12 targets, 7/7 limits; RESULTS_A.md. After A9: STOP and report to the owner. Do NOT start Part B.
+- A9 code + tests + docs written (DECISIONS A9 has everything). Engine defect found and fixed: impact probe
+  now LAST agent (was before retail/LP -> N-IMP runs were a different market from N-C).
+- **Saved as WIP commit "A9 (WIP)" on 2026-10-17 while the full suite was ~55% done (1 F so far, probably
+  test_ou_process).** All A9 code/tests/docs are in that commit. Affected test files already passed (75 passed:
+  test_scenarios, test_market_maker, test_budget, test_k16_budget_v2, test_export, test_server); test_invariants
+  I8/I8-legacy/I8-legacy-v14 passed; test_realism_v15 13 passed; web `npm run build` passed; v1.5 regression PASSED
+  (53 checks) BEFORE the probe fix (probe fix does not touch runs without a probe).
+- NEXT: (1) re-run the full suite in the background -> runs/_logs/suite_a9b.log; only test_ou_process may fail;
+  (2) re-run `python scripts/realism_lab.py --campaign a-confirm --workers 2
+  --configs N-C,N-IMP-0,N-IMP-0.1,N-IMP-0.5,N-IMP-1,N-IMP-5,N-IMP-1s > runs/_logs/a-confirm-imp.log` (140 runs,
+  ~26 min; engine label = the WIP commit; do NOT commit while it runs; resumable: same command);
+  (3) check N-C fingerprints == runs/_a8_preprobefix/fingerprints.json (saved before the fix; also old
+  summary_a-confirm.json and RESULTS_A.md there); (4) `PYTHONIOENCODING=utf-8 ... --campaign a-confirm --report-only`,
+  add an "impact re-run after the probe fix" note with old vs new impact numbers to RESULTS_A (lab_v15_confirm.py);
+  (5) regression, regression-v14, regression-legacy; (6) CHANGELOG + TESTING A9 rows, KNOWN_ISSUES K11 R4a numbers;
+  final commit "A9: ..."; remove this section; STOP and report to the owner (A8.4 FAIL; Part B not started).
+- Open questions for the owner: (1) A6.1 "every fill" -> "every fill that increases exposure"?
   (2) T6 as a ratio penalises a tight calm book; LPs lose to informed flow. (3) L7 floor 5% kept as specified.
 
 ## Milestone status (spec v1.5)
@@ -43,7 +40,7 @@ Last updated: 2026-10-17 (A8), spec v1.5 (R4) started on branch `v1.5` (from 204
 | A6 | done | (this) | K16 v2 (0 increasing breaches), IMP-0.1 set, G11 REPORTED, flag informed_budget |
 | A7 | done | db1a3db, (this) | sweep 160 + refinement 40; selected R-25M15003 (5/10 screened targets) |
 | A8 | done | d498ee4, (this) | a-confirm 240 runs; A8.4 FAIL 5/12 targets, 7/7 limits |
-| A9 | in progress | | web/ done uncommitted; Python part TODO (see Resume here) |
+| A9 | in progress | | code/tests/docs done; impact re-run pending (see Resume here) |
 | B1–B4 | todo | | forced seller, margin calls, crashes; STOP after B4 |
 | C1–C2 | todo | | circuit breaker, campaign cb |
 

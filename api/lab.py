@@ -11,7 +11,7 @@ import json
 import re
 from typing import Any, Dict, List
 
-from .jobs import run_config_kwargs
+from .jobs import DESIGN_DIAL_KWARGS, run_config_kwargs
 from .schema import NewsItem, RunParams
 
 # spec v1.3 §5.0 writes [42, 7, 1, 2, ..., 18] and calls it 20 seeds, but 7
@@ -92,8 +92,12 @@ CAMPAIGNS["all"] = [c for k in ("c1", "c2", "c3", "c4") for c in CAMPAIGNS[k]]
 # the v1.3 set is kept as REGRESSION_LEGACY (C-DEF/S2/IMP-1 vs docs/v1.3).
 REGRESSION_LEGACY = {"seeds": [42, 7, 1], "configs": ["C-DEF", "S2", "IMP-1"], "hash_config": "C-DEF",
                      "doc": "v1.3", "ref_key": "A", "dir": "_lab_regression"}
-REGRESSION = {"seeds": [42, 7, 1], "configs": ["P0-C", "P0-S2", "P0-IMP-1"], "hash_config": "P0-C",
-              "doc": "v1.4", "ref_key": "P0-C/42", "dir": "_lab_regression_v14"}
+# spec v1.5 A9.3: the regression set is re-baselined on the new default market (D-mix and the
+# normal-day N-C/N-S2/N-IMP-1 of a-confirm, docs/v1.5); the v1.4 set is kept as REGRESSION_V14
+REGRESSION_V14 = {"seeds": [42, 7, 1], "configs": ["P0-C", "P0-S2", "P0-IMP-1"], "hash_config": "P0-C",
+                  "doc": "v1.4", "ref_key": "P0-C/42", "dir": "_lab_regression_v14"}
+REGRESSION = {"seeds": [42, 7, 1], "configs": ["D-mix", "N-C", "N-S2", "N-IMP-1"], "hash_config": "D-mix",
+              "doc": "v1.5", "ref_key": "D-mix/42", "dir": "_lab_regression_v15"}
 
 # ══════════════════════════════════════════════════════════════════════════
 # spec v1.4 (R3), Part 7. Outputs of these campaigns go to runs/_lab_v14 and
@@ -396,7 +400,12 @@ def run_params(config_id: str, seed: int) -> RunParams:
     # spec v1.4 N6: RunParams defaults are now the v1.4 market; the lab pins
     # the v1.3 market as its base (as before), and every v1.4 config sets its
     # population through "params" / "extra" (num_value, informed design, budget)
-    base = dict(num_fund=20, num_mom=12, num_value=97, fund_mode="price_only", budget=False)
+    # spec v1.5 A9.3: RunParams defaults are now the living market; the lab also pins the
+    # v1.4 value process, noise agents, ABIDES MMs and the v1.4 budget check, and every v1.5
+    # config switches them on through "extra" (build_config kwargs unchanged by the switch)
+    base = dict(num_fund=20, num_mom=12, num_value=97, fund_mode="price_only", budget=False,
+                num_noise=1000, num_retail=0, mm_kind="abides", value_process="synthetic_ou",
+                informed_budget_v2=False)
     base.update(d.get("params", {}))
     return RunParams(seed=seed, end_time="16:00:00", news=news, **base)
 
@@ -425,6 +434,10 @@ def lab_config(config_id: str, seed: int) -> Dict[str, Any]:
     from abides_markets.configs.rmsc04_ekf import build_config
 
     kw = run_config_kwargs(run_params(config_id, seed))
+    # spec v1.5 A9.3: the default market's fixed design dials are not lab defaults; a lab
+    # config sets them in "extra" (sweep_extra), otherwise build_config's defaults apply
+    for k in DESIGN_DIAL_KWARGS:
+        kw.pop(k)
     kw.update(CONFIGS[config_id].get("extra", {}))
     # spec v1.5 A1.2c: lab runs read only L1 from book_log2, so depth rows are kept at
     # 1 s spacing (lab metrics identical, T-S5); the dashboard path keeps every event
