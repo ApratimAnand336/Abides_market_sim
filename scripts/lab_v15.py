@@ -410,4 +410,9 @@ def main_v15(a, engine: str) -> int:
     elif a.campaign in ("a-sweep", "a-sweep-r"):
         report_sweep(engine, _sweep_winner(a) if a.campaign == "a-sweep-r" else None)
         print(f"report: {(DOC / 'RESULTS_a-sweep.md').relative_to(RL.REPO)}")
+    elif a.campaign == "a-confirm":
+        import lab_v15_confirm
+
+        lab_v15_confirm.report(engine)
+        print(f"report: {(DOC / 'RESULTS_A.md').relative_to(RL.REPO)}")
     return 1 if failed else 0

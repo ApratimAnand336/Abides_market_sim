@@ -361,6 +361,8 @@ Run flags (v1.4): `long_only` covers price-only fundamentalists and momentum EKF
 
 **A7 design sweep (v1.5):** `--campaign a-sweep` = 16 designs R-<n_lp><W><N_r><κ_v> (`lab.SWEEP_DESIGNS`, n_lp 2|4, W $5M|$20M, N_r 500|1500, κ_v 1|3) × C/S2 × seeds 42, 7, 1, 2, 3; `--campaign a-sweep-r [--winner R-...]` = the refinement round (n_lp 3, W $50M, N_r 3000, κ_v 5, one dial at a time; winner read from `docs/v1.5/lab/selection_sweep.json`). Targets and limits are `realism.r4a_scorecard` (A8.1/A8.2; screening: A-T3/A-T11 not screened, A-T9 on S2, L1 normal day). L4 ignores `informed_bounds` and uses `informed_budget` (DECISIONS A7). The selection is `lab_v15.select_sweep`, printed in full in `RESULTS_a-sweep.md`.
 
+**A8 confirmation (v1.5):** `--campaign a-confirm` = the 240 runs of A9.1 for `lab.SELECTED` (D-mix; D-calm and D-volatile on `lab.CONFIRM_DAY_SEEDS`; N-C, N-S2, N-S2n, N-IMP-0/0.1/0.5/1/5/1s, N-S4). At the end of the campaign (or with `--report-only`) `scripts/lab_v15_confirm.py` writes `docs/v1.5/lab/RESULTS_A.md`, `summary_a-confirm.json`, `summary.json` (the LabSummary with an "r4a" block, for the dashboard), `reference_hashes.json` (D-mix seed 42 fingerprint, the new regression reference) and `figures/a8_*.png`. Scopes: C = N-C, S2/S2n = treated minus N-C on the same seed, MIX = D-mix (A-T3, A-T11, L1). Set `PYTHONIOENCODING=utf-8` on Windows consoles.
+
 The selection (§7.4) is `lab_v14.select_design`, and it is printed in full. Screening uses
 `r3_scorecard(..., screening=True)`, in which T5 and T6 are judged on S2 only. L4's run part
 is zero_sum over every run of the design; L5 is the median wall time over every run of the

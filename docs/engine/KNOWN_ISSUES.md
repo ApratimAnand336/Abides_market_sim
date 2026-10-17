@@ -32,6 +32,24 @@ What passes on P0: T1/G3 (ac1 −0.005), T2/G4 (VR(5) 1.2488), T4/G7 (vv_corr +0
 ×2.5 after jumps), T7 (informed agents profit), spreads (0.30 / 1.0 bps; G8), G13. See
 [`docs/v1.4/lab/RESULTS.md`](../v1.4/lab/RESULTS.md).
 
+## R4a candidate R-25M15003 (a-confirm, N-C normal day, 20 seeds, engine v1.4-d498ee4, 2026-10-17)
+
+These are the open issues measured on the design that becomes the default in A9 (`docs/v1.5/lab/RESULTS_A.md`). The table above stays the P0 record until the switch.
+
+| # | R4a measured | Status vs band |
+|---|---|---|
+| K1 | σ1m **4.86 bps**; daily sd across seeds (D-mix) **0.99%** | both just below the band (A-T1, A-T3 FAIL) |
+| K3 | CS **0.065**, PS 0.0008 | worse than P0 (A-T7 FAIL) |
+| K4 | gap std **$0.54**, half-life read 1 min | larger gaps, still fast |
+| K5 | RS across days (D-mix) **2.40**; per-day contrast 3.8 (reported) | A-T11 FAIL by 0.1 |
+| K6 | hype +0.9 headline: R_peak **+21.6 bps** at 0.27 min, half reverts in 0.77 min; beliefs +$1.11 | stronger overreaction than P0 |
+| K7 | u_ratio **1.19** | A-T12 FAIL |
+| K8 | MM (2 LPs) group P&L vs hold **−$3,572** median; +$1,325 on volatile days | A-T10 FAIL |
+| K11 | β **1.1** [0.94–1.86], recovery 0.36 | G12 FAIL, G13 PASS |
+| K14 | price/value vol ratio **0.81** at 1 min | improved from 0.49, A-T5 FAIL |
+| K15 | spread_jump_ratio **2.49 / 2.98** | **fixed on R4a** (A-T9 PASS) |
+| K16 | 0 fills that increase exposure out of bounds in 240 runs (informed_budget_v2) | fixed behind the A9 switch |
+
 ## Closed in v1.4 (R3, measured on P0, 20 seeds, 2026-10-14)
 
 | # | Issue | Fix | Status |

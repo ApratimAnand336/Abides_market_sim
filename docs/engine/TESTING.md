@@ -67,6 +67,7 @@ agents, three news items) once per session and checks the payload against it.
 | 2026-10-16 | `v1.5` A5 | 392 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 191 s; test_liquidity_provider.py 9 passed (T-LP1..T-LP6); invariants 11 passed (I8 unchanged); campaign a-lp 40/40 runs, zero_sum 0 |
 | 2026-10-16 | `v1.5` A6 | 398 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 217 s; test_k16_budget_v2.py 5 passed (T-K16-1..3); I8 unchanged (v2 default off); regression PASSED (hash + 41 checks); `npm run build` passes |
 | 2026-10-16 | `v1.5` A7 | 401 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 221 s; test_realism_v15.py 10 passed (A7 scorecard, sweep ids, selection); campaigns a-sweep 160/160 and a-sweep-r 40/40 runs, zero_sum 0, no flag failing |
+| 2026-10-17 | `v1.5` A8 | 402 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 429 s; campaign a-confirm 240/240 runs, zero_sum 0 in every run, no invariant flag failing |
 
 ### Pre-existing failures (not caused by our code)
 

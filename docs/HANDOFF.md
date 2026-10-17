@@ -1,29 +1,35 @@
 # Handoff (read this first; keep it under ~60 lines; update at the end of every milestone)
 
-Last updated: 2026-10-16 (A7), spec v1.5 (R4) started on branch `v1.5` (from 20465e2).
+Last updated: 2026-10-17 (A8), spec v1.5 (R4) started on branch `v1.5` (from 20465e2).
 
 ## Where we are
 - Done: v1.2 (R1), v1.3 (R2), v1.4 (R3, branch `v1.4`; `docs/v1.4/lab/RESULTS.md`).
 - **Now: spec v1.5 (R4)**, `docs/specs/spec_v1.5.txt`. Part A living market (A0–A9), Part B
   crashes (B1–B4, STOP to owner after B4), Part C circuit breaker (C1–C2).
 
-## Resume here (2026-10-16: A7 done; next milestone A8)
-- **A7 done** (WIP code commit db1a3db + results commit). Sweep 160 + refinement 40 runs, 0 failed,
-  zero_sum 0, no invariant flag failing. Report `docs/v1.5/lab/RESULTS_a-sweep.md`.
-- **Selected design R-25M15003** = 2 LPs of $5M, N_r 1500, kappa_v 3 (`docs/v1.5/lab/selection_sweep.json`,
-  `final_winner`). build_config extra = `lab.sweep_extra("R-25M15003")` (+ day_type per config in A8).
-  5-seed screening: sigma1m 4.9 bps, ac1 -0.003, VR(5) 1.24, vol ratio 0.81, vv 0.74, CS 0.026, PS -0.005,
-  kurt 22, uplift 1.1, spread ratio 3.0, informed +$23.6k, LP group -$6.0k, u 1.2, retail 7%, 1.42M shares,
-  ~22 s/day. Fails A-T1, A-T5, A-T7, A-T10, A-T12 -> A8 will very likely hit A8.4 = STOP after A9.2.
-- 13/16 designs failed L7 (retail share 1.2-4.8% < 5%). Bigger LPs: lower sigma1m and vol ratio, higher VR(5),
-  kurtosis and LP losses. Refinement: R-25M30003 passed 7/10 targets but failed L6 (gap $20.7).
-- **NEXT STEP: A8** confirmation (spec A9.1, 240 runs) with R-25M15003: D-mix (auto), D-calm, D-volatile,
-  N-C/N-S2/N-S2n, N-IMP-* (`lab_v15.impact_configs("N")`), N-S4. Register in api/lab.py V15 section
-  (base = `sweep_extra`, override day_type), score with `realism.r4a_scorecard` (screening=False; MIX scope
-  = D-mix: sigma_day_xseed, day_rv_regime_spread, spreads), then RESULTS_A.md (A9.2).
+## Resume here (2026-10-17: A8 committed; NOW A9 — owner asked for A9 although A8.4 FAILS)
+- A8 result: 5/12 targets, 7/7 limits (fail A-T1 4.86 bps, A-T3 0.99%, A-T5 0.81, A-T7, A-T10 MM −$3.6k,
+  A-T11 RS 2.40, A-T12 u 1.19). Report `docs/v1.5/lab/RESULTS_A.md`. Spec: STOP after A9.2; owner: do A9 (DECISIONS A8).
+  After A9: STOP and report to the owner. Do NOT start Part B.
+- **A9 web/ part done (uncommitted, tsc clean; still run `npm run build`)**: payload.ts schema 1.4 (RunParams
+  day_type/auto_news/num_retail/mm_kind/value_process/informed_budget_v2; NewsRecord.kind; day_info; market_params;
+  LabSummary.r4a), Sidebar day-type selector + auto-news toggle + retail slider + MM kind, App defaults, price chart
+  stress markArea + info(solid)/hype(dashed) news, news tab Kind column, MarketParamsCard (RETAIL_PARAMS/LP_PARAMS
+  in agentParams.ts), PopulationCard colours, Realism tab shows r4a.
+- **A9 Python TODO (after campaign)**: api/__init__ SCHEMA 1.4, ENGINE 1.5; schema.py RunParams (num_noise 0,
+  num_retail 1500, mm_kind "lp", day_type "auto", auto_news True, value_process "living_v1", informed_budget_v2
+  True — last two are a deviation needed to express v1.4 P0 via RunParams; DECISIONS), NewsRecord.kind, DayInfo,
+  MarketParams; jobs.run_config_kwargs passes them + kappa_v 3, num_lp 2, lp_wealth 500_000_000 (build_config
+  defaults stay inert); export.py: day_info from r_series["day_info"] (ns -> s since open, clipped), news kind =
+  information if (t, headline) in day_info news else hype, market_params from agents, POPULATION_LABELS
+  RetailTraderAgent "Retail (types)", LiquidityProviderAgent "Market maker (ours)", exclude RetailCrowdAgent;
+  lab.run_params base pins v1.4 (num_noise 1000, num_retail 0, mm_kind abides, synthetic_ou, budget_v2 False);
+  REGRESSION -> v1.5 (D-mix,N-C,N-S2,N-IMP-1; hash D-mix/42; docs/v1.5; dir _lab_regression_v15; add REG_SCENARIO_KEYS
+  for N-*), old one kept as "regression-v14"; server.py LAB_SUMMARY_PATH -> docs/v1.5; tests: I8 re-record,
+  I8_LEGACY_V14 = old I8_EXPECTED with V14 params in sim_helpers, test that RunParams default == lab D-mix kwargs;
+  fix tests that assumed ABIDES MMs/noise; payload size <= 9 MB full day (report).
 - **Open questions for the owner:** (1) A6.1 "every fill" -> "every fill that increases exposure"?
-  (A7 L4 already uses informed_budget, DECISIONS A7). (2) A8: T6 as a ratio penalises a tight calm book;
-  LPs lose to informed flow. (3) L7 floor 5% excludes most designs: as specified, kept.
+  (2) T6 as a ratio penalises a tight calm book; LPs lose to informed flow. (3) L7 floor 5% kept as specified.
 
 ## Milestone status (spec v1.5)
 | ID | Status | Commit | Notes |
@@ -36,8 +42,8 @@ Last updated: 2026-10-16 (A7), spec v1.5 (R4) started on branch `v1.5` (from 204
 | A5 | done | b27d161, (this) | LPs; a-lp: E-A3 not confirmed (ratio 18.7), LPs −$4.4k/day |
 | A6 | done | (this) | K16 v2 (0 increasing breaches), IMP-0.1 set, G11 REPORTED, flag informed_budget |
 | A7 | done | db1a3db, (this) | sweep 160 + refinement 40; selected R-25M15003 (5/10 screened targets) |
-| A8 | todo | | confirmation 240 runs, RESULTS_A.md (STOP if A8.4 fails) |
-| A9 | todo | | default switch, dashboard, I8 re-record, legacy invariants |
+| A8 | done | d498ee4, (this) | a-confirm 240 runs; A8.4 FAIL 5/12 targets, 7/7 limits |
+| A9 | in progress | | web/ done uncommitted; Python part TODO (see Resume here) |
 | B1–B4 | todo | | forced seller, margin calls, crashes; STOP after B4 |
 | C1–C2 | todo | | circuit breaker, campaign cb |
 
@@ -70,6 +76,7 @@ Last updated: 2026-10-16 (A7), spec v1.5 (R4) started on branch `v1.5` (from 204
   CLAUDE.md and .claude/ stay untracked.
 
 ## Log (newest first, one line each)
+- 2026-10-17 A8: a-confirm 240/240; A8.4 FAIL (5/12 targets, limits all pass); owner: continue with A9.
 - 2026-10-16 A7: design sweep + refinement (200 runs); selected R-25M15003; fails A-T1/5/7/10/12.
 - 2026-10-16 A6: K16 diagnosed and fixed behind informed_budget_v2; IMP-0.1 in the impact set; G11 REPORTED.
 - 2026-10-16 A5 (WIP): LPs + tests done; paused before full suite check and campaign a-lp.

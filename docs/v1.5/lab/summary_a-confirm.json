@@ -1,0 +1,2490 @@
+{
+ "engine": "v1.4-d498ee4+dirty",
+ "run_engines": [
+  "v1.4-d498ee4"
+ ],
+ "date": "2026-10-17",
+ "design": "R-25M15003",
+ "all_pass": false,
+ "failing": [
+  "A-T1",
+  "A-T3",
+  "A-T5",
+  "A-T7",
+  "A-T10",
+  "A-T11",
+  "A-T12"
+ ],
+ "r4a": {
+  "targets": {
+   "A-T1": {
+    "id": "A-T1",
+    "label": "1-min volatility sigma_1m (bps)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "sigma_1m_bps",
+      "op": ">=",
+      "threshold": 5.0,
+      "value": 4.857521019039565,
+      "result": "FAIL"
+     },
+     {
+      "scope": "C",
+      "key": "sigma_1m_bps",
+      "op": "<=",
+      "threshold": 10.0,
+      "value": 4.857521019039565,
+      "result": "PASS"
+     }
+    ],
+    "status": "FAIL",
+    "norm_miss": 0.02849579619208704
+   },
+   "A-T2": {
+    "id": "A-T2",
+    "label": "|ac1| of 1-min returns",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "ac1",
+      "op": "abs<=",
+      "threshold": 0.1,
+      "value": 0.013006528229319334,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS",
+    "norm_miss": 0.0
+   },
+   "A-T3": {
+    "id": "A-T3",
+    "label": "daily volatility across seeds, default day mix (%)",
+    "checks": [
+     {
+      "scope": "MIX",
+      "key": "sigma_day_xseed",
+      "op": ">=",
+      "threshold": 1.0,
+      "value": 0.987917194394873,
+      "result": "FAIL"
+     },
+     {
+      "scope": "MIX",
+      "key": "sigma_day_xseed",
+      "op": "<=",
+      "threshold": 2.0,
+      "value": 0.987917194394873,
+      "result": "PASS"
+     }
+    ],
+    "status": "FAIL"
+   },
+   "A-T4": {
+    "id": "A-T4",
+    "label": "VR(5)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "vr5",
+      "op": ">=",
+      "threshold": 0.8,
+      "value": 1.217848327221871,
+      "result": "PASS"
+     },
+     {
+      "scope": "C",
+      "key": "vr5",
+      "op": "<=",
+      "threshold": 1.25,
+      "value": 1.217848327221871,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS",
+    "norm_miss": 0.0
+   },
+   "A-T5": {
+    "id": "A-T5",
+    "label": "price/value vol ratio at 1 min",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "vol_ratio_price_value",
+      "op": ">=",
+      "threshold": 0.9,
+      "value": 0.8104406249245915,
+      "result": "FAIL"
+     }
+    ],
+    "status": "FAIL",
+    "norm_miss": 0.09951041675045395
+   },
+   "A-T6": {
+    "id": "A-T6",
+    "label": "volume-volatility Spearman",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "vv_corr",
+      "op": ">=",
+      "threshold": 0.3,
+      "value": 0.7595403299875361,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "A-T7": {
+    "id": "A-T7",
+    "label": "clustering CS and PS",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "cs",
+      "op": ">=",
+      "threshold": 0.1,
+      "value": 0.06446121440050215,
+      "result": "FAIL"
+     },
+     {
+      "scope": "C",
+      "key": "ps",
+      "op": ">",
+      "threshold": 0.03,
+      "value": 0.0008066625674533305,
+      "result": "FAIL"
+     }
+    ],
+    "status": "FAIL"
+   },
+   "A-T8": {
+    "id": "A-T8",
+    "label": "excess kurtosis",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "kurt",
+      "op": ">=",
+      "threshold": 3.0,
+      "value": 15.328387817674697,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "A-T9": {
+    "id": "A-T9",
+    "label": "after a \u00b12% jump: volume uplift, spread ratio, one-sided share",
+    "checks": [
+     {
+      "scope": "S2",
+      "key": "volume_uplift",
+      "op": ">",
+      "threshold": 1.0,
+      "value": 1.0456865127171913,
+      "result": "PASS"
+     },
+     {
+      "scope": "S2",
+      "key": "spread_jump_ratio",
+      "op": "<=",
+      "threshold": 3.0,
+      "value": 2.4940424743489316,
+      "result": "PASS"
+     },
+     {
+      "scope": "S2",
+      "key": "one_sided_share_jump",
+      "op": "<=",
+      "threshold": 0.01,
+      "value": 0.0,
+      "result": "PASS"
+     },
+     {
+      "scope": "S2n",
+      "key": "volume_uplift",
+      "op": ">",
+      "threshold": 1.0,
+      "value": 1.0311696432854567,
+      "result": "PASS"
+     },
+     {
+      "scope": "S2n",
+      "key": "spread_jump_ratio",
+      "op": "<=",
+      "threshold": 3.0,
+      "value": 2.978164983097443,
+      "result": "PASS"
+     },
+     {
+      "scope": "S2n",
+      "key": "one_sided_share_jump",
+      "op": "<=",
+      "threshold": 0.01,
+      "value": 0.0005552470849528035,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "A-T10": {
+    "id": "A-T10",
+    "label": "informed P&L vs hold > 0 (total, median); MM group P&L median >= 0 ($)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "fund_pnl_total",
+      "op": ">",
+      "threshold": 0.0,
+      "value": 28657.6875,
+      "result": "PASS"
+     },
+     {
+      "scope": "C",
+      "key": "fund_pnl_median",
+      "op": ">",
+      "threshold": 0.0,
+      "value": 609.20875,
+      "result": "PASS"
+     },
+     {
+      "scope": "C",
+      "key": "mm_pnl_group_median",
+      "op": ">=",
+      "threshold": 0.0,
+      "value": -3572.25,
+      "result": "FAIL"
+     }
+    ],
+    "status": "FAIL"
+   },
+   "A-T11": {
+    "id": "A-T11",
+    "label": "regimes across days RS = p90/p10 of daily realised vol",
+    "checks": [
+     {
+      "scope": "MIX",
+      "key": "day_rv_regime_spread",
+      "op": ">=",
+      "threshold": 2.5,
+      "value": 2.402557875127202,
+      "result": "FAIL"
+     }
+    ],
+    "status": "FAIL"
+   },
+   "A-T12": {
+    "id": "A-T12",
+    "label": "intraday U-shape u_ratio",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "u_ratio",
+      "op": ">=",
+      "threshold": 1.3,
+      "value": 1.1924558832527947,
+      "result": "FAIL"
+     }
+    ],
+    "status": "FAIL"
+   }
+  },
+  "limits": {
+   "L1": {
+    "id": "L1",
+    "label": "spread median and p95 (bps)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "spread_med_bps",
+      "op": "<=",
+      "threshold": 2.5,
+      "value": 0.9982608307171543,
+      "result": "PASS"
+     },
+     {
+      "scope": "C",
+      "key": "spread_p95_bps",
+      "op": "<=",
+      "threshold": 10.0,
+      "value": 3.867294393269355,
+      "result": "PASS"
+     },
+     {
+      "scope": "MIX",
+      "key": "spread_med_bps",
+      "op": "<=",
+      "threshold": 2.5,
+      "value": 0.985984443935354,
+      "result": "PASS"
+     },
+     {
+      "scope": "MIX",
+      "key": "spread_p95_bps",
+      "op": "<=",
+      "threshold": 10.0,
+      "value": 3.538441763952219,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "L2": {
+    "id": "L2",
+    "label": "shares executed per day",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "shares_executed",
+      "op": ">=",
+      "threshold": 295500,
+      "value": 1316600.5,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "L3": {
+    "id": "L3",
+    "label": "trades all day (share of half-hours with trades; empty book at the open)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "active_halfhours_share",
+      "op": ">=",
+      "threshold": 1.0,
+      "value": 1.0,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "L4": {
+    "id": "L4",
+    "label": "zero_sum = 0 and invariant flags pass in every run (1 = yes)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "zero_sum_all_zero",
+      "op": ">=",
+      "threshold": 1.0,
+      "value": 1.0,
+      "result": "PASS"
+     },
+     {
+      "scope": "C",
+      "key": "flags_all_ok",
+      "op": ">=",
+      "threshold": 1.0,
+      "value": 1.0,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "L5": {
+    "id": "L5",
+    "label": "median wall time of a full day (s)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "wall_time_s",
+      "op": "<=",
+      "threshold": 90.0,
+      "value": 20.255,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "L6": {
+    "id": "L6",
+    "label": "max |mid - value| over a day without a scenario ($)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "max_abs_gap",
+      "op": "<=",
+      "threshold": 10.0,
+      "value": 4.469590612812567,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   },
+   "L7": {
+    "id": "L7",
+    "label": "retail share of volume (%)",
+    "checks": [
+     {
+      "scope": "C",
+      "key": "retail_share",
+      "op": ">=",
+      "threshold": 5.0,
+      "value": 6.607051002797331,
+      "result": "PASS"
+     },
+     {
+      "scope": "C",
+      "key": "retail_share",
+      "op": "<=",
+      "threshold": 40.0,
+      "value": 6.607051002797331,
+      "result": "PASS"
+     }
+    ],
+    "status": "PASS"
+   }
+  },
+  "n_targets_passed": 5,
+  "all_pass": false
+ },
+ "C": {
+  "D-calm": {
+   "ac1": 0.12217109303991272,
+   "vr5": 1.4320038658364842,
+   "vol_ratio_price_value": 0.7069265150280271,
+   "vv_corr": 0.723668736326964,
+   "spread_med_ticks": 7.0,
+   "spread_p95_ticks": 22.0,
+   "shares_executed": 1073029.5,
+   "active_halfhours_share": 1.0,
+   "sigma_1m_bps": 2.9639723509325746,
+   "gap_std": 0.3828204875048251,
+   "gap_mean": -0.01535194393843165,
+   "gap_half_life_read_min": 1.6567699995325245,
+   "gap_half_life_corr_min": 1.576842137575797,
+   "gap_half_life_min": 1.6348030201506951,
+   "one_sided_share": 4.273321652925599e-05,
+   "spread_max_ticks": 295.5,
+   "cs": 0.04223524664127466,
+   "kurt": 36.736304200387124,
+   "regime_contrast": 4.963196943945415,
+   "vr30": 1.4493159349763802,
+   "spread_med_bps": 0.694453287031197,
+   "spread_p95_bps": 2.2001060998956437,
+   "max_abs_gap": 4.336835508163972,
+   "vol_ratio_5m": 0.8388001349900029,
+   "vol_ratio_15m": 0.9379285960198269,
+   "vol_ratio_30m": 0.9581049728297932,
+   "vol_ratio_60m": 0.9806471717904655,
+   "fund_pnl_total": 19227.27,
+   "fund_pnl_median": 346.30999999999995,
+   "fund_volume_share_pct": 78.36356138979527,
+   "zero_sum_all_zero": 1.0,
+   "wall_time_s": 20.255,
+   "peak_mem_mb": 715.995136,
+   "n_seeds": 10,
+   "gap_hl_corr_of_median_read": "1.6 min",
+   "gap_hl_range_of_median_read": null,
+   "day_rv_pct": 0.5864765597310682,
+   "u_ratio": 1.1792577580745418,
+   "ps": 0.0007449760073584239,
+   "skew": 0.7890080332497016,
+   "retail_share": 7.506725407301417,
+   "mm_share": 14.513273502216563,
+   "mm_inv_max_abs": 1407.0,
+   "mm_inv_end_max_abs": 204.0,
+   "info_news_n": 3.0,
+   "info_news_f10": 0.8853515285802074,
+   "info_news_uplift": 1.6122339829311385,
+   "mm_pnl_group_median": -3006.8,
+   "retail_pnl_total": -15983.1,
+   "retail_pnl_median": -14.2375,
+   "noise_pnl_total": null,
+   "noise_pnl_median": null,
+   "mom_pnl_total": 173.8025,
+   "mom_pnl_median": 7.8637500000000005,
+   "day_rv_regime_spread": 2.5070024304050813,
+   "grades": {
+    "G1": "WARN",
+    "G10": "FAIL",
+    "G11": null,
+    "G2": "WARN",
+    "G3": "WARN",
+    "G4": "WARN",
+    "G5": "FAIL",
+    "G6": "PASS",
+    "G7": "PASS",
+    "G8": "PASS",
+    "G9": "FAIL"
+   },
+   "flags_failing": [],
+   "flags_all_ok": 1.0,
+   "informed_bounds_fail_runs": 0,
+   "wall_time_config_s": 20.805,
+   "peak_mem_mb_all": 717.1584,
+   "sigma_day_xseed": 0.874676947224628,
+   "retail_stop_trigger_pct": 0.0,
+   "stop_trigger_share_pct": 0.0,
+   "n_stress_episodes": 0.0,
+   "day_types": {
+    "calm": 10,
+    "normal": 0,
+    "volatile": 0
+   },
+   "n_valid": 10
+  },
+  "N-C": {
+   "ac1": 0.013006528229319334,
+   "vr5": 1.217848327221871,
+   "vol_ratio_price_value": 0.8104406249245915,
+   "vv_corr": 0.7595403299875361,
+   "spread_med_ticks": 10.0,
+   "spread_p95_ticks": 39.0,
+   "shares_executed": 1316600.5,
+   "active_halfhours_share": 1.0,
+   "sigma_1m_bps": 4.857521019039565,
+   "gap_std": 0.5383581893660216,
+   "gap_mean": -0.03328895119350578,
+   "gap_half_life_read_min": 1.2391541226678002,
+   "gap_half_life_corr_min": 1.168522245813742,
+   "gap_half_life_min": 1.11085305695623,
+   "one_sided_share": 4.273321652925599e-05,
+   "spread_max_ticks": 294.5,
+   "cs": 0.06446121440050215,
+   "kurt": 15.328387817674697,
+   "regime_contrast": 3.815423525708307,
+   "vr30": 1.1908792222717386,
+   "spread_med_bps": 0.9982608307171543,
+   "spread_p95_bps": 3.867294393269355,
+   "max_abs_gap": 4.469590612812567,
+   "vol_ratio_5m": 0.8790659822847644,
+   "vol_ratio_15m": 0.9476319341381243,
+   "vol_ratio_30m": 0.9686849685616736,
+   "vol_ratio_60m": 0.9830341456228047,
+   "fund_pnl_total": 28657.6875,
+   "fund_pnl_median": 609.20875,
+   "fund_volume_share_pct": 82.297649421897,
+   "zero_sum_all_zero": 1.0,
+   "wall_time_s": 20.255,
+   "peak_mem_mb": 717.6130559999999,
+   "n_seeds": 20,
+   "gap_hl_corr_of_median_read": "1.2 min",
+   "gap_hl_range_of_median_read": [
+    1.0,
+    1.0
+   ],
+   "day_rv_pct": 0.9578449490992074,
+   "u_ratio": 1.1924558832527947,
+   "ps": 0.0008066625674533305,
+   "skew": 0.30392833613407544,
+   "retail_share": 6.607051002797331,
+   "mm_share": 10.984718249720189,
+   "mm_inv_max_abs": 1342.5,
+   "mm_inv_end_max_abs": 507.0,
+   "info_news_n": 2.0,
+   "info_news_f10": 0.8605551658517601,
+   "info_news_uplift": 1.5032667987634205,
+   "mm_pnl_group_median": -3572.25,
+   "retail_pnl_total": -26352.86,
+   "retail_pnl_median": -18.98625,
+   "noise_pnl_total": null,
+   "noise_pnl_median": null,
+   "mom_pnl_total": 143.95499999999998,
+   "mom_pnl_median": 0.2275,
+   "day_rv_regime_spread": 2.4649531764413113,
+   "grades": {
+    "G1": "WARN",
+    "G10": "FAIL",
+    "G11": null,
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "G5": "WARN",
+    "G6": "PASS",
+    "G7": "PASS",
+    "G8": "PASS",
+    "G9": "WARN"
+   },
+   "flags_failing": [],
+   "flags_all_ok": 1.0,
+   "informed_bounds_fail_runs": 0,
+   "wall_time_config_s": 17.515,
+   "peak_mem_mb_all": 717.1584,
+   "sigma_day_xseed": 1.2028755349888085,
+   "retail_stop_trigger_pct": 0.0,
+   "stop_trigger_share_pct": 0.0,
+   "n_stress_episodes": 0.0,
+   "day_types": {
+    "calm": 0,
+    "normal": 20,
+    "volatile": 0
+   },
+   "n_valid": 20
+  },
+  "D-volatile": {
+   "ac1": -0.06195632934770627,
+   "vr5": 1.0029227864469048,
+   "vol_ratio_price_value": 0.8979118432908613,
+   "vv_corr": 0.7855815071004943,
+   "spread_med_ticks": 15.0,
+   "spread_p95_ticks": 71.5,
+   "shares_executed": 1648287.0,
+   "active_halfhours_share": 1.0,
+   "sigma_1m_bps": 8.649841416298486,
+   "gap_std": 0.8898267122191523,
+   "gap_mean": -0.0733990524660498,
+   "gap_half_life_read_min": 0.917247286882495,
+   "gap_half_life_corr_min": 0.8584942515251169,
+   "gap_half_life_min": 0.9102664212439011,
+   "one_sided_share": 4.273321652925599e-05,
+   "spread_max_ticks": 526.0,
+   "cs": 0.0972584009745373,
+   "kurt": 13.043663943709879,
+   "regime_contrast": 4.34532000750293,
+   "vr30": 0.7735349729785255,
+   "spread_med_bps": 1.501709874502457,
+   "spread_p95_bps": 7.116722523903793,
+   "max_abs_gap": 7.43805492055327,
+   "vol_ratio_5m": 0.9065904340951254,
+   "vol_ratio_15m": 0.9709475544426365,
+   "vol_ratio_30m": 0.9843618024892948,
+   "vol_ratio_60m": 0.9919572842143908,
+   "fund_pnl_total": 38653.880000000005,
+   "fund_pnl_median": 1209.53625,
+   "fund_volume_share_pct": 85.59204447388535,
+   "zero_sum_all_zero": 1.0,
+   "wall_time_s": 20.255,
+   "peak_mem_mb": 735.096832,
+   "n_seeds": 10,
+   "gap_hl_corr_of_median_read": "0.9 min",
+   "gap_hl_range_of_median_read": [
+    1.0,
+    1.0
+   ],
+   "day_rv_pct": 1.7053700724659298,
+   "u_ratio": 1.1617164519621515,
+   "ps": 0.005261734094228745,
+   "skew": 0.07958157794551018,
+   "retail_share": 6.010623446094964,
+   "mm_share": 8.825965877638625,
+   "mm_inv_max_abs": 1197.5,
+   "mm_inv_end_max_abs": 393.5,
+   "info_news_n": 5.0,
+   "info_news_f10": 0.8687106681322108,
+   "info_news_uplift": 1.2572374206160624,
+   "mm_pnl_group_median": 1325.21,
+   "retail_pnl_total": -38477.685,
+   "retail_pnl_median": -21.317500000000003,
+   "noise_pnl_total": null,
+   "noise_pnl_median": null,
+   "mom_pnl_total": 237.6325,
+   "mom_pnl_median": 0.0,
+   "day_rv_regime_spread": 2.801710368186758,
+   "grades": {
+    "G1": "PASS",
+    "G10": "FAIL",
+    "G11": null,
+    "G2": "WARN",
+    "G3": "PASS",
+    "G4": "PASS",
+    "G5": "WARN",
+    "G6": "PASS",
+    "G7": "PASS",
+    "G8": "PASS",
+    "G9": "WARN"
+   },
+   "flags_failing": [],
+   "flags_all_ok": 1.0,
+   "informed_bounds_fail_runs": 0,
+   "wall_time_config_s": 20.615000000000002,
+   "peak_mem_mb_all": 717.1584,
+   "sigma_day_xseed": 2.1033671357272006,
+   "retail_stop_trigger_pct": 0.0,
+   "stop_trigger_share_pct": 0.0,
+   "n_stress_episodes": 1.0,
+   "day_types": {
+    "calm": 0,
+    "normal": 0,
+    "volatile": 10
+   },
+   "n_valid": 10
+  },
+  "D-mix": {
+   "ac1": 0.078920461373304,
+   "vr5": 1.3325186699511526,
+   "vol_ratio_price_value": 0.7355644543447044,
+   "vv_corr": 0.7462411006714804,
+   "spread_med_ticks": 10.0,
+   "spread_p95_ticks": 35.5,
+   "shares_executed": 1248765.5,
+   "active_halfhours_share": 1.0,
+   "sigma_1m_bps": 4.158616394908939,
+   "gap_std": 0.5142540033320526,
+   "gap_mean": -0.020631720974113605,
+   "gap_half_life_read_min": 1.397017843281563,
+   "gap_half_life_corr_min": 1.3224202546875992,
+   "gap_half_life_min": 1.2867448127431278,
+   "one_sided_share": 4.273321652925599e-05,
+   "spread_max_ticks": 274.5,
+   "cs": 0.060322314037311295,
+   "kurt": 33.18005564750561,
+   "regime_contrast": 4.646758532421261,
+   "vr30": 1.2626242462776376,
+   "spread_med_bps": 0.985984443935354,
+   "spread_p95_bps": 3.538441763952219,
+   "max_abs_gap": 4.619333439158083,
+   "vol_ratio_5m": 0.8574017390191576,
+   "vol_ratio_15m": 0.9335871411010133,
+   "vol_ratio_30m": 0.9597354229911829,
+   "vol_ratio_60m": 0.975473205884871,
+   "fund_pnl_total": 21727.415,
+   "fund_pnl_median": 444.4125,
+   "fund_volume_share_pct": 81.30828018625951,
+   "zero_sum_all_zero": 1.0,
+   "wall_time_s": 20.255,
+   "peak_mem_mb": 711.354368,
+   "n_seeds": 20,
+   "gap_hl_corr_of_median_read": "1.3 min",
+   "gap_hl_range_of_median_read": [
+    1.0,
+    1.0
+   ],
+   "day_rv_pct": 0.8232650139942406,
+   "u_ratio": 1.161814105919683,
+   "ps": 0.003220967406189546,
+   "skew": 0.6533942402547496,
+   "retail_share": 6.872018050068887,
+   "mm_share": 11.465462066868113,
+   "mm_inv_max_abs": 1348.0,
+   "mm_inv_end_max_abs": 422.5,
+   "info_news_n": 2.0,
+   "info_news_f10": 0.8840603469466687,
+   "info_news_uplift": 1.5358811861218786,
+   "mm_pnl_group_median": -4654.93,
+   "retail_pnl_total": -17232.44,
+   "retail_pnl_median": -16.5625,
+   "noise_pnl_total": null,
+   "noise_pnl_median": null,
+   "mom_pnl_total": 143.95499999999998,
+   "mom_pnl_median": 0.655,
+   "day_rv_regime_spread": 2.402557875127202,
+   "grades": {
+    "G1": "WARN",
+    "G10": "FAIL",
+    "G11": null,
+    "G2": "WARN",
+    "G3": "PASS",
+    "G4": "WARN",
+    "G5": "WARN",
+    "G6": "PASS",
+    "G7": "PASS",
+    "G8": "PASS",
+    "G9": "WARN"
+   },
+   "flags_failing": [],
+   "flags_all_ok": 1.0,
+   "informed_bounds_fail_runs": 0,
+   "wall_time_config_s": 20.955,
+   "peak_mem_mb_all": 717.1584,
+   "sigma_day_xseed": 0.987917194394873,
+   "retail_stop_trigger_pct": 0.0,
+   "stop_trigger_share_pct": 0.0,
+   "n_stress_episodes": 0.0,
+   "day_types": {
+    "calm": 8,
+    "normal": 11,
+    "volatile": 1
+   },
+   "n_valid": 20
+  }
+ },
+ "S2": {
+  "t50": 0.7333333333333334,
+  "t90": 1.8583333333333334,
+  "settle": 0.9966792147401834,
+  "overshoot": 0.02995839436848957,
+  "volume_uplift": 1.0456865127171913,
+  "vol_uplift": 8.79480132897902,
+  "one_sided_share_jump": 0.0,
+  "spread_p95_jump_ticks": 83.5,
+  "spread_max_jump_ticks": 1749.5,
+  "price_path_steps": 1.0,
+  "belief_5": 0.9843269348144532,
+  "belief_30": 0.9990585327148438,
+  "spread_jump_ratio": 2.4940424743489316,
+  "spread_p95_jump_bps": 8.142001809204643,
+  "spread_p95_jump_bps_base": 3.1475606393338857,
+  "informed_share_updated_1m": 0.16666666666666666,
+  "informed_share_updated_2m": 0.3583333333333333,
+  "informed_share_updated_5m": 0.75,
+  "informed_share_updated_10m": 0.95,
+  "informed_share_updated_15m": 0.9916666666666667,
+  "n_seeds": 20
+ },
+ "S2n": {
+  "t50": 0.7333333333333334,
+  "t90": 1.475,
+  "settle": 0.999939262224925,
+  "overshoot": 0.032404022216796724,
+  "volume_uplift": 1.0311696432854567,
+  "vol_uplift": 10.086393916759413,
+  "one_sided_share_jump": 0.0005552470849528035,
+  "spread_p95_jump_ticks": 86.5,
+  "spread_max_jump_ticks": 1824.0,
+  "price_path_steps": 2.0,
+  "belief_5": 0.9848716735839843,
+  "belief_30": 1.0002983093261717,
+  "spread_jump_ratio": 2.978164983097443,
+  "spread_p95_jump_bps": 8.812793429821806,
+  "spread_p95_jump_bps_base": 3.1475606393338857,
+  "informed_share_updated_1m": 0.18333333333333332,
+  "informed_share_updated_2m": 0.35,
+  "informed_share_updated_5m": 0.7333333333333334,
+  "informed_share_updated_10m": 0.9583333333333333,
+  "informed_share_updated_15m": 0.9833333333333333,
+  "n_seeds": 20
+ },
+ "MIX": {
+  "sigma_day_xseed": 0.987917194394873,
+  "day_rv_regime_spread": 2.402557875127202,
+  "spread_med_bps": 0.985984443935354,
+  "spread_p95_bps": 3.538441763952219
+ },
+ "per_day": {
+  "D-calm": {
+   "targets": {
+    "A-T1": {
+     "id": "A-T1",
+     "label": "1-min volatility sigma_1m (bps)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "sigma_1m_bps",
+       "op": ">=",
+       "threshold": 5.0,
+       "value": 2.9639723509325746,
+       "result": "FAIL"
+      },
+      {
+       "scope": "C",
+       "key": "sigma_1m_bps",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 2.9639723509325746,
+       "result": "PASS"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.40720552981348507
+    },
+    "A-T2": {
+     "id": "A-T2",
+     "label": "|ac1| of 1-min returns",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "ac1",
+       "op": "abs<=",
+       "threshold": 0.1,
+       "value": 0.12217109303991272,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.22171093039912715
+    },
+    "A-T3": {
+     "id": "A-T3",
+     "label": "daily volatility across seeds, default day mix (%)",
+     "checks": [],
+     "status": "NOT_SCREENED"
+    },
+    "A-T4": {
+     "id": "A-T4",
+     "label": "VR(5)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vr5",
+       "op": ">=",
+       "threshold": 0.8,
+       "value": 1.4320038658364842,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "vr5",
+       "op": "<=",
+       "threshold": 1.25,
+       "value": 1.4320038658364842,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.4044530351921871
+    },
+    "A-T5": {
+     "id": "A-T5",
+     "label": "price/value vol ratio at 1 min",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vol_ratio_price_value",
+       "op": ">=",
+       "threshold": 0.9,
+       "value": 0.7069265150280271,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.21452609441330328
+    },
+    "A-T6": {
+     "id": "A-T6",
+     "label": "volume-volatility Spearman",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vv_corr",
+       "op": ">=",
+       "threshold": 0.3,
+       "value": 0.723668736326964,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T7": {
+     "id": "A-T7",
+     "label": "clustering CS and PS",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "cs",
+       "op": ">=",
+       "threshold": 0.1,
+       "value": 0.04223524664127466,
+       "result": "FAIL"
+      },
+      {
+       "scope": "C",
+       "key": "ps",
+       "op": ">",
+       "threshold": 0.03,
+       "value": 0.0007449760073584239,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    },
+    "A-T8": {
+     "id": "A-T8",
+     "label": "excess kurtosis",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "kurt",
+       "op": ">=",
+       "threshold": 3.0,
+       "value": 36.736304200387124,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T9": {
+     "id": "A-T9",
+     "label": "after a \u00b12% jump: volume uplift, spread ratio, one-sided share",
+     "checks": [
+      {
+       "scope": "S2",
+       "key": "volume_uplift",
+       "op": ">",
+       "threshold": 1.0,
+       "value": null,
+       "result": null
+      },
+      {
+       "scope": "S2",
+       "key": "spread_jump_ratio",
+       "op": "<=",
+       "threshold": 3.0,
+       "value": null,
+       "result": null
+      },
+      {
+       "scope": "S2",
+       "key": "one_sided_share_jump",
+       "op": "<=",
+       "threshold": 0.01,
+       "value": null,
+       "result": null
+      }
+     ],
+     "status": "MISSING"
+    },
+    "A-T10": {
+     "id": "A-T10",
+     "label": "informed P&L vs hold > 0 (total, median); MM group P&L median >= 0 ($)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "fund_pnl_total",
+       "op": ">",
+       "threshold": 0.0,
+       "value": 19227.27,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "fund_pnl_median",
+       "op": ">",
+       "threshold": 0.0,
+       "value": 346.30999999999995,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "mm_pnl_group_median",
+       "op": ">=",
+       "threshold": 0.0,
+       "value": -3006.8,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    },
+    "A-T11": {
+     "id": "A-T11",
+     "label": "regimes across days RS = p90/p10 of daily realised vol",
+     "checks": [],
+     "status": "NOT_SCREENED"
+    },
+    "A-T12": {
+     "id": "A-T12",
+     "label": "intraday U-shape u_ratio",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "u_ratio",
+       "op": ">=",
+       "threshold": 1.3,
+       "value": 1.1792577580745418,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    }
+   },
+   "limits": {
+    "L1": {
+     "id": "L1",
+     "label": "spread median and p95 (bps)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "spread_med_bps",
+       "op": "<=",
+       "threshold": 2.5,
+       "value": 0.694453287031197,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "spread_p95_bps",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 2.2001060998956437,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L2": {
+     "id": "L2",
+     "label": "shares executed per day",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "shares_executed",
+       "op": ">=",
+       "threshold": 295500,
+       "value": 1073029.5,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L3": {
+     "id": "L3",
+     "label": "trades all day (share of half-hours with trades; empty book at the open)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "active_halfhours_share",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L4": {
+     "id": "L4",
+     "label": "zero_sum = 0 and invariant flags pass in every run (1 = yes)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "zero_sum_all_zero",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "flags_all_ok",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L5": {
+     "id": "L5",
+     "label": "median wall time of a full day (s)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "wall_time_s",
+       "op": "<=",
+       "threshold": 90.0,
+       "value": 20.255,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L6": {
+     "id": "L6",
+     "label": "max |mid - value| over a day without a scenario ($)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "max_abs_gap",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 4.336835508163972,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L7": {
+     "id": "L7",
+     "label": "retail share of volume (%)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "retail_share",
+       "op": ">=",
+       "threshold": 5.0,
+       "value": 7.506725407301417,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "retail_share",
+       "op": "<=",
+       "threshold": 40.0,
+       "value": 7.506725407301417,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    }
+   },
+   "n_targets_passed": 2,
+   "all_pass": false
+  },
+  "N-C": {
+   "targets": {
+    "A-T1": {
+     "id": "A-T1",
+     "label": "1-min volatility sigma_1m (bps)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "sigma_1m_bps",
+       "op": ">=",
+       "threshold": 5.0,
+       "value": 4.857521019039565,
+       "result": "FAIL"
+      },
+      {
+       "scope": "C",
+       "key": "sigma_1m_bps",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 4.857521019039565,
+       "result": "PASS"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.02849579619208704
+    },
+    "A-T2": {
+     "id": "A-T2",
+     "label": "|ac1| of 1-min returns",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "ac1",
+       "op": "abs<=",
+       "threshold": 0.1,
+       "value": 0.013006528229319334,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS",
+     "norm_miss": 0.0
+    },
+    "A-T3": {
+     "id": "A-T3",
+     "label": "daily volatility across seeds, default day mix (%)",
+     "checks": [],
+     "status": "NOT_SCREENED"
+    },
+    "A-T4": {
+     "id": "A-T4",
+     "label": "VR(5)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vr5",
+       "op": ">=",
+       "threshold": 0.8,
+       "value": 1.217848327221871,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "vr5",
+       "op": "<=",
+       "threshold": 1.25,
+       "value": 1.217848327221871,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS",
+     "norm_miss": 0.0
+    },
+    "A-T5": {
+     "id": "A-T5",
+     "label": "price/value vol ratio at 1 min",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vol_ratio_price_value",
+       "op": ">=",
+       "threshold": 0.9,
+       "value": 0.8104406249245915,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.09951041675045395
+    },
+    "A-T6": {
+     "id": "A-T6",
+     "label": "volume-volatility Spearman",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vv_corr",
+       "op": ">=",
+       "threshold": 0.3,
+       "value": 0.7595403299875361,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T7": {
+     "id": "A-T7",
+     "label": "clustering CS and PS",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "cs",
+       "op": ">=",
+       "threshold": 0.1,
+       "value": 0.06446121440050215,
+       "result": "FAIL"
+      },
+      {
+       "scope": "C",
+       "key": "ps",
+       "op": ">",
+       "threshold": 0.03,
+       "value": 0.0008066625674533305,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    },
+    "A-T8": {
+     "id": "A-T8",
+     "label": "excess kurtosis",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "kurt",
+       "op": ">=",
+       "threshold": 3.0,
+       "value": 15.328387817674697,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T9": {
+     "id": "A-T9",
+     "label": "after a \u00b12% jump: volume uplift, spread ratio, one-sided share",
+     "checks": [
+      {
+       "scope": "S2",
+       "key": "volume_uplift",
+       "op": ">",
+       "threshold": 1.0,
+       "value": null,
+       "result": null
+      },
+      {
+       "scope": "S2",
+       "key": "spread_jump_ratio",
+       "op": "<=",
+       "threshold": 3.0,
+       "value": null,
+       "result": null
+      },
+      {
+       "scope": "S2",
+       "key": "one_sided_share_jump",
+       "op": "<=",
+       "threshold": 0.01,
+       "value": null,
+       "result": null
+      }
+     ],
+     "status": "MISSING"
+    },
+    "A-T10": {
+     "id": "A-T10",
+     "label": "informed P&L vs hold > 0 (total, median); MM group P&L median >= 0 ($)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "fund_pnl_total",
+       "op": ">",
+       "threshold": 0.0,
+       "value": 28657.6875,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "fund_pnl_median",
+       "op": ">",
+       "threshold": 0.0,
+       "value": 609.20875,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "mm_pnl_group_median",
+       "op": ">=",
+       "threshold": 0.0,
+       "value": -3572.25,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    },
+    "A-T11": {
+     "id": "A-T11",
+     "label": "regimes across days RS = p90/p10 of daily realised vol",
+     "checks": [],
+     "status": "NOT_SCREENED"
+    },
+    "A-T12": {
+     "id": "A-T12",
+     "label": "intraday U-shape u_ratio",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "u_ratio",
+       "op": ">=",
+       "threshold": 1.3,
+       "value": 1.1924558832527947,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    }
+   },
+   "limits": {
+    "L1": {
+     "id": "L1",
+     "label": "spread median and p95 (bps)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "spread_med_bps",
+       "op": "<=",
+       "threshold": 2.5,
+       "value": 0.9982608307171543,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "spread_p95_bps",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 3.867294393269355,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L2": {
+     "id": "L2",
+     "label": "shares executed per day",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "shares_executed",
+       "op": ">=",
+       "threshold": 295500,
+       "value": 1316600.5,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L3": {
+     "id": "L3",
+     "label": "trades all day (share of half-hours with trades; empty book at the open)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "active_halfhours_share",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L4": {
+     "id": "L4",
+     "label": "zero_sum = 0 and invariant flags pass in every run (1 = yes)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "zero_sum_all_zero",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "flags_all_ok",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L5": {
+     "id": "L5",
+     "label": "median wall time of a full day (s)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "wall_time_s",
+       "op": "<=",
+       "threshold": 90.0,
+       "value": 20.255,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L6": {
+     "id": "L6",
+     "label": "max |mid - value| over a day without a scenario ($)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "max_abs_gap",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 4.469590612812567,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L7": {
+     "id": "L7",
+     "label": "retail share of volume (%)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "retail_share",
+       "op": ">=",
+       "threshold": 5.0,
+       "value": 6.607051002797331,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "retail_share",
+       "op": "<=",
+       "threshold": 40.0,
+       "value": 6.607051002797331,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    }
+   },
+   "n_targets_passed": 4,
+   "all_pass": false
+  },
+  "D-volatile": {
+   "targets": {
+    "A-T1": {
+     "id": "A-T1",
+     "label": "1-min volatility sigma_1m (bps)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "sigma_1m_bps",
+       "op": ">=",
+       "threshold": 5.0,
+       "value": 8.649841416298486,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "sigma_1m_bps",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 8.649841416298486,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS",
+     "norm_miss": 0.0
+    },
+    "A-T2": {
+     "id": "A-T2",
+     "label": "|ac1| of 1-min returns",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "ac1",
+       "op": "abs<=",
+       "threshold": 0.1,
+       "value": -0.06195632934770627,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS",
+     "norm_miss": 0.0
+    },
+    "A-T3": {
+     "id": "A-T3",
+     "label": "daily volatility across seeds, default day mix (%)",
+     "checks": [],
+     "status": "NOT_SCREENED"
+    },
+    "A-T4": {
+     "id": "A-T4",
+     "label": "VR(5)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vr5",
+       "op": ">=",
+       "threshold": 0.8,
+       "value": 1.0029227864469048,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "vr5",
+       "op": "<=",
+       "threshold": 1.25,
+       "value": 1.0029227864469048,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS",
+     "norm_miss": 0.0
+    },
+    "A-T5": {
+     "id": "A-T5",
+     "label": "price/value vol ratio at 1 min",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vol_ratio_price_value",
+       "op": ">=",
+       "threshold": 0.9,
+       "value": 0.8979118432908613,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.0023201741212652838
+    },
+    "A-T6": {
+     "id": "A-T6",
+     "label": "volume-volatility Spearman",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vv_corr",
+       "op": ">=",
+       "threshold": 0.3,
+       "value": 0.7855815071004943,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T7": {
+     "id": "A-T7",
+     "label": "clustering CS and PS",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "cs",
+       "op": ">=",
+       "threshold": 0.1,
+       "value": 0.0972584009745373,
+       "result": "FAIL"
+      },
+      {
+       "scope": "C",
+       "key": "ps",
+       "op": ">",
+       "threshold": 0.03,
+       "value": 0.005261734094228745,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    },
+    "A-T8": {
+     "id": "A-T8",
+     "label": "excess kurtosis",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "kurt",
+       "op": ">=",
+       "threshold": 3.0,
+       "value": 13.043663943709879,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T9": {
+     "id": "A-T9",
+     "label": "after a \u00b12% jump: volume uplift, spread ratio, one-sided share",
+     "checks": [
+      {
+       "scope": "S2",
+       "key": "volume_uplift",
+       "op": ">",
+       "threshold": 1.0,
+       "value": null,
+       "result": null
+      },
+      {
+       "scope": "S2",
+       "key": "spread_jump_ratio",
+       "op": "<=",
+       "threshold": 3.0,
+       "value": null,
+       "result": null
+      },
+      {
+       "scope": "S2",
+       "key": "one_sided_share_jump",
+       "op": "<=",
+       "threshold": 0.01,
+       "value": null,
+       "result": null
+      }
+     ],
+     "status": "MISSING"
+    },
+    "A-T10": {
+     "id": "A-T10",
+     "label": "informed P&L vs hold > 0 (total, median); MM group P&L median >= 0 ($)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "fund_pnl_total",
+       "op": ">",
+       "threshold": 0.0,
+       "value": 38653.880000000005,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "fund_pnl_median",
+       "op": ">",
+       "threshold": 0.0,
+       "value": 1209.53625,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "mm_pnl_group_median",
+       "op": ">=",
+       "threshold": 0.0,
+       "value": 1325.21,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T11": {
+     "id": "A-T11",
+     "label": "regimes across days RS = p90/p10 of daily realised vol",
+     "checks": [],
+     "status": "NOT_SCREENED"
+    },
+    "A-T12": {
+     "id": "A-T12",
+     "label": "intraday U-shape u_ratio",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "u_ratio",
+       "op": ">=",
+       "threshold": 1.3,
+       "value": 1.1617164519621515,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    }
+   },
+   "limits": {
+    "L1": {
+     "id": "L1",
+     "label": "spread median and p95 (bps)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "spread_med_bps",
+       "op": "<=",
+       "threshold": 2.5,
+       "value": 1.501709874502457,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "spread_p95_bps",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 7.116722523903793,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L2": {
+     "id": "L2",
+     "label": "shares executed per day",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "shares_executed",
+       "op": ">=",
+       "threshold": 295500,
+       "value": 1648287.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L3": {
+     "id": "L3",
+     "label": "trades all day (share of half-hours with trades; empty book at the open)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "active_halfhours_share",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L4": {
+     "id": "L4",
+     "label": "zero_sum = 0 and invariant flags pass in every run (1 = yes)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "zero_sum_all_zero",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "flags_all_ok",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L5": {
+     "id": "L5",
+     "label": "median wall time of a full day (s)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "wall_time_s",
+       "op": "<=",
+       "threshold": 90.0,
+       "value": 20.255,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L6": {
+     "id": "L6",
+     "label": "max |mid - value| over a day without a scenario ($)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "max_abs_gap",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 7.43805492055327,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L7": {
+     "id": "L7",
+     "label": "retail share of volume (%)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "retail_share",
+       "op": ">=",
+       "threshold": 5.0,
+       "value": 6.010623446094964,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "retail_share",
+       "op": "<=",
+       "threshold": 40.0,
+       "value": 6.010623446094964,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    }
+   },
+   "n_targets_passed": 6,
+   "all_pass": false
+  },
+  "D-mix": {
+   "targets": {
+    "A-T1": {
+     "id": "A-T1",
+     "label": "1-min volatility sigma_1m (bps)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "sigma_1m_bps",
+       "op": ">=",
+       "threshold": 5.0,
+       "value": 4.158616394908939,
+       "result": "FAIL"
+      },
+      {
+       "scope": "C",
+       "key": "sigma_1m_bps",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 4.158616394908939,
+       "result": "PASS"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.16827672101821226
+    },
+    "A-T2": {
+     "id": "A-T2",
+     "label": "|ac1| of 1-min returns",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "ac1",
+       "op": "abs<=",
+       "threshold": 0.1,
+       "value": 0.078920461373304,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS",
+     "norm_miss": 0.0
+    },
+    "A-T3": {
+     "id": "A-T3",
+     "label": "daily volatility across seeds, default day mix (%)",
+     "checks": [],
+     "status": "NOT_SCREENED"
+    },
+    "A-T4": {
+     "id": "A-T4",
+     "label": "VR(5)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vr5",
+       "op": ">=",
+       "threshold": 0.8,
+       "value": 1.3325186699511526,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "vr5",
+       "op": "<=",
+       "threshold": 1.25,
+       "value": 1.3325186699511526,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.18337482211367254
+    },
+    "A-T5": {
+     "id": "A-T5",
+     "label": "price/value vol ratio at 1 min",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vol_ratio_price_value",
+       "op": ">=",
+       "threshold": 0.9,
+       "value": 0.7355644543447044,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL",
+     "norm_miss": 0.18270616183921734
+    },
+    "A-T6": {
+     "id": "A-T6",
+     "label": "volume-volatility Spearman",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "vv_corr",
+       "op": ">=",
+       "threshold": 0.3,
+       "value": 0.7462411006714804,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T7": {
+     "id": "A-T7",
+     "label": "clustering CS and PS",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "cs",
+       "op": ">=",
+       "threshold": 0.1,
+       "value": 0.060322314037311295,
+       "result": "FAIL"
+      },
+      {
+       "scope": "C",
+       "key": "ps",
+       "op": ">",
+       "threshold": 0.03,
+       "value": 0.003220967406189546,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    },
+    "A-T8": {
+     "id": "A-T8",
+     "label": "excess kurtosis",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "kurt",
+       "op": ">=",
+       "threshold": 3.0,
+       "value": 33.18005564750561,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "A-T9": {
+     "id": "A-T9",
+     "label": "after a \u00b12% jump: volume uplift, spread ratio, one-sided share",
+     "checks": [
+      {
+       "scope": "S2",
+       "key": "volume_uplift",
+       "op": ">",
+       "threshold": 1.0,
+       "value": null,
+       "result": null
+      },
+      {
+       "scope": "S2",
+       "key": "spread_jump_ratio",
+       "op": "<=",
+       "threshold": 3.0,
+       "value": null,
+       "result": null
+      },
+      {
+       "scope": "S2",
+       "key": "one_sided_share_jump",
+       "op": "<=",
+       "threshold": 0.01,
+       "value": null,
+       "result": null
+      }
+     ],
+     "status": "MISSING"
+    },
+    "A-T10": {
+     "id": "A-T10",
+     "label": "informed P&L vs hold > 0 (total, median); MM group P&L median >= 0 ($)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "fund_pnl_total",
+       "op": ">",
+       "threshold": 0.0,
+       "value": 21727.415,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "fund_pnl_median",
+       "op": ">",
+       "threshold": 0.0,
+       "value": 444.4125,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "mm_pnl_group_median",
+       "op": ">=",
+       "threshold": 0.0,
+       "value": -4654.93,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    },
+    "A-T11": {
+     "id": "A-T11",
+     "label": "regimes across days RS = p90/p10 of daily realised vol",
+     "checks": [],
+     "status": "NOT_SCREENED"
+    },
+    "A-T12": {
+     "id": "A-T12",
+     "label": "intraday U-shape u_ratio",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "u_ratio",
+       "op": ">=",
+       "threshold": 1.3,
+       "value": 1.161814105919683,
+       "result": "FAIL"
+      }
+     ],
+     "status": "FAIL"
+    }
+   },
+   "limits": {
+    "L1": {
+     "id": "L1",
+     "label": "spread median and p95 (bps)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "spread_med_bps",
+       "op": "<=",
+       "threshold": 2.5,
+       "value": 0.985984443935354,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "spread_p95_bps",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 3.538441763952219,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L2": {
+     "id": "L2",
+     "label": "shares executed per day",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "shares_executed",
+       "op": ">=",
+       "threshold": 295500,
+       "value": 1248765.5,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L3": {
+     "id": "L3",
+     "label": "trades all day (share of half-hours with trades; empty book at the open)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "active_halfhours_share",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L4": {
+     "id": "L4",
+     "label": "zero_sum = 0 and invariant flags pass in every run (1 = yes)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "zero_sum_all_zero",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "flags_all_ok",
+       "op": ">=",
+       "threshold": 1.0,
+       "value": 1.0,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L5": {
+     "id": "L5",
+     "label": "median wall time of a full day (s)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "wall_time_s",
+       "op": "<=",
+       "threshold": 90.0,
+       "value": 20.255,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L6": {
+     "id": "L6",
+     "label": "max |mid - value| over a day without a scenario ($)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "max_abs_gap",
+       "op": "<=",
+       "threshold": 10.0,
+       "value": 4.619333439158083,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    },
+    "L7": {
+     "id": "L7",
+     "label": "retail share of volume (%)",
+     "checks": [
+      {
+       "scope": "C",
+       "key": "retail_share",
+       "op": ">=",
+       "threshold": 5.0,
+       "value": 6.872018050068887,
+       "result": "PASS"
+      },
+      {
+       "scope": "C",
+       "key": "retail_share",
+       "op": "<=",
+       "threshold": 40.0,
+       "value": 6.872018050068887,
+       "result": "PASS"
+      }
+     ],
+     "status": "PASS"
+    }
+   },
+   "n_targets_passed": 3,
+   "all_pass": false
+  }
+ },
+ "impact": {
+  "noise_floor": {
+   "I_end": 1.8112790902889802,
+   "I_perm": 0.392246696201996
+  },
+  "sizes": {
+   "IMP-0": {
+    "q_median": 7.595331762859448e-05,
+    "I_end_resolved": false,
+    "I_perm_resolved": false
+   },
+   "IMP-0.1": {
+    "q_median": 0.00045571990577156685,
+    "I_end_resolved": false,
+    "I_perm_resolved": false
+   },
+   "IMP-0.5": {
+    "q_median": 0.0022785995288578343,
+    "I_end_resolved": false,
+    "I_perm_resolved": false
+   },
+   "IMP-1": {
+    "q_median": 0.004557199057715669,
+    "I_end_resolved": false,
+    "I_perm_resolved": true
+   },
+   "IMP-5": {
+    "q_median": 0.022785995288578345,
+    "I_end_resolved": true,
+    "I_perm_resolved": true
+   },
+   "IMP-1s": {
+    "q_median": 0.004557199057715669,
+    "I_end_resolved": false,
+    "I_perm_resolved": true
+   }
+  },
+  "beta_I_end": {
+   "beta": 1.098707465569913,
+   "ci": [
+    0.9394159383052156,
+    1.8575955473091892
+   ],
+   "n_boot": 2000,
+   "n_boot_dropped": 282,
+   "sizes": [
+    "IMP-0.1",
+    "IMP-0.5",
+    "IMP-1",
+    "IMP-5"
+   ],
+   "n_seeds": 20
+  },
+  "beta_I_peak": {
+   "beta": 0.5289922751285493,
+   "ci": [
+    0.4022134086282908,
+    0.9900387835319324
+   ],
+   "n_boot": 2000,
+   "n_boot_dropped": 0,
+   "sizes": [
+    "IMP-0.1",
+    "IMP-0.5",
+    "IMP-1",
+    "IMP-5"
+   ],
+   "n_seeds": 20
+  },
+  "recovery": {
+   "IMP-1": {
+    "n_seeds": 20,
+    "n_total": 20,
+    "median": 0.3572237885518843,
+    "p10": 0.11097795095158881,
+    "p90": 0.5563913733278939,
+    "min": 0.09208774728892263,
+    "max": 0.7472330935528818,
+    "status": "OK"
+   },
+   "IMP-5": {
+    "n_seeds": 20,
+    "n_total": 20,
+    "median": 0.2888420624339909,
+    "p10": 0.01777598655009584,
+    "p90": 0.5529603371426832,
+    "min": 0.005408513328662499,
+    "max": 0.6741014588001122,
+    "status": "OK"
+   }
+  },
+  "G12": {
+   "value": 1.098707465569913,
+   "ci": [
+    0.9394159383052156,
+    1.8575955473091892
+   ],
+   "grade": "FAIL"
+  },
+  "G13": {
+   "value": 0.3572237885518843,
+   "stats": {
+    "n_seeds": 20,
+    "n_total": 20,
+    "median": 0.3572237885518843,
+    "p10": 0.11097795095158881,
+    "p90": 0.5563913733278939,
+    "min": 0.09208774728892263,
+    "max": 0.7472330935528818,
+    "status": "OK"
+   },
+   "grade": "PASS"
+  }
+ },
+ "absorbed": {
+  "IMP-1": {
+   "FundamentalistAgent": 4449.0,
+   "LiquidityProviderAgent": 1551.0,
+   "MomentumEKFAgent": 19.0
+  },
+  "IMP-1s": {
+   "FundamentalistAgent": 4016.0,
+   "LiquidityProviderAgent": 1977.0,
+   "MomentumEKFAgent": 19.0
+  },
+  "IMP-5": {
+   "FundamentalistAgent": 9332.0,
+   "LiquidityProviderAgent": 5101.0,
+   "MomentumEKFAgent": 20.0,
+   "RetailTraderAgent": 6.0
+  }
+ },
+ "expectations": [
+  {
+   "id": "E-A1",
+   "expectation": "living_v1 alone: \u03c31m \u2248 3 bps, vol ratio \u2248 0.5",
+   "measured": "a-env \u03c31m 5 bps, vol ratio 0.8",
+   "verdict": "NOT CONFIRMED"
+  },
+  {
+   "id": "E-A2",
+   "expectation": "crowd alone raises CS and the U-shape; \u03ba_v 3 more than 1",
+   "measured": "a-retail CS 0.089 vs P0 0.0872; u 1 vs 1.1; sweep effect \u03ba_v 3\u22121 on CS 0.00545, on u 0.00371",
+   "verdict": "NOT CONFIRMED"
+  },
+  {
+   "id": "E-A3",
+   "expectation": "LPs alone cut the post-jump spread ratio below 5",
+   "measured": "a-lp spread_jump_ratio 19",
+   "verdict": "NOT CONFIRMED"
+  },
+  {
+   "id": "E-A4",
+   "expectation": "combined: A-T5 rises toward 0.9 (v1.4 0.49)",
+   "measured": "N-C vol ratio 0.81",
+   "verdict": "NOT CONFIRMED"
+  },
+  {
+   "id": "E-A5",
+   "expectation": "excess kurtosis \u2265 3",
+   "measured": "N-C 2e+01",
+   "verdict": "CONFIRMED"
+  },
+  {
+   "id": "E-A6",
+   "expectation": "MMs earn a small positive P&L; informed profit; retail loses on average",
+   "measured": "MM group $-3,572, informed $28,658, retail $-26,353 (N-C medians)",
+   "verdict": "NOT CONFIRMED"
+  },
+  {
+   "id": "E-A7",
+   "expectation": "impact \u03b2 moves toward 0.5\u20130.7 (v1.4 0.29)",
+   "measured": "\u03b2 1.1",
+   "verdict": "NOT CONFIRMED"
+  },
+  {
+   "id": "E-A8",
+   "expectation": "wall time \u2264 40 s per day",
+   "measured": "median 2e+01 s over all 240 runs (2 workers)",
+   "verdict": "CONFIRMED"
+  },
+  {
+   "id": "E-A9",
+   "expectation": "stop-losses trigger for < 5% of stop users per normal day",
+   "measured": "N-C median 0%",
+   "verdict": "CONFIRMED"
+  },
+  {
+   "id": "E-A10",
+   "expectation": "A-T4 (VR(5)) is the most fragile target",
+   "measured": "A-T4 PASS (VR(5) 1.22); targets failing: A-T1, A-T3, A-T5, A-T7, A-T10, A-T11, A-T12",
+   "verdict": "NOT CONFIRMED"
+  }
+ ],
+ "figures": [
+  "a8_scorecard.png",
+  "a8_daytypes.png",
+  "a8_jump_response.png",
+  "a8_impact_curve.png"
+ ],
+ "S4": {
+  "R_peak": 21.566752959495393,
+  "t_peak": 0.26666666666666666,
+  "t_half_rev": 0.7666666666666667,
+  "R_60": -0.01097077929453159
+ }
+}

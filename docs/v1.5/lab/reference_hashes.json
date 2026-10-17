@@ -1,0 +1,13 @@
+{
+  "spec": "v1.5 A9.3 (regression re-baselined on the new default market)",
+  "recorded": "2026-10-17",
+  "how": "the a-confirm D-mix seed-42 full-day run (api.lab.lab_config), fingerprint as in metrics.json",
+  "runs": {
+    "D-mix/42": {
+      "execs": "f212e961512112f519a7a437ed88c2d20b7d3e59c94bf6c9bb57c185e61524e7",
+      "holdings": "71fde9374e59824a9d02e6e4fe2de91e96d7480e8092b4e07f930f7d3ad09671",
+      "n_execs": 49921,
+      "note": "engine v1.4-d498ee4"
+    }
+  }
+}
