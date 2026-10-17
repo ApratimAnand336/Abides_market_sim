@@ -1,33 +1,18 @@
 # Handoff (read this first; keep it under ~60 lines; update at the end of every milestone)
 
-Last updated: 2026-10-17 (A8), spec v1.5 (R4) started on branch `v1.5` (from 20465e2).
+Last updated: 2026-10-17 (A9), spec v1.5 (R4) started on branch `v1.5` (from 20465e2).
 
 ## Where we are
 - Done: v1.2 (R1), v1.3 (R2), v1.4 (R3, branch `v1.4`; `docs/v1.4/lab/RESULTS.md`).
 - **Now: spec v1.5 (R4)**, `docs/specs/spec_v1.5.txt`. Part A living market (A0–A9), Part B
   crashes (B1–B4, STOP to owner after B4), Part C circuit breaker (C1–C2).
 
-## Resume here (2026-10-17: A8 committed 2bcd1f5; A9 nearly done — owner asked for A9 although A8.4 FAILS)
-- A8: 5/12 targets, 7/7 limits; RESULTS_A.md. After A9: STOP and report to the owner. Do NOT start Part B.
-- A9 code + tests + docs written (DECISIONS A9 has everything). Engine defect found and fixed: impact probe
-  now LAST agent (was before retail/LP -> N-IMP runs were a different market from N-C).
-- **Saved as WIP commit "A9 (WIP)" on 2026-10-17 while the full suite was ~55% done (1 F so far, probably
-  test_ou_process).** All A9 code/tests/docs are in that commit. Affected test files already passed (75 passed:
-  test_scenarios, test_market_maker, test_budget, test_k16_budget_v2, test_export, test_server); test_invariants
-  I8/I8-legacy/I8-legacy-v14 passed; test_realism_v15 13 passed; web `npm run build` passed; v1.5 regression PASSED
-  (53 checks) BEFORE the probe fix (probe fix does not touch runs without a probe).
-- Full suite on the WIP code: 409 passed, 1 skipped, 4 xfailed, 1 failed (test_ou_process, pre-existing) in 800 s
-  (runs/_logs/suite_a9b.log) -> step (1) DONE; record it in TESTING.
-- NEXT: (2) re-run `python scripts/realism_lab.py --campaign a-confirm --workers 2
-  --configs N-C,N-IMP-0,N-IMP-0.1,N-IMP-0.5,N-IMP-1,N-IMP-5,N-IMP-1s > runs/_logs/a-confirm-imp.log` (140 runs,
-  ~26 min; engine label = the WIP commit; do NOT commit while it runs; resumable: same command);
-  (3) check N-C fingerprints == runs/_a8_preprobefix/fingerprints.json (saved before the fix; also old
-  summary_a-confirm.json and RESULTS_A.md there); (4) `PYTHONIOENCODING=utf-8 ... --campaign a-confirm --report-only`,
-  add an "impact re-run after the probe fix" note with old vs new impact numbers to RESULTS_A (lab_v15_confirm.py);
-  (5) regression, regression-v14, regression-legacy; (6) CHANGELOG + TESTING A9 rows, KNOWN_ISSUES K11 R4a numbers;
-  final commit "A9: ..."; remove this section; STOP and report to the owner (A8.4 FAIL; Part B not started).
+## STOPPED for the owner (2026-10-17, after A9): Part A done, A8.4 FAILS. Do NOT start Part B until the owner says so.
+- A8.4 FAIL: 5/12 targets (failing A-T1/3/5/7/10/11/12), 7/7 limits. Default market is now R-25M15003 (A9).
+- A9 probe fix: N-IMP-* re-run; β 1.10 -> 0.89 [0.67-1.15] (G12 FAIL -> WARN), recovery 0.40 (G13 PASS); N-C bit-identical.
 - Open questions for the owner: (1) A6.1 "every fill" -> "every fill that increases exposure"?
   (2) T6 as a ratio penalises a tight calm book; LPs lose to informed flow. (3) L7 floor 5% kept as specified.
+  (4) go to Part B (B1-B4) with A8.4 failing, or revisit Part A?
 
 ## Milestone status (spec v1.5)
 | ID | Status | Commit | Notes |
@@ -41,7 +26,7 @@ Last updated: 2026-10-17 (A8), spec v1.5 (R4) started on branch `v1.5` (from 204
 | A6 | done | (this) | K16 v2 (0 increasing breaches), IMP-0.1 set, G11 REPORTED, flag informed_budget |
 | A7 | done | db1a3db, (this) | sweep 160 + refinement 40; selected R-25M15003 (5/10 screened targets) |
 | A8 | done | d498ee4, (this) | a-confirm 240 runs; A8.4 FAIL 5/12 targets, 7/7 limits |
-| A9 | in progress | | code/tests/docs done; impact re-run pending (see Resume here) |
+| A9 | done | aa42032, (this) | default switch R-25M15003; probe fix + impact re-run (β 0.89, G12 WARN); 3 regressions PASS |
 | B1–B4 | todo | | forced seller, margin calls, crashes; STOP after B4 |
 | C1–C2 | todo | | circuit breaker, campaign cb |
 
@@ -69,11 +54,12 @@ Last updated: 2026-10-17 (A8), spec v1.5 (R4) started on branch `v1.5` (from 204
   add the id to the realism_lab.py choices, and to `lab_v15.COMPONENTS`/`campaign_configs`.
 
 ## Open issues / owner decisions pending
-- K14, K15 (`docs/engine/KNOWN_ISSUES.md`) open; K16 fixed behind informed_budget_v2 (A9 switch).
+- K14, K15 (`docs/engine/KNOWN_ISSUES.md`) open; K16 fixed (informed_budget_v2, on by default since A9).
 - `git stash` holds 2 stale generated-report entries (safe to drop). `sim_data.pkl` clean.
   CLAUDE.md and .claude/ stay untracked.
 
 ## Log (newest first, one line each)
+- 2026-10-17 A9: default switch to R-25M15003; probe made last agent, N-IMP re-run (β 0.89); suite + 3 regressions green; STOP to owner.
 - 2026-10-17 A8: a-confirm 240/240; A8.4 FAIL (5/12 targets, limits all pass); owner: continue with A9.
 - 2026-10-16 A7: design sweep + refinement (200 runs); selected R-25M15003; fails A-T1/5/7/10/12.
 - 2026-10-16 A6: K16 diagnosed and fixed behind informed_budget_v2; IMP-0.1 in the impact set; G11 REPORTED.

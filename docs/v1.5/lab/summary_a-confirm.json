@@ -1,7 +1,8 @@
 {
- "engine": "v1.4-d498ee4+dirty",
+ "engine": "v1.5-3479369+dirty",
  "run_engines": [
-  "v1.4-d498ee4"
+  "v1.4-d498ee4",
+  "v1.5-3479369"
  ],
  "date": "2026-10-17",
  "design": "R-25M15003",
@@ -392,7 +393,7 @@
       "key": "wall_time_s",
       "op": "<=",
       "threshold": 90.0,
-      "value": 20.255,
+      "value": 21.765,
       "result": "PASS"
      }
     ],
@@ -473,7 +474,7 @@
    "fund_pnl_median": 346.30999999999995,
    "fund_volume_share_pct": 78.36356138979527,
    "zero_sum_all_zero": 1.0,
-   "wall_time_s": 20.255,
+   "wall_time_s": 21.765,
    "peak_mem_mb": 715.995136,
    "n_seeds": 10,
    "gap_hl_corr_of_median_read": "1.6 min",
@@ -514,7 +515,7 @@
    "flags_all_ok": 1.0,
    "informed_bounds_fail_runs": 0,
    "wall_time_config_s": 20.805,
-   "peak_mem_mb_all": 717.1584,
+   "peak_mem_mb_all": 714.743808,
    "sigma_day_xseed": 0.874676947224628,
    "retail_stop_trigger_pct": 0.0,
    "stop_trigger_share_pct": 0.0,
@@ -558,8 +559,8 @@
    "fund_pnl_median": 609.20875,
    "fund_volume_share_pct": 82.297649421897,
    "zero_sum_all_zero": 1.0,
-   "wall_time_s": 20.255,
-   "peak_mem_mb": 717.6130559999999,
+   "wall_time_s": 21.765,
+   "peak_mem_mb": 716.036096,
    "n_seeds": 20,
    "gap_hl_corr_of_median_read": "1.2 min",
    "gap_hl_range_of_median_read": [
@@ -601,8 +602,8 @@
    "flags_failing": [],
    "flags_all_ok": 1.0,
    "informed_bounds_fail_runs": 0,
-   "wall_time_config_s": 17.515,
-   "peak_mem_mb_all": 717.1584,
+   "wall_time_config_s": 22.37,
+   "peak_mem_mb_all": 714.743808,
    "sigma_day_xseed": 1.2028755349888085,
    "retail_stop_trigger_pct": 0.0,
    "stop_trigger_share_pct": 0.0,
@@ -646,7 +647,7 @@
    "fund_pnl_median": 1209.53625,
    "fund_volume_share_pct": 85.59204447388535,
    "zero_sum_all_zero": 1.0,
-   "wall_time_s": 20.255,
+   "wall_time_s": 21.765,
    "peak_mem_mb": 735.096832,
    "n_seeds": 10,
    "gap_hl_corr_of_median_read": "0.9 min",
@@ -690,7 +691,7 @@
    "flags_all_ok": 1.0,
    "informed_bounds_fail_runs": 0,
    "wall_time_config_s": 20.615000000000002,
-   "peak_mem_mb_all": 717.1584,
+   "peak_mem_mb_all": 714.743808,
    "sigma_day_xseed": 2.1033671357272006,
    "retail_stop_trigger_pct": 0.0,
    "stop_trigger_share_pct": 0.0,
@@ -734,7 +735,7 @@
    "fund_pnl_median": 444.4125,
    "fund_volume_share_pct": 81.30828018625951,
    "zero_sum_all_zero": 1.0,
-   "wall_time_s": 20.255,
+   "wall_time_s": 21.765,
    "peak_mem_mb": 711.354368,
    "n_seeds": 20,
    "gap_hl_corr_of_median_read": "1.3 min",
@@ -778,7 +779,7 @@
    "flags_all_ok": 1.0,
    "informed_bounds_fail_runs": 0,
    "wall_time_config_s": 20.955,
-   "peak_mem_mb_all": 717.1584,
+   "peak_mem_mb_all": 714.743808,
    "sigma_day_xseed": 0.987917194394873,
    "retail_stop_trigger_pct": 0.0,
    "stop_trigger_share_pct": 0.0,
@@ -1155,7 +1156,7 @@
        "key": "wall_time_s",
        "op": "<=",
        "threshold": 90.0,
-       "value": 20.255,
+       "value": 21.765,
        "result": "PASS"
       }
      ],
@@ -1514,7 +1515,7 @@
        "key": "wall_time_s",
        "op": "<=",
        "threshold": 90.0,
-       "value": 20.255,
+       "value": 21.765,
        "result": "PASS"
       }
      ],
@@ -1873,7 +1874,7 @@
        "key": "wall_time_s",
        "op": "<=",
        "threshold": 90.0,
-       "value": 20.255,
+       "value": 21.765,
        "result": "PASS"
       }
      ],
@@ -2232,7 +2233,7 @@
        "key": "wall_time_s",
        "op": "<=",
        "threshold": 90.0,
-       "value": 20.255,
+       "value": 21.765,
        "result": "PASS"
       }
      ],
@@ -2283,8 +2284,8 @@
  },
  "impact": {
   "noise_floor": {
-   "I_end": 1.8112790902889802,
-   "I_perm": 0.392246696201996
+   "I_end": 1.354275729284311,
+   "I_perm": 0.36782349998252317
   },
   "sizes": {
    "IMP-0": {
@@ -2319,13 +2320,13 @@
    }
   },
   "beta_I_end": {
-   "beta": 1.098707465569913,
+   "beta": 0.8890398182751691,
    "ci": [
-    0.9394159383052156,
-    1.8575955473091892
+    0.6709606398391554,
+    1.1512897284857284
    ],
    "n_boot": 2000,
-   "n_boot_dropped": 282,
+   "n_boot_dropped": 0,
    "sizes": [
     "IMP-0.1",
     "IMP-0.5",
@@ -2335,10 +2336,10 @@
    "n_seeds": 20
   },
   "beta_I_peak": {
-   "beta": 0.5289922751285493,
+   "beta": 0.5579738664479696,
    "ci": [
-    0.4022134086282908,
-    0.9900387835319324
+    0.4836263194095828,
+    0.9430235254937306
    ],
    "n_boot": 2000,
    "n_boot_dropped": 0,
@@ -2354,42 +2355,42 @@
    "IMP-1": {
     "n_seeds": 20,
     "n_total": 20,
-    "median": 0.3572237885518843,
-    "p10": 0.11097795095158881,
-    "p90": 0.5563913733278939,
-    "min": 0.09208774728892263,
-    "max": 0.7472330935528818,
+    "median": 0.3948682593167099,
+    "p10": 0.18761582539833974,
+    "p90": 0.5694726822412252,
+    "min": 0.129515642254221,
+    "max": 0.9431156493800597,
     "status": "OK"
    },
    "IMP-5": {
     "n_seeds": 20,
     "n_total": 20,
-    "median": 0.2888420624339909,
-    "p10": 0.01777598655009584,
-    "p90": 0.5529603371426832,
-    "min": 0.005408513328662499,
-    "max": 0.6741014588001122,
+    "median": 0.29691011321330907,
+    "p10": 0.03301911561168196,
+    "p90": 0.6230875052323374,
+    "min": 0.017676796297591744,
+    "max": 0.7141393622101779,
     "status": "OK"
    }
   },
   "G12": {
-   "value": 1.098707465569913,
+   "value": 0.8890398182751691,
    "ci": [
-    0.9394159383052156,
-    1.8575955473091892
+    0.6709606398391554,
+    1.1512897284857284
    ],
-   "grade": "FAIL"
+   "grade": "WARN"
   },
   "G13": {
-   "value": 0.3572237885518843,
+   "value": 0.3948682593167099,
    "stats": {
     "n_seeds": 20,
     "n_total": 20,
-    "median": 0.3572237885518843,
-    "p10": 0.11097795095158881,
-    "p90": 0.5563913733278939,
-    "min": 0.09208774728892263,
-    "max": 0.7472330935528818,
+    "median": 0.3948682593167099,
+    "p10": 0.18761582539833974,
+    "p90": 0.5694726822412252,
+    "min": 0.129515642254221,
+    "max": 0.9431156493800597,
     "status": "OK"
    },
    "grade": "PASS"
@@ -2397,20 +2398,19 @@
  },
  "absorbed": {
   "IMP-1": {
-   "FundamentalistAgent": 4449.0,
-   "LiquidityProviderAgent": 1551.0,
-   "MomentumEKFAgent": 19.0
+   "FundamentalistAgent": 4222.0,
+   "LiquidityProviderAgent": 1778.0,
+   "MomentumEKFAgent": 20.0
   },
   "IMP-1s": {
-   "FundamentalistAgent": 4016.0,
-   "LiquidityProviderAgent": 1977.0,
-   "MomentumEKFAgent": 19.0
+   "FundamentalistAgent": 4111.5,
+   "LiquidityProviderAgent": 1888.5,
+   "MomentumEKFAgent": 11.5
   },
   "IMP-5": {
-   "FundamentalistAgent": 9332.0,
-   "LiquidityProviderAgent": 5101.0,
-   "MomentumEKFAgent": 20.0,
-   "RetailTraderAgent": 6.0
+   "FundamentalistAgent": 9121.5,
+   "LiquidityProviderAgent": 4993.0,
+   "MomentumEKFAgent": 17.0
   }
  },
  "expectations": [
@@ -2453,7 +2453,7 @@
   {
    "id": "E-A7",
    "expectation": "impact \u03b2 moves toward 0.5\u20130.7 (v1.4 0.29)",
-   "measured": "\u03b2 1.1",
+   "measured": "\u03b2 0.889",
    "verdict": "NOT CONFIRMED"
   },
   {

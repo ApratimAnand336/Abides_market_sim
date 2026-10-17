@@ -29,6 +29,11 @@ V14_REF = {"A-T1": "0.62", "A-T2": "0.005", "A-T3": "0.20%", "A-T4": "1.2488", "
            "A-T6": "+0.53", "A-T7": "0.087 / 0.032", "A-T8": "1.47", "A-T9": "2.5 / 15 / 0",
            "A-T10": "+$1,023 / −$107", "A-T11": "new", "A-T12": "1.14"}
 
+# A9: impact set as A8 measured it (engine v1.4-d498ee4) BEFORE the probe was made the last
+# agent; the N-IMP-* runs were re-run after the fix (N-C fingerprints unchanged, 20/20)
+PRE_PROBE_FIX = {"noise_I_end": 1.81, "noise_I_perm": 0.392, "beta": 1.10, "ci": (0.939, 1.86), "G12": "FAIL",
+                 "beta_peak": 0.529, "rec1": 0.357, "rec5": 0.289, "G13": "PASS"}
+
 
 def _seeds(cid: str) -> List[int]:
     return lab.CONFIG_SEEDS.get(cid, SEEDS)
@@ -176,6 +181,20 @@ def _impact_lines(b) -> List[str]:
     for c in cls:
         L.append(f"| {c} | " + " | ".join(_fmt(absorbed[k].get(c), 0) for k in absorbed) + " |")
     b["absorbed"] = absorbed
+    o, rec = PRE_PROBE_FIX, imp.get("recovery") or {}
+    L += ["", "**Impact re-run after the probe fix (A9).** A8 ran the impact set with the probe placed before the "
+          "retail crowd and the LPs, so N-IMP-* was not the N-C market plus a probe. The probe is now the last "
+          "agent; N-IMP-* were re-run (N-C fingerprints unchanged on 20/20 seeds). Before → after:", "",
+          "| quantity | A8 (before fix) | A9 (after fix) |", "|---|---|---|",
+          f"| noise floor I_end / I_perm (bps) | {_fmt(o['noise_I_end'])} / {_fmt(o['noise_I_perm'])} | "
+          f"{_fmt(imp['noise_floor']['I_end'])} / {_fmt(imp['noise_floor']['I_perm'])} |",
+          f"| β on I_end [CI] | {_fmt(o['beta'])} [{_fmt(o['ci'][0])}–{_fmt(o['ci'][1])}] | "
+          f"{_fmt(be['beta'])} [{_fmt(be['ci'][0])}–{_fmt(be['ci'][1])}] |",
+          f"| G12 | {o['G12']} | {imp['G12']['grade']} |",
+          f"| β on I_peak | {_fmt(o['beta_peak'])} | {_fmt(imp['beta_I_peak']['beta'])} |",
+          f"| recovery N-IMP-1 / N-IMP-5 | {_fmt(o['rec1'])} / {_fmt(o['rec5'])} | "
+          f"{_fmt((rec.get('IMP-1') or {}).get('median'))} / {_fmt((rec.get('IMP-5') or {}).get('median'))} |",
+          f"| G13 | {o['G13']} | {imp['G13']['grade']} |"]
     return L
 
 

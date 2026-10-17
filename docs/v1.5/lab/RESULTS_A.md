@@ -1,6 +1,6 @@
 # R4a results: the living market (spec v1.5 Part A, A8 / A9.2)
 
-Runs on engine `v1.4-d498ee4` (report written by `v1.4-d498ee4+dirty`); date 2026-10-17; selected design **R-25M15003** (A7) = 2 LPs of $5M, 1,500 retail traders, κ_v 3, P0's 60 informed (D-60fl2M, informed_budget_v2) and 12 momentum agents, living_v1 value with auto news, budget L = 2. Confirmation campaign a-confirm (A9.1): 240 runs. Medians over seeds; scenario rows are treated minus N-C of the same seed.
+Runs on engine `v1.4-d498ee4, v1.5-3479369` (report written by `v1.5-3479369+dirty`); date 2026-10-17; selected design **R-25M15003** (A7) = 2 LPs of $5M, 1,500 retail traders, κ_v 3, P0's 60 informed (D-60fl2M, informed_budget_v2) and 12 momentum agents, living_v1 value with auto news, budget L = 2. Confirmation campaign a-confirm (A9.1): 240 runs. Medians over seeds; scenario rows are treated minus N-C of the same seed.
 
 ## Verdict (A8.4): FAIL — STOP after A9.2 and report to the owner
 
@@ -28,7 +28,7 @@ Failing: A-T1, A-T3, A-T5, A-T7, A-T10, A-T11, A-T12. Targets passed 5/12.
 | L2 | shares executed per day | C.shares_executed = 1,316,600 >= 295500 | | **PASS** |
 | L3 | trades all day (share of half-hours with trades; empty book at the open) | C.active_halfhours_share = 1 >= 1 | | **PASS** |
 | L4 | zero_sum = 0 and invariant flags pass in every run (1 = yes) | C.zero_sum_all_zero = 1 >= 1; C.flags_all_ok = 1 >= 1 | | **PASS** |
-| L5 | median wall time of a full day (s) | C.wall_time_s = 20.3 <= 90 | | **PASS** |
+| L5 | median wall time of a full day (s) | C.wall_time_s = 21.8 <= 90 | | **PASS** |
 | L6 | max |mid - value| over a day without a scenario ($) | C.max_abs_gap = 4.47 <= 10 | | **PASS** |
 | L7 | retail share of volume (%) | C.retail_share = 6.61 >= 5; C.retail_share = 6.61 <= 40 | | **PASS** |
 
@@ -129,23 +129,33 @@ Hype news +0.9 at 11:00 (N-S4 vs N-C; R in bps):
 
 | config | q (share of daily volume) | I_end | I_peak | I_perm | recovery | fill rate | shortfall bps |
 |---|---|---|---|---|---|---|---|
-| N-IMP-0 | 7.6e-05 | -0.175 | 1.12 | 0.0844 | 0.0436 | 1 | 3.76 |
-| N-IMP-0.1 | 0.000456 | 0.0545 | 1.27 | 0.151 | 0.0923 | 1 | 3.58 |
-| N-IMP-0.5 | 0.00228 | 0.785 | 2.61 | 0.733 | 0.285 | 1 | 4.4 |
-| N-IMP-1 | 0.00456 | 2.07 | 3.85 | 1.52 | 0.357 | 1 | 5.25 |
-| N-IMP-5 | 0.0228 | 3.87 | 10.1 | 3.15 | 0.289 | 0.486 | 11.8 |
-| N-IMP-1s | 0.00456 | 1.8 | 4.33 | 1.52 | 0.342 | 1 | -0.681 |
+| N-IMP-0 | 7.6e-05 | 0 | 0.335 | 0.031 | 0.122 | 1 | 4.06 |
+| N-IMP-0.1 | 0.000456 | 0.125 | 0.988 | 0.116 | 0.124 | 1 | 3.89 |
+| N-IMP-0.5 | 0.00228 | 1.02 | 2.33 | 0.674 | 0.273 | 1 | 4.65 |
+| N-IMP-1 | 0.00456 | 1.78 | 3.67 | 1.38 | 0.395 | 1 | 5.52 |
+| N-IMP-5 | 0.0228 | 4.11 | 8.66 | 2.95 | 0.297 | 0.483 | 11 |
+| N-IMP-1s | 0.00456 | 1.88 | 3.82 | 1.56 | 0.358 | 1 | -0.736 |
 
-Noise floor (N-IMP-0): I_end 1.81 bps, I_perm 0.392 bps. Impact β (I_end on q, four sizes, 20 seeds): **1.1** [0.939–1.86] → G12 FAIL; β on I_peak 0.529. Recovery N-IMP-1: **0.357** → G13 PASS (v1.4: G12 β 0.29, recovery as in docs/v1.4/lab/RESULTS.md).
+Noise floor (N-IMP-0): I_end 1.35 bps, I_perm 0.368 bps. Impact β (I_end on q, four sizes, 20 seeds): **0.889** [0.671–1.15] → G12 WARN; β on I_peak 0.558. Recovery N-IMP-1: **0.395** → G13 PASS (v1.4: G12 β 0.29, recovery as in docs/v1.4/lab/RESULTS.md).
 
 Who absorbed the probe (median shares per class):
 
 | class | N-IMP-1 | N-IMP-1s | N-IMP-5 |
 |---|---|---|---|
-| FundamentalistAgent | 4,449 | 4,016 | 9,332 |
-| LiquidityProviderAgent | 1,551 | 1,977 | 5,101 |
-| MomentumEKFAgent | 2e+01 | 2e+01 | 2e+01 |
-| RetailTraderAgent | — | — | 6 |
+| FundamentalistAgent | 4,222 | 4,112 | 9,122 |
+| LiquidityProviderAgent | 1,778 | 1,888 | 4,993 |
+| MomentumEKFAgent | 2e+01 | 1e+01 | 2e+01 |
+
+**Impact re-run after the probe fix (A9).** A8 ran the impact set with the probe placed before the retail crowd and the LPs, so N-IMP-* was not the N-C market plus a probe. The probe is now the last agent; N-IMP-* were re-run (N-C fingerprints unchanged on 20/20 seeds). Before → after:
+
+| quantity | A8 (before fix) | A9 (after fix) |
+|---|---|---|
+| noise floor I_end / I_perm (bps) | 1.81 / 0.392 | 1.35 / 0.368 |
+| β on I_end [CI] | 1.1 [0.939–1.86] | 0.889 [0.671–1.15] |
+| G12 | FAIL | WARN |
+| β on I_peak | 0.529 | 0.558 |
+| recovery N-IMP-1 / N-IMP-5 | 0.357 / 0.289 | 0.395 / 0.297 |
+| G13 | PASS | PASS |
 
 ## Each component alone (A3.7, A4.5, A5.5)
 
@@ -195,7 +205,7 @@ Winner: R-25M15003
 | E-A4 | combined: A-T5 rises toward 0.9 (v1.4 0.49) | N-C vol ratio 0.81 | NOT CONFIRMED |
 | E-A5 | excess kurtosis ≥ 3 | N-C 2e+01 | CONFIRMED |
 | E-A6 | MMs earn a small positive P&L; informed profit; retail loses on average | MM group $-3,572, informed $28,658, retail $-26,353 (N-C medians) | NOT CONFIRMED |
-| E-A7 | impact β moves toward 0.5–0.7 (v1.4 0.29) | β 1.1 | NOT CONFIRMED |
+| E-A7 | impact β moves toward 0.5–0.7 (v1.4 0.29) | β 0.889 | NOT CONFIRMED |
 | E-A8 | wall time ≤ 40 s per day | median 2e+01 s over all 240 runs (2 workers) | CONFIRMED |
 | E-A9 | stop-losses trigger for < 5% of stop users per normal day | N-C median 0% | CONFIRMED |
 | E-A10 | A-T4 (VR(5)) is the most fragile target | A-T4 PASS (VR(5) 1.22); targets failing: A-T1, A-T3, A-T5, A-T7, A-T10, A-T11, A-T12 | NOT CONFIRMED |
@@ -207,15 +217,15 @@ Winner: R-25M15003
 | D-mix | 20/20 | 0 | 0 | 21 |  |
 | D-calm | 10/20 | 0 | 0 | 20.8 |  |
 | D-volatile | 10/20 | 0 | 0 | 20.6 |  |
-| N-C | 20/20 | 0 | 0 | 17.5 |  |
+| N-C | 20/20 | 0 | 0 | 22.4 |  |
 | N-S2 | 20/20 | 0 | 0 | 20.1 |  |
 | N-S2n | 20/20 | 0 | 0 | 21.2 |  |
-| N-IMP-0 | 20/20 | 0 | 0 | 20.2 |  |
-| N-IMP-0.1 | 20/20 | 0 | 0 | 20 |  |
-| N-IMP-0.5 | 20/20 | 0 | 0 | 20.1 |  |
-| N-IMP-1 | 20/20 | 0 | 0 | 20.3 |  |
-| N-IMP-5 | 20/20 | 0 | 0 | 20.1 |  |
-| N-IMP-1s | 20/20 | 0 | 0 | 20.2 |  |
+| N-IMP-0 | 20/20 | 0 | 0 | 22.5 |  |
+| N-IMP-0.1 | 20/20 | 0 | 0 | 22.2 |  |
+| N-IMP-0.5 | 20/20 | 0 | 0 | 22.1 |  |
+| N-IMP-1 | 20/20 | 0 | 0 | 22 |  |
+| N-IMP-5 | 20/20 | 0 | 0 | 22 |  |
+| N-IMP-1s | 20/20 | 0 | 0 | 22.1 |  |
 | N-S4 | 20/20 | 0 | 0 | 20.7 |  |
 
 (D-calm and D-volatile run on the first 10 lab seeds only, A9.1.)

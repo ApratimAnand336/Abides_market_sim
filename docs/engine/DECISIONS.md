@@ -527,6 +527,7 @@ Spec: [`docs/specs/spec_v1.5.txt`](../specs/spec_v1.5.txt), approved by the owne
   - Fix: the probe is built after the v1.5 agents, with the last id and the last latency coordinate. Runs without a probe are bit-identical (no draw moves; I8, I8-legacy-v14, I8-legacy pass). v1.4 probe runs keep the same probe id.
   - **Consequence for A8:** the 120 N-IMP-* runs of a-confirm (impact table, β, recovery, absorption, E-A7, G12/G13 in RESULTS_A.md) were confounded. They are re-run on the fixed engine together with their N-C baseline. The old N-C fingerprints are saved to verify that N-C is bit-identical, and RESULTS_A.md is regenerated. The pre-fix numbers are kept in the report for the record.
   - A8's targets and limits do not use the impact runs; the A8.4 verdict does not depend on them.
+  - **Outcome of the re-run (2026-10-17, engine v1.5-3479369, 140 runs N-C + N-IMP-*, 20 seeds):** N-C fingerprints equal the pre-fix ones on 20/20 seeds. β on I_end 1.10 [0.94–1.86] → **0.89** [0.67–1.15] (G12 FAIL → WARN); noise floor I_end 1.81 → 1.35 bps; recovery N-IMP-1 0.36 → 0.40 (G13 PASS). Targets unchanged (5/12, same failing set), A8.4 still FAIL; E-A7 still NOT CONFIRMED.
 - **Tests moved to the v1.4 market** (they test agents that only it contains; all run there unchanged):
   - T-M6/T-M7 = I6/I7 (ABIDES MMs);
   - T-N13 = I9 (budgeted Noise agents);

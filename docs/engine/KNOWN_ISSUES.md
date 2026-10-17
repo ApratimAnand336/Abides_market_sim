@@ -45,7 +45,7 @@ These are the open issues measured on the design that becomes the default in A9 
 | K6 | hype +0.9 headline: R_peak **+21.6 bps** at 0.27 min, half reverts in 0.77 min; beliefs +$1.11 | stronger overreaction than P0 |
 | K7 | u_ratio **1.19** | A-T12 FAIL |
 | K8 | MM (2 LPs) group P&L vs hold **−$3,572** median; +$1,325 on volatile days | A-T10 FAIL |
-| K11 | β **1.1** [0.94–1.86], recovery 0.36 | G12 FAIL, G13 PASS |
+| K11 | β **0.89** [0.67–1.15], recovery 0.40 (after the A9 probe fix; A8 pre-fix: β 1.1, 0.36) | G12 WARN, G13 PASS |
 | K14 | price/value vol ratio **0.81** at 1 min | improved from 0.49, A-T5 FAIL |
 | K15 | spread_jump_ratio **2.49 / 2.98** | **fixed on R4a** (A-T9 PASS) |
 | K16 | 0 fills that increase exposure out of bounds in 240 runs (informed_budget_v2) | fixed behind the A9 switch |

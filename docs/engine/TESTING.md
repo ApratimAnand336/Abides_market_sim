@@ -68,6 +68,7 @@ agents, three news items) once per session and checks the payload against it.
 | 2026-10-16 | `v1.5` A6 | 398 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 217 s; test_k16_budget_v2.py 5 passed (T-K16-1..3); I8 unchanged (v2 default off); regression PASSED (hash + 41 checks); `npm run build` passes |
 | 2026-10-16 | `v1.5` A7 | 401 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 221 s; test_realism_v15.py 10 passed (A7 scorecard, sweep ids, selection); campaigns a-sweep 160/160 and a-sweep-r 40/40 runs, zero_sum 0, no flag failing |
 | 2026-10-17 | `v1.5` A8 | 402 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 429 s; campaign a-confirm 240/240 runs, zero_sum 0 in every run, no invariant flag failing |
+| 2026-10-17 | `v1.5` A9 | 409 passed, 1 skipped, 4 xfailed (strict), 1 failed (`test_ou_process`, pre-existing) in 800 s; I8, I8-legacy, I8-legacy-v14 pass; `npm run build` passes; a-confirm N-C + N-IMP-* re-run 140/140 (N-C fingerprints = pre-fix on 20/20); regression PASSED (hash + 53 checks), regression-v14 PASSED (hash + 41), regression-legacy PASSED (hash + 42); test_realism_v15.py 13 passed |
 
 ### Pre-existing failures (not caused by our code)
 
