@@ -16,8 +16,9 @@ Last updated: 2026-10-17 (A8), spec v1.5 (R4) started on branch `v1.5` (from 204
   test_scenarios, test_market_maker, test_budget, test_k16_budget_v2, test_export, test_server); test_invariants
   I8/I8-legacy/I8-legacy-v14 passed; test_realism_v15 13 passed; web `npm run build` passed; v1.5 regression PASSED
   (53 checks) BEFORE the probe fix (probe fix does not touch runs without a probe).
-- NEXT: (1) re-run the full suite in the background -> runs/_logs/suite_a9b.log; only test_ou_process may fail;
-  (2) re-run `python scripts/realism_lab.py --campaign a-confirm --workers 2
+- Full suite on the WIP code: 409 passed, 1 skipped, 4 xfailed, 1 failed (test_ou_process, pre-existing) in 800 s
+  (runs/_logs/suite_a9b.log) -> step (1) DONE; record it in TESTING.
+- NEXT: (2) re-run `python scripts/realism_lab.py --campaign a-confirm --workers 2
   --configs N-C,N-IMP-0,N-IMP-0.1,N-IMP-0.5,N-IMP-1,N-IMP-5,N-IMP-1s > runs/_logs/a-confirm-imp.log` (140 runs,
   ~26 min; engine label = the WIP commit; do NOT commit while it runs; resumable: same command);
   (3) check N-C fingerprints == runs/_a8_preprobefix/fingerprints.json (saved before the fix; also old
